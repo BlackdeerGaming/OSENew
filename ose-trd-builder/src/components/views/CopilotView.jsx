@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BrainCircuit, Send, Sparkles, UploadCloud, FileText, Loader2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import API_BASE_URL from '../../config/api';
 
 export default function CopilotView() {
   const [messages, setMessages] = useState([
@@ -39,7 +40,7 @@ export default function CopilotView() {
 
     try {
       // Intentar conectarse al backend Python RAG
-      const response = await fetch("http://localhost:8000/upload", {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
         body: formData,
       });
@@ -87,7 +88,7 @@ export default function CopilotView() {
     setIsTyping(true);
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

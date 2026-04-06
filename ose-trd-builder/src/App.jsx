@@ -12,6 +12,8 @@ import { Save } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
+import ForgotPassword from './components/auth/ForgotPassword';
+import ResetPassword from './components/auth/ResetPassword';
 import MainSidebar from './components/layout/MainSidebar';
 import MainHeader from './components/layout/MainHeader';
 import DashboardView from './components/views/DashboardView';
@@ -20,6 +22,7 @@ import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
+import API_BASE_URL from './config/api';
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -71,6 +74,7 @@ function App() {
   const [authView, setAuthView] = useState('login'); 
   const [currentUser, setCurrentUser] = useState(null); 
   const [activationToken, setActivationToken] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
@@ -131,13 +135,22 @@ function App() {
   ]);
 
 
-  // Detectar token de activación en la URL
+  // Detectar tokens en la URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      setActivationToken(token);
+    
+    // Activación de cuenta
+    const actToken = params.get('token');
+    if (actToken) {
+      setActivationToken(actToken);
       setAuthView('activate');
+    }
+
+    // Recuperación de contraseña
+    const rstToken = params.get('reset_token');
+    if (rstToken) {
+      setResetToken(rstToken);
+      setAuthView('reset-password');
     }
   }, []);
 
@@ -159,6 +172,38 @@ function App() {
     
     setUsers(updatedUsers);
     return { success: true };
+  };
+
+  const handleResetPassword = (token, newPassword) => {
+    // Si estamos en dev (petición simulada), buscamos el token en los usuarios
+    const userIndex = users.findIndex(u => u.resetToken === token);
+    
+    if (userIndex === -1) {
+       // Mock para tokens generados en la misma sesión dev (si no hay persistencia)
+       if (token.startsWith("RESET-")) {
+          return { success: true };
+       }
+       return { success: false, message: 'El enlace de recuperación no es válido o ha expirado.' };
+    }
+
+    const updatedUsers = [...users];
+    updatedUsers[userIndex] = {
+      ...users[userIndex],
+      password: newPassword,
+      resetToken: null,
+      resetExpiry: null
+    };
+    
+    setUsers(updatedUsers);
+    return { success: true };
+  };
+
+  const handleIssueResetToken = (email, token) => {
+    setUsers(users.map(u => u.email.toLowerCase() === email.toLowerCase() ? {
+      ...u,
+      resetToken: token,
+      resetExpiry: Date.now() + (60 * 60 * 1000) // 1 hora
+    } : u));
   };
 
   const [dependencias, setDependencias] = useState([]);
@@ -276,7 +321,7 @@ function App() {
        const context = { dependencias, series, subseries };
        const history = messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'agent', content: m.text }));
        
-       fetch("http://localhost:8000/agent-action", {
+       fetch(`${API_BASE_URL}/agent-action`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: text, context, history })
@@ -559,22 +604,46 @@ function App() {
     setAuthView('dashboard');
   };
 
-  if (authView === 'activate') {
+  // Renderización de Autenticación
+  if (['login', 'signup', 'activate', 'forgot-password', 'reset-password'].includes(authView) && !currentUser) {
     return (
-      <ActivateAccount 
-        token={activationToken} 
-        onActivate={handleActivateUser} 
-        onBackToLogin={() => setAuthView('login')} 
-      />
+      <div className="min-h-screen bg-slate-50">
+        {authView === 'login' && (
+          <Login 
+            onLogin={handleLogin} 
+            onNavigateToSignUp={() => setAuthView('signup')} 
+            onNavigateToForgotPassword={() => setAuthView('forgot-password')} 
+            users={users} 
+          />
+        )}
+        {authView === 'signup' && (
+          <SignUp 
+            onSignUp={(u) => { setUsers([...users, u]); setAuthView('login'); }} 
+            onNavigateToLogin={() => setAuthView('login')} 
+          />
+        )}
+        {authView === 'activate' && (
+          <ActivateAccount 
+            token={activationToken} 
+            onActivate={handleActivateUser} 
+            onBackToLogin={() => setAuthView('login')} 
+          />
+        )}
+        {authView === 'forgot-password' && (
+          <ForgotPassword 
+            onNavigateToLogin={() => setAuthView('login')} 
+            onIssueToken={handleIssueResetToken} 
+          />
+        )}
+        {authView === 'reset-password' && (
+          <ResetPassword 
+            token={resetToken} 
+            onReset={handleResetPassword} 
+            onNavigateToLogin={() => setAuthView('login')} 
+          />
+        )}
+      </div>
     );
-  }
-
-  if (authView === 'login') {
-    return <Login onLogin={handleLogin} onNavigateToSignUp={() => setAuthView('signup')} users={users} />;
-  }
-
-  if (authView === 'signup') {
-    return <SignUp onSignUp={() => setAuthView('login')} onNavigateToLogin={() => setAuthView('login')} />;
   }
 
   const fakeStats = {

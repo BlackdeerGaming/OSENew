@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText, AlertTriangle, Activity, BrainCircuit, MessageSquare, Send, CheckCircle2, ChevronRight, Download, Eye, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import API_BASE_URL from '../../config/api';
 
 export default function DashboardView({ stats, searchQuery, currentUser }) {
   const role = currentUser?.role || 'user';
@@ -23,7 +24,7 @@ export default function DashboardView({ stats, searchQuery, currentUser }) {
     setIsTyping(true);
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query })

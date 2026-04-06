@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import API_BASE_URL from '../../config/api';
 
 export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [] }) {
   const role = currentUser?.role || 'user';
@@ -85,7 +86,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
        setUsers([...users, userToAdd]);
        
        // Preparar link de invitación
-       const finalLink = `http://localhost:5173/?token=${token}`; // He cambiado a localhost para que funcione en desarrollo
+       const finalLink = `${window.location.origin}/?token=${token}`; 
        setGeneratedLink(finalLink);
        setShowInviteModal(true);
        setShowModal(false);
@@ -93,7 +94,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
        // ENVÍO AUTOMÁTICO DE EMAIL
        setEmailStatus('sending');
        try {
-          const response = await fetch('http://localhost:8000/send-activation', {
+          const response = await fetch(`${API_BASE_URL}/send-activation`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

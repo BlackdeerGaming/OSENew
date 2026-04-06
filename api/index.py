@@ -15,8 +15,7 @@ load_dotenv()
 # LangChain imports
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_pinecone import PineconeVectorStore, PineconeEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -26,16 +25,22 @@ import json
 
 # ─── Configuración ────────────────────────────────────────────────────────────
 
+# --- Configuración OpenRouter ---
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL   = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-free")
-# Cadena de modelos de visión GRATUITOS (se intentan en orden si hay error)
+OPENROUTER_MODEL   = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+
+# Cadena de modelos de visión GRATUITOS
 VISION_MODELS_FALLBACK = [
-    "google/gemma-3-27b-it:free",         # Mejor calidad
-    "nvidia/nemotron-nano-12b-v2-vl:free", # Respaldo 1
-    "qwen/qwen3.6-plus:free",              # Respaldo 2
-    "google/gemma-3-12b-it:free",          # Respaldo 3
+    "google/gemma-3-27b-it:free",
+    "nvidia/nemotron-nano-12b-v2-vl:free",
+    "qwen/qwen3.6-plus:free",
+    "google/gemma-3-12b-it:free",
 ]
-CHROMA_DIR         = "./chroma_db"
+
+# --- Configuración Pinecone ---
+PINECONE_API_KEY   = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+PINECONE_EMBEDDING_MODEL = os.getenv("PINECONE_EMBEDDING_MODEL", "multilingual-e5-large")
 IMAGE_MIN_SIZE     = 8000  # bytes — ignorar íconos pequeños y logos de < 8KB
 
 app = FastAPI(title="RAG PDF Backend - OSE Copilot")
@@ -51,28 +56,29 @@ app.add_middleware(
 # ─── Inicializar modelos ──────────────────────────────────────────────────────
 
 vector_store = None
+embeddings = None
 
-print("⏳ Inicializando modelo de Embeddings local (all-MiniLM-L6-v2)...")
-try:
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    print("✅ Embeddings listo.")
-except Exception as e:
-    print(f"❌ Error iniciando embeddings: {e}")
-    embeddings = None
-
-# Cargar base vectorial persistida si existe
-if os.path.exists(CHROMA_DIR) and embeddings is not None:
+if PINECONE_API_KEY:
+    print(f"⏳ Inicializando modelo de Embeddings en nube (Pinecone: {PINECONE_EMBEDDING_MODEL})...")
     try:
-        vector_store = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
-        count = vector_store._collection.count()
-        if count > 0:
-            print(f"✅ Base vectorial cargada desde disco: {count} chunks disponibles.")
-        else:
-            vector_store = None
-            print("ℹ️  Base vectorial vacía. Esperando carga de PDF.")
+        embeddings = PineconeEmbeddings(
+            model=PINECONE_EMBEDDING_MODEL, 
+            pinecone_api_key=PINECONE_API_KEY
+        )
+        print("✅ Embeddings listo (Pinecone API).")
+        
+        if PINECONE_INDEX_NAME:
+            vector_store = PineconeVectorStore(
+                index_name=PINECONE_INDEX_NAME,
+                embedding=embeddings,
+                pinecone_api_key=PINECONE_API_KEY
+            )
+            print(f"✅ Conectado a Pinecone (Índice: {PINECONE_INDEX_NAME})")
     except Exception as e:
+        print(f"❌ Error iniciando Pinecone: {e}")
         vector_store = None
-        print(f"⚠️  No se pudo cargar base vectorial: {e}")
+else:
+    print("⚠️ PINECONE_API_KEY no encontrada. El sistema RAG no funcionará correctamente.")
 
 print(f"🤖 LLM de texto: {OPENROUTER_MODEL}")
 print(f"👁️  LLM de visión: {VISION_MODELS_FALLBACK[0]} (gratuito, con fallback automático)")
@@ -290,11 +296,15 @@ async def upload_pdf(file: UploadFile = File(...)):
     )
     chunks = splitter.split_documents(documents)
 
-    # ── Paso 3: Embeddings + VectorDB ─────────────────────────────────────
-    vector_store = Chroma.from_documents(
+    # ── Paso 3: Embeddings + Pinecone ─────────────────────────────────────
+    if not PINECONE_API_KEY or not PINECONE_INDEX_NAME:
+         raise HTTPException(status_code=503, detail="Configuración de Pinecone incompleta en el servidor.")
+
+    vector_store = PineconeVectorStore.from_documents(
         documents=chunks,
         embedding=embeddings,
-        persist_directory=CHROMA_DIR
+        index_name=PINECONE_INDEX_NAME,
+        pinecone_api_key=PINECONE_API_KEY
     )
 
     print(f"✅ '{file.filename}' indexado: {len(chunks)} chunks ({text_count} texto + {image_count} imágenes)")
@@ -503,6 +513,45 @@ async def send_activation(request: ActivationEmailRequest):
     print("="*50 + "\n")
     
     return {"status": "sent", "message": f"Email sent to {request.email}"}
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PerformResetRequest(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/request-reset")
+async def request_reset(request: PasswordResetRequest):
+    """
+    Simula la solicitud de recuperación de contraseña.
+    En producción, buscaría al usuario en DB y enviaría un correo real.
+    """
+    base_url = os.getenv("VERCEL_URL", "localhost:5173")
+    if not base_url.startswith("http"):
+        base_url = f"https://{base_url}" if "localhost" not in base_url else f"http://{base_url}"
+        
+    reset_link = f"{base_url}/?reset_token={token}"
+    
+    print("\n" + "!"*50)
+    print("🔑 [MOCK PASSWORD RESET] - SOLICITUD RECIBIDA")
+    print(f"PARA: {request.email}")
+    print(f"ENLACE: {reset_link}")
+    print("Válido por 1 hora.")
+    print("!"*50 + "\n")
+    
+    return {
+        "status": "ok", 
+        "message": "Si el correo está registrado, recibirás un enlace de recuperación."
+    }
+
+@app.post("/perform-reset")
+async def perform_reset(request: PerformResetRequest):
+    """
+    Simula el proceso final de cambio de contraseña con el token.
+    """
+    print(f"✅ Contraseña actualizada para token {request.token}")
+    return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, LayoutDashboard, AlertCircle } from 'lucide-react';
 
-export default function Login({ onLogin, onNavigateToSignUp, users = [] }) {
+export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword, users = [] }) {
   const [formData, setFormData] = useState({ identifier: '', password: '' });
   const [error, setError] = useState('');
 
@@ -90,6 +90,15 @@ export default function Login({ onLogin, onNavigateToSignUp, users = [] }) {
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
               />
+            </div>
+            <div className="flex justify-end pt-1">
+              <button 
+                type="button" 
+                onClick={onNavigateToForgotPassword}
+                className="text-[11px] font-bold text-primary hover:text-primary/80 transition-colors drop-shadow-sm"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
             </div>
           </div>
 
