@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Corporate OSE colors: Navy / Institutional Blue */
+  --color-background: oklch(99% 0 0); /* White/very light gray */
+  --color-foreground: oklch(25% 0.04 260); /* Very dark slate */
+
+  --color-primary: oklch(35% 0.1 260); /* Navy Blue */
+  --color-primary-foreground: oklch(99% 0 0); /* White */
+
+  --color-secondary: oklch(95% 0.02 260); /* Light slate */
+  --color-secondary-foreground: oklch(25% 0.04 260);
+
+  --color-muted: oklch(95% 0.02 260);
+  --color-muted-foreground: oklch(50% 0.05 260);
+
+  --color-accent: oklch(85% 0.05 260); /* Slightly darker slate/blue for accents */
+  --color-accent-foreground: oklch(25% 0.04 260);
+
+  --color-success: oklch(65% 0.15 150); /* Green for validation */
+  --color-success-foreground: oklch(99% 0 0);
+
+  --color-warning: oklch(80% 0.15 80);
+  --color-warning-foreground: oklch(20% 0.05 80);
+
+  --color-destructive: oklch(55% 0.20 25);
+  --color-destructive-foreground: oklch(99% 0 0);
+
+  --color-border: oklch(90% 0.02 260);
+  --color-input: oklch(90% 0.02 260);
+  --color-ring: oklch(35% 0.1 260); /* Focus rings match primary */
+
+  --color-card: oklch(100% 0 0); /* White cards */
+  --color-card-foreground: oklch(25% 0.04 260);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased font-sans text-sm sm:text-base selection:bg-primary/20;
+  }
+}
+
+/* Custom scrollbar for better aesthetics */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background); 
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-muted-foreground); 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary); 
+}
