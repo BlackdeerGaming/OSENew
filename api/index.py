@@ -45,13 +45,22 @@ IMAGE_MIN_SIZE     = 8000  # bytes — ignorar íconos pequeños y logos de < 8K
 
 app = FastAPI(title="RAG PDF Backend - OSE Copilot")
 
+# Configuración CORS mejorada para Vercel
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Cambiado a False para permitir wildcard origins (*) en Vercel
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Middleware de diagnóstico: Logging de peticiones
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"📥 REQUEST: {request.method} {request.url.path}")
+    response = await call_next(request)
+    print(f"📤 RESPONSE: {response.status_code}")
+    return response
 
 # ─── Inicializar modelos ──────────────────────────────────────────────────────
 
@@ -234,6 +243,17 @@ router = APIRouter(prefix="/api")
 @router.get("/")
 async def root():
     return {"status": "ok", "model": OPENROUTER_MODEL, "vision_model": VISION_MODELS_FALLBACK[0]}
+
+@router.get("/debug-vars")
+async def debug_vars():
+    """Verifica si las variables críticas están cargadas en el servidor."""
+    return {
+        "OPENROUTER_KEY_SET": bool(os.getenv("OPENROUTER_API_KEY")),
+        "PINECONE_KEY_SET": bool(os.getenv("PINECONE_API_KEY")),
+        "PINECONE_INDEX_SET": bool(os.getenv("PINECONE_INDEX_NAME")),
+        "VERCEL_ENV": os.getenv("VERCEL_ENV", "local"),
+        "NODE_VERSION": os.getenv("IMAGE_VERSION", "unknown")
+    }
 
 @router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
