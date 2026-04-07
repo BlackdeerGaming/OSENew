@@ -53,7 +53,6 @@ if OPENROUTER_API_KEY:
             model="text-embedding-3-small",
             openai_api_key=OPENROUTER_API_KEY,
             openai_api_base="https://openrouter.ai/api/v1",
-            dimensions=1536,
         )
         print("✅ Embeddings (text-embedding-3-small via OpenRouter) listo.")
     except Exception as e:
