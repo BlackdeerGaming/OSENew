@@ -1,0 +1,29 @@
+{
+  "skill_name": "trd-dependency-creator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea la dependencia principal llamada Archivo Central.",
+      "expected_output": "Sigla: AC, Código: 100",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Crea la dependencia Oficina de Talento Humano como hija de Archivo Central (que tiene código 100).",
+      "expected_output": "Sigla: OTH, Código: 200, Parent: Archivo Central (100)",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Crea la dependencia Grupo de Gestión Documental que cuelga de Archivo Central (asume que ya existe la 200).",
+      "expected_output": "Sigla: GGD, Código: 210, Parent: Archivo Central (100)",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Crea la dependencia Gestión de Calidad, que pertenece a Oficina de Talento Humano (que tiene código 200).",
+      "expected_output": "Sigla: GC, Código: 201, Parent: Oficina de Talento Humano (200)",
+      "files": []
+    }
+  ]
+}

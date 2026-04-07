@@ -4,7 +4,7 @@ import { inputClass, textareaClass } from "./SerieForm";
 import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
 
-export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [] }) {
+export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [], entities = [], currentUser = null }) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -36,6 +36,22 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
 
       {/* Top Filter Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end mb-4 border-b border-border/50 pb-8">
+        <div className="md:col-span-2">
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+            <select
+              name="entidadId"
+              value={data.entidadId || ""}
+              onChange={handleChange}
+              className={inputClass}
+            >
+              <option value="">Seleccione una entidad...</option>
+              {entities.map(ent => (
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
         <FormGroup label="Dependencia" required isActive={activeField === 'dependenciaId'}>
           <SearchableSelect 
             name="dependenciaId" 

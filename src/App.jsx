@@ -283,15 +283,10 @@ function App() {
   // Inicializar un saludo base si no hay mensajes
   useEffect(() => {
     if (messages.length === 0) {
-      setMessages([{ sender: 'agent', text: '¡Hola! Soy el Agente OSE. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente ademas de las TRD y organigramas. Escribe lo que necesites.' }]);
+      setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente además de las TRD y organigramas. Escribe lo que necesites.' }]);
     }
   }, [messages.length]);
 
-  const handleNavigation = (moduleId) => {
-    setActiveModule(moduleId);
-    setActiveFormData({});
-    setFlowStep(0);
-  };
 
   // Unified simulateAgent
   const simulateAgentResponse = (text, options = null) => {
@@ -622,6 +617,28 @@ function App() {
     setAuthView('dashboard');
   };
 
+  // Determine which entities the current user can see/select
+  const userEntities = React.useMemo(() => {
+    if (!currentUser) return entities;
+    if (currentUser.role === 'superadmin') return entities;
+    // If user has entidadIds (multi) use those, fall back to single entidadId
+    const ids = currentUser.entidadIds?.length > 0
+      ? currentUser.entidadIds
+      : currentUser.entidadId ? [currentUser.entidadId] : [];
+    return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
+  }, [currentUser, entities]);
+
+  // Auto pre-select entity when navigating to a form module if user has exactly one entity
+  const handleNavigation = (moduleId) => {
+    setActiveModule(moduleId);
+    const autoData = {};
+    if (userEntities.length === 1) {
+      autoData.entidadId = userEntities[0].id;
+    }
+    setActiveFormData(autoData);
+    setFlowStep(0);
+  };
+
   // Renderización de Autenticación
   if (['login', 'signup', 'activate', 'forgot-password', 'reset-password'].includes(authView) && !currentUser) {
     return (
@@ -700,23 +717,26 @@ function App() {
       <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full rounded-br-2xl">
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-primary/[0.02] to-transparent" />
         <div className="relative p-6 h-full flex flex-col">
+          <div className="mb-10">
+            <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Documencio <span className="text-blue-600">IA</span></h1>
+            <p className="text-slate-500 mt-2 text-lg">Tu asistente inteligente para la gestión documental y búsqueda semántica.</p>
+          </div>
           
-          {/* The Active View */}
           <div className="flex-1">
             {activeModule === 'dependencias' && (
-              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} currentUser={currentUser} />
+              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'orgchart' && (
               <OrgChartView dependencias={dependencias} currentUser={currentUser} />
             )}
             {activeModule === 'series' && (
-              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} currentUser={currentUser} />
+              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'subseries' && (
-              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} currentUser={currentUser} />
+              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} currentUser={currentUser} />
+              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
@@ -733,6 +753,19 @@ function App() {
           </div>
 
           {/* Save Button floating dock for forms */}
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200">
+              <Bot className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-800 leading-tight">Orianna</h2>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">En línea</span>
+              </div>
+            </div>
+          </div>
+
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && currentUser?.role !== 'user' && (
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-8">
              <button 

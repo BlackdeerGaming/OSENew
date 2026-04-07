@@ -193,6 +193,7 @@ function mapDepFromDB(r) {
     direccion: r.direccion,
     telefono: r.telefono,
     dependeDe: r.depende_de,
+    entidadId: r.entidad_id,
   };
 }
 
@@ -208,6 +209,7 @@ function mapDepToDB(r) {
     direccion: r.direccion,
     telefono: r.telefono,
     depende_de: r.dependeDe || null,
+    entidad_id: r.entidadId || null,
   };
 }
 
@@ -219,6 +221,7 @@ function mapSerieFromDB(r) {
     tipoDocumental: r.tipo_documental,
     descripcion: r.descripcion,
     dependenciaId: r.dependencia_id,
+    entidadId: r.entidad_id,
   };
 }
 
@@ -230,6 +233,7 @@ function mapSerieToDB(r) {
     tipo_documental: r.tipoDocumental,
     descripcion: r.descripcion,
     dependencia_id: r.dependenciaId,
+    entidad_id: r.entidadId || null,
   };
 }
 
@@ -242,6 +246,7 @@ function mapSubserieFromDB(r) {
     descripcion: r.descripcion,
     serieId: r.serie_id,
     dependenciaId: r.dependencia_id,
+    entidadId: r.entidad_id,
   };
 }
 
@@ -254,6 +259,7 @@ function mapSubserieToDB(r) {
     descripcion: r.descripcion,
     serie_id: r.serieId,
     dependencia_id: r.dependenciaId,
+    entidad_id: r.entidadId || null,
   };
 }
 
@@ -263,6 +269,7 @@ function mapTRDFromDB(r) {
     dependenciaId: r.dependencia_id,
     serieId: r.serie_id,
     subserieId: r.subserie_id,
+    entidadId: r.entidad_id,
     estadoConservacion: r.estado_conservacion,
     retencionGestion: r.retenci_gestion,
     retencionCentral: r.retenci_central,
@@ -293,6 +300,7 @@ function mapTRDToDB(r) {
     dependencia_id: r.dependenciaId,
     serie_id: r.serieId,
     subserie_id: r.subserieId || null,
+    entidad_id: r.entidadId || null,
     estado_conservacion: r.estadoConservacion,
     retenci_gestion: r.retencionGestion ? parseInt(r.retencionGestion) : null,
     retenci_central: r.retencionCentral ? parseInt(r.retencionCentral) : null,

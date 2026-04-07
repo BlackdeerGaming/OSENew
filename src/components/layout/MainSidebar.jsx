@@ -1,12 +1,12 @@
 import React from 'react';
-import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2 } from 'lucide-react';
+import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2, Cpu, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'entities', label: 'Entidades', icon: Building2 },
-  { id: 'copilot', label: 'Copiloto IA', icon: Bot },
-  { id: 'trd', label: 'TRD', icon: Database },
+  { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
+  { id: 'copilot', label: 'Documencio (IA)', icon: Cpu },
+  { id: 'trd', label: 'Orianna (TRD Builder)', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'settings', label: 'Configuración', icon: Settings },
 ];

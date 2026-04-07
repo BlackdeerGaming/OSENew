@@ -27,7 +27,7 @@ export function FormGroup({ label, required, children, isActive }) {
   );
 }
 
-export default function DependenciaForm({ data, onChange, activeField, dependencias = [] }) {
+export default function DependenciaForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -43,6 +43,22 @@ export default function DependenciaForm({ data, onChange, activeField, dependenc
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+        <div className="md:col-span-2">
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+            <select
+              name="entidadId"
+              value={data.entidadId || ""}
+              onChange={handleChange}
+              className={inputClass}
+            >
+              <option value="">Seleccione una entidad...</option>
+              {entities.map(ent => (
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
         <div className="md:col-span-2">
           <FormGroup label="Nombre Dependencia" required isActive={activeField === 'nombre'}>
             <input name="nombre" value={data.nombre || ""} onChange={handleChange} className={inputClass} placeholder="Ej. Archivo Central" />

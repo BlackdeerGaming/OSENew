@@ -5,7 +5,7 @@ import SearchableSelect from "../ui/SearchableSelect";
 export const inputClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors disabled:opacity-50 disabled:bg-secondary/50";
 export const textareaClass = "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors";
 
-export default function SerieForm({ data, onChange, activeField, dependencias = [] }) {
+export default function SerieForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -19,6 +19,22 @@ export default function SerieForm({ data, onChange, activeField, dependencias = 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+        <div className="md:col-span-2">
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+            <select
+              name="entidadId"
+              value={data.entidadId || ""}
+              onChange={handleChange}
+              className={inputClass}
+            >
+              <option value="">Seleccione una entidad...</option>
+              {entities.map(ent => (
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
         <div className="md:col-span-2">
           <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'}>
             <SearchableSelect 

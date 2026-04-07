@@ -20,16 +20,20 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     email: '',
     celular: '',
     username: '',
-    estado: 'Inactivo', // Por defecto inactivo hasta activarse
-    perfil: null, 
-    entidadId: null
+    estado: 'Inactivo',
+    perfil: null,
+    entidadId: null,
+    entidadIds: []
   });
 
   const canCreateAdmins = role === 'superadmin';
 
 
   const handleEdit = (user) => {
-    setNewUser({ ...user });
+    setNewUser({
+      ...user,
+      entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : [])
+    });
     setEditingUserId(user.id);
     setShowModal(true);
     setActiveTab('info');
@@ -47,13 +51,13 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
        setActiveTab('perfil');
        return;
     }
-    if (!newUser.entidadId) {
-       alert("Debes asignar el usuario a una entidad.");
+    if (!newUser.entidadIds || newUser.entidadIds.length === 0) {
+       alert("Debes asignar el usuario a al menos una entidad.");
        setActiveTab('entidades');
        return;
     }
 
-    const entidadSelected = entities.find(e => e.id === newUser.entidadId);
+    const entidadSelected = entities.find(e => e.id === (newUser.entidadIds[0]));
     
     // Generación de Token de Invitación (30 min)
     const token = Math.random().toString(36).substring(2, 11).toUpperCase();
@@ -62,7 +66,12 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setUsers(prev => {
        const userBase = {
          ...newUser,
-         entidadNombre: entidadSelected?.razonSocial || '',
+         // entidadId is the first entity (default) for backward compat
+         entidadId: newUser.entidadIds[0] || newUser.entidadId || null,
+         entidadNombre: newUser.entidadIds
+           .map(id => entities.find(e => e.id === id)?.razonSocial)
+           .filter(Boolean).join(', '),
+         entidadIds: newUser.entidadIds,
          activationToken: token,
          tokenExpiry: expiry,
          isActivated: false,
@@ -70,25 +79,27 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
        };
 
        if (editingUserId) {
-         // ACTUALIZAR EN BACKEND
-         fetch(`${API_BASE_URL}/users/${editingUserId}`, {
+          fetch(`${API_BASE_URL}/users/${editingUserId}`, {
            method: 'PUT',
            headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify(userBase)
+           body: JSON.stringify({
+             ...userBase,
+             entidadIds: newUser.entidadIds
+           })
          }).then(res => {
            if (!res.ok) console.error("Error al actualizar usuario");
          });
 
          return prev.map(u => u.id === editingUserId ? { ...userBase, id: editingUserId } : u);
        } else {
-         // CREAR EN BACKEND
+          // CREAR EN BACKEND
          const tempId = Date.now().toString();
          const userToAdd = { ...userBase, id: tempId, fechaCreacion: new Date().toLocaleDateString() };
 
          fetch(`${API_BASE_URL}/users`, {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify(userToAdd)
+           body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
          }).then(async res => {
            if (res.ok) {
              // Después de crear exitosamente en la DB, enviar email
@@ -134,7 +145,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: null, entidadId: null
+      perfil: null, entidadId: null, entidadIds: []
     });
   };
 
@@ -379,9 +390,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                  )}
                >
                  Entidades
-                 {!newUser.entidadId && (
-                   <span className="bg-[#00c853] text-white text-[10px] h-5 w-5 flex items-center justify-center rounded-full font-bold">1</span>
-                 )}
+                  {(!newUser.entidadIds || newUser.entidadIds.length === 0) && (
+                    <span className="bg-[#00c853] text-white text-[10px] h-5 w-5 flex items-center justify-center rounded-full font-bold">1</span>
+                  )}
                </button>
             </div>
 
@@ -513,25 +524,59 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
                {activeTab === 'entidades' && (
                  <div className="space-y-6">
-                    <h2 className="text-xl font-bold text-[#1e293b]">Lista de Empresas</h2>
+                    <div>
+                      <h2 className="text-xl font-bold text-[#1e293b]">Lista de Empresas</h2>
+                      <p className="text-sm text-slate-500 mt-1">Puedes seleccionar más de una entidad.</p>
+                    </div>
                     <div className="flex flex-col gap-3">
                        {entities.length === 0 ? (
                          <p className="text-sm text-slate-400 italic">No hay entidades creadas aún.</p>
                        ) : (
-                         entities.map(ent => (
-                           <label key={ent.id} className="flex items-center gap-4 cursor-pointer p-4 rounded-xl bg-[#f8fafc] border border-slate-100 hover:bg-slate-50 transition-all">
-                              <div className={cn(
-                                 "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                                 newUser.entidadId === ent.id ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
-                              )}>
-                                 <Check className="h-4 w-4 text-white" />
-                              </div>
-                              <input type="radio" className="hidden" checked={newUser.entidadId === ent.id} onChange={()=>setNewUser({...newUser, entidadId: ent.id})} />
-                              <span className="text-sm font-semibold text-slate-700">{ent.razonSocial}</span>
-                           </label>
-                         ))
+                         entities.map(ent => {
+                           const isChecked = (newUser.entidadIds || []).includes(ent.id);
+                           const toggleEntity = () => {
+                             const current = newUser.entidadIds || [];
+                             const next = isChecked
+                               ? current.filter(id => id !== ent.id)
+                               : [...current, ent.id];
+                             // Keep entidadId (primary) as the first selected entity
+                             setNewUser({
+                               ...newUser,
+                               entidadIds: next,
+                               entidadId: next[0] || null
+                             });
+                           };
+                           return (
+                             <label
+                               key={ent.id}
+                               onClick={toggleEntity}
+                               className={cn(
+                                 "flex items-center gap-4 cursor-pointer p-4 rounded-xl border-2 transition-all",
+                                 isChecked
+                                   ? "bg-[#e8f5f3] border-[#00bfa5]"
+                                   : "bg-[#f8fafc] border-slate-100 hover:bg-slate-50"
+                               )}
+                             >
+                                <div className={cn(
+                                   "h-6 w-6 rounded flex items-center justify-center border-2 transition-all flex-shrink-0",
+                                   isChecked ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
+                                )}>
+                                   <Check className="h-4 w-4 text-white" />
+                                </div>
+                                <div>
+                                  <span className="text-sm font-semibold text-slate-700 block">{ent.razonSocial}</span>
+                                  {ent.nit && <span className="text-xs text-slate-400">NIT: {ent.nit}</span>}
+                                </div>
+                             </label>
+                           );
+                         })
                        )}
                     </div>
+                    {(newUser.entidadIds || []).length > 0 && (
+                      <p className="text-xs text-[#00bfa5] font-semibold">
+                        ✓ {newUser.entidadIds.length} entidad{newUser.entidadIds.length > 1 ? 'es' : ''} seleccionada{newUser.entidadIds.length > 1 ? 's' : ''}
+                      </p>
+                    )}
                  </div>
                )}
             </div>

@@ -144,6 +144,7 @@ class UserCreate(BaseModel):
     username: str
     perfil: str
     entidadId: str | None = None
+    entidadIds: list[str] | None = None
     activationToken: str | None = None
     tokenExpiry: int | None = None
 
@@ -163,6 +164,7 @@ class UserUpdate(BaseModel):
     estado: str | None = None
     perfil: str | None = None
     entidadId: str | None = None
+    entidadIds: list[str] | None = None
     isActivated: bool | None = None
 
 class EntityCreate(BaseModel):
@@ -629,11 +631,17 @@ async def login(req: LoginRequest):
     if user_data.get("password") != req.password:
         raise HTTPException(401, "Contraseña incorrecta")
         
+    # Obtener entidades asociadas
+    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
+    entidad_ids = [e["entity_id"] for e in entities_res.data]
+    
     return {
         "id": user_data["id"],
         "nombre": user_data["nombre"],
         "email": user_data["email"],
-        "role": user_data["perfil"]
+        "role": user_data["perfil"],
+        "entidadId": user_data.get("entidad_id"),
+        "entidadIds": entidad_ids
     }
 
 # --- CRUD USUARIOS ---
@@ -641,6 +649,14 @@ async def login(req: LoginRequest):
 async def get_users():
     if not supabase_client: return []
     res = supabase_client.table("profiles").select("*").execute()
+    # Obtener todas las relaciones de entidades
+    rel_res = supabase_client.table("profile_entities").select("*").execute()
+    rels = {}
+    for r in rel_res.data:
+        p_id = r["profile_id"]
+        if p_id not in rels: rels[p_id] = []
+        rels[p_id].append(r["entity_id"])
+
     # Mapear snake_case a camelCase para el frontend
     mapped = []
     for u in res.data:
@@ -648,6 +664,7 @@ async def get_users():
             "id": u["id"], "nombre": u["nombre"], "apellido": u["apellido"], "email": u["email"],
             "username": u["username"], "perfil": u["perfil"], "estado": u["estado"],
             "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
+            "entidadIds": rels.get(u["id"], []),
             "activationToken": u.get("activation_token"), "tokenExpiry": u.get("token_expiry")
         })
     return mapped
@@ -661,7 +678,14 @@ async def create_user(user: UserCreate):
         "token_expiry": user.tokenExpiry
     }
     res = supabase_client.table("profiles").insert(data).execute()
-    return res.data[0]
+    new_user = res.data[0]
+    
+    # Insertar en tabla de unión si hay entidades
+    if user.entidadIds:
+        rels = [{"profile_id": new_user["id"], "entity_id": e_id} for e_id in user.entidadIds]
+        supabase_client.table("profile_entities").insert(rels).execute()
+        
+    return new_user
 
 @router.put("/users/{user_id}")
 async def update_user(user_id: str, user: UserUpdate):
@@ -675,6 +699,16 @@ async def update_user(user_id: str, user: UserUpdate):
     if user.isActivated is not None: data["is_activated"] = user.isActivated
     
     res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
+    
+    # Actualizar entidades asociadas si se proporcionan
+    if user.entidadIds is not None:
+        # Eliminar anteriores
+        supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
+        # Insertar nuevas
+        if user.entidadIds:
+            rels = [{"profile_id": user_id, "entity_id": e_id} for e_id in user.entidadIds]
+            supabase_client.table("profile_entities").insert(rels).execute()
+            
     return res.data[0]
 
 @router.delete("/users/{user_id}")

@@ -3,7 +3,7 @@ import { FormGroup } from "./DependenciaForm";
 import { inputClass, textareaClass } from "./SerieForm";
 import SearchableSelect from "../ui/SearchableSelect";
 
-export default function SubserieForm({ data, onChange, activeField, dependencias = [], series = [] }) {
+export default function SubserieForm({ data, onChange, activeField, dependencias = [], series = [], entities = [], currentUser = null }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -33,6 +33,22 @@ export default function SubserieForm({ data, onChange, activeField, dependencias
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+        <div className="md:col-span-2">
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+            <select
+              name="entidadId"
+              value={data.entidadId || ""}
+              onChange={handleChange}
+              className={inputClass}
+            >
+              <option value="">Seleccione una entidad...</option>
+              {entities.map(ent => (
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
         <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'}>
           <SearchableSelect 
             name="dependenciaId" 
