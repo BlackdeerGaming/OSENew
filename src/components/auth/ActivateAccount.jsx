@@ -34,15 +34,20 @@ export default function ActivateAccount({ token, onActivate, onBackToLogin }) {
     }
 
     setStatus('loading');
-    setTimeout(() => {
-      const result = onActivate(token, password);
-      if (result.success) {
-        setStatus('success');
-      } else {
-        setErrorMsg(result.message);
+    (async () => {
+      try {
+        const result = await onActivate(token, password);
+        if (result.success) {
+          setStatus('success');
+        } else {
+          setErrorMsg(result.message || "Error al activar la cuenta.");
+          setStatus('error');
+        }
+      } catch (err) {
+        setErrorMsg("Error de conexión al servidor.");
         setStatus('error');
       }
-    }, 1500);
+    })();
   };
 
   if (status === 'success') {

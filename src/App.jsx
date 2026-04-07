@@ -154,26 +154,46 @@ function App() {
       setResetToken(rstToken);
       setAuthView('reset-password');
     }
+
+    // Cargar usuarios iniciales desde el backend
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/users`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.length > 0) setUsers(data);
+        }
+      } catch (err) {
+        console.error("Error fetching users:", err);
+      }
+    };
+    fetchUsers();
   }, []);
 
-  const handleActivateUser = (token, newPassword) => {
-    const userIndex = users.findIndex(u => u.activationToken === token);
-    if (userIndex === -1) return { success: false, message: 'El enlace de activación no es válido.' };
-    
-    const user = users[userIndex];
-    if (Date.now() > user.tokenExpiry) return { success: false, message: 'Este enlace ha expirado (límite 30 min).' };
+  const handleActivateUser = async (token, newPassword) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: token,
+          password: newPassword
+        })
+      });
 
-    const updatedUsers = [...users];
-    updatedUsers[userIndex] = {
-      ...user,
-      password: newPassword,
-      isActivated: true,
-      estado: 'Activo',
-      activationToken: null, 
-    };
-    
-    setUsers(updatedUsers);
-    return { success: true };
+      const data = await response.json();
+      
+      if (response.ok) {
+        return { success: true };
+      } else {
+        return { success: false, message: data.detail || 'Error al activar la cuenta.' };
+      }
+    } catch (err) {
+      console.error("Error activating user:", err);
+      return { success: false, message: 'Hubo un error de conexión con el servidor.' };
+    }
   };
 
   const handleResetPassword = (token, newPassword) => {

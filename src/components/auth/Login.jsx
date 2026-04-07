@@ -1,40 +1,37 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, LayoutDashboard, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, LayoutDashboard, AlertCircle, Loader2 } from 'lucide-react';
+import API_BASE_URL from '../../config/api';
 
-export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword, users = [] }) {
+export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword }) {
   const [formData, setFormData] = useState({ identifier: '', password: '' });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    const user = users.find(u => 
-      (u.email.toLowerCase() === formData.identifier.toLowerCase() || 
-       u.username?.toLowerCase() === formData.identifier.toLowerCase())
-    );
+    try {
+      const response = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
 
-    if (!user) {
-      setError('El usuario no existe.');
-      return;
+      const data = await response.json();
+
+      if (response.ok) {
+        onLogin(data);
+      } else {
+        setError(data.detail || 'Error al iniciar sesión.');
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError('Error de conexión al servidor.');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!user.isActivated) {
-      setError('Esta cuenta aún no ha sido activada. Revisa tu correo.');
-      return;
-    }
-
-    if (user.password !== formData.password) {
-      setError('Contraseña incorrecta.');
-      return;
-    }
-    
-    onLogin({ 
-      id: user.id,
-      nombre: user.nombre,
-      email: user.email,
-      role: user.perfil 
-    });
   };
 
   return (
@@ -104,9 +101,15 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
 
           <button 
             type="submit"
-            className="mt-8 flex w-full items-center justify-center rounded-xl bg-primary text-white px-4 py-3.5 text-sm font-bold tracking-wide shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-[0.98]"
+            disabled={isLoading}
+            className="mt-8 flex w-full items-center justify-center rounded-xl bg-primary text-white px-4 py-3.5 text-sm font-bold tracking-wide shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-[0.98] disabled:opacity-70"
           >
-            Ingresar al Dashboard
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Ingresando...
+              </>
+            ) : 'Ingresar al Dashboard'}
           </button>
         </form>
 

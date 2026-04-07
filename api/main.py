@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
+import time
 
 # Cargar variables de entorno
 load_dotenv()
@@ -142,6 +143,10 @@ class UserCreate(BaseModel):
     entidadId: str | None = None
     activationToken: str | None = None
     tokenExpiry: int | None = None
+
+class UserActivate(BaseModel):
+    token: str
+    password: str
 
 class LoginRequest(BaseModel):
     identifier: str
@@ -504,6 +509,37 @@ async def request_reset(request: PasswordResetRequest):
 async def perform_reset(request: PerformResetRequest):
     print(f"✅ Contraseña actualizada para token {request.token}")
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
+
+@router.post("/activate")
+async def activate_user(req: UserActivate):
+    if not supabase_client: raise HTTPException(500, "Error de conexión a la base de datos")
+    
+    # Buscar usuario por token
+    res = supabase_client.table("profiles").select("*").eq("activation_token", req.token).execute()
+    
+    if not res.data:
+        raise HTTPException(400, "El código de activación no es válido.")
+        
+    user_data = res.data[0]
+    
+    # Verificar expiración (si el tokenExpiry es anterior al tiempo actual)
+    if user_data.get("token_expiry") and user_data["token_expiry"] < int(time.time() * 1000):
+         raise HTTPException(400, "El código de activación ha expirado. Solicita una nueva invitación.")
+
+    # Actualizar usuario
+    try:
+        update_res = supabase_client.table("profiles").update({
+            "password": req.password,
+            "is_activated": True,
+            "estado": "Activo",
+            "activation_token": None,
+            "token_expiry": None
+        }).eq("id", user_data["id"]).execute()
+        
+        return {"status": "success", "message": "Cuenta activada correctamente."}
+    except Exception as e:
+        print(f"❌ Error activando usuario: {e}")
+        raise HTTPException(500, f"Error interno: {str(e)}")
 
 @router.post("/login")
 async def login(req: LoginRequest):
