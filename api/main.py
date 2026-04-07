@@ -261,17 +261,18 @@ async def chat(request: ChatRequest):
             table_name="rag_documents",
             query_name="match_rag_documents",
         )
-        retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+        source_docs = vector_store.similarity_search(request.query, k=5)
 
         rag_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
-            | RAG_PROMPT
+            RAG_PROMPT
             | llm
             | StrOutputParser()
         )
 
-        answer = rag_chain.invoke(request.query)
-        source_docs = retriever.invoke(request.query)
+        answer = rag_chain.invoke({
+            "context": format_docs(source_docs),
+            "question": request.query
+        })
         pages = sorted(set(
             d.metadata.get("page")
             for d in source_docs
