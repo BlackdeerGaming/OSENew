@@ -83,10 +83,10 @@ CREATE TABLE IF NOT EXISTS trd_records (
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS rag_documents (
-  id BIGSERIAL PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   content TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
-  embedding vector(1024),  -- multilingual-e5-large usa 1024 dimensiones
+  embedding vector(1024),  -- OpenAI text-embedding-3-small configurado a 1024
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -105,7 +105,7 @@ CREATE OR REPLACE FUNCTION match_rag_documents(
   filter JSONB DEFAULT '{}'
 )
 RETURNS TABLE (
-  id BIGINT,
+  id uuid,
   content TEXT,
   metadata JSONB,
   similarity FLOAT
