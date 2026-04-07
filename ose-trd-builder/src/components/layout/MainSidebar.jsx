@@ -11,29 +11,21 @@ const MAIN_NAV = [
   { id: 'settings', label: 'Configuración', icon: Settings },
 ];
 
-export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser }) {
+export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, isOpen }) {
   const role = currentUser?.role || 'user';
 
   const filteredNav = MAIN_NAV.filter(item => {
-    // Si es super admin ve todo
     if (role === 'superadmin') return true;
-    
-    // Si no es super admin, le bloqueamos Entidades explícitamente
     if (item.id === 'entities') return false;
-
-    if (role === 'admin') {
-      return item.id !== 'copilot';
-    }
-    
-    if (role === 'user') {
-      return item.id !== 'copilot' && item.id !== 'users';
-    }
-    
+    if (role === 'admin') return item.id !== 'copilot';
+    if (role === 'user') return item.id !== 'copilot' && item.id !== 'users';
     return false;
   });
-
   return (
-    <aside className="w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 relative z-20">
+    <aside className={cn(
+      "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 fixed lg:static inset-y-0 left-0 z-40 lg:z-20",
+      isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+    )}>
       <div className="p-6 border-b border-white/10 flex items-center gap-3">
         <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg">
           <FileSignature className="h-6 w-6 text-white" />

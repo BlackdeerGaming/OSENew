@@ -47,9 +47,9 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 bg-secondary/20 relative">
-        <div className="rounded border border-border bg-card shadow-sm overflow-hidden">
-          <table className="w-full text-sm text-left">
+      <div className="flex-1 overflow-auto p-2 sm:p-4 bg-secondary/20 relative scrollbar-thin">
+        <div className="rounded border border-border bg-card shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-sm text-left">
             <thead className="bg-secondary/50 text-xs uppercase font-semibold text-muted-foreground border-b border-border">
               <tr>
                 <th className="px-3 py-3 w-10">

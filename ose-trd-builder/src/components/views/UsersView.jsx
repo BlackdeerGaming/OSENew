@@ -250,8 +250,8 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
           </button>
         </div>
 
-        <div className="overflow-x-auto min-h-[400px]">
-          <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto min-h-[400px] scrollbar-thin scrollbar-thumb-slate-200">
+          <table className="w-min sm:w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-border text-slate-600">
               <tr>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Nombres</th>
@@ -320,10 +320,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
         </div>
       </div>
 
-      {/* Modal Multi-tab */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden flex flex-col h-[90vh] max-h-[850px]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden flex flex-col h-[95vh] sm:h-[90vh] max-h-[850px]">
             
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-xl font-bold text-[#1e293b]">{editingUserId ? 'Editar usuario' : 'Crear nuevo usuario'}</h3>
@@ -497,16 +496,16 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                )}
             </div>
 
-            <div className="p-6 border-t border-slate-100 bg-[#f8fafc] flex items-center justify-end gap-4">
+            <div className="p-4 sm:p-6 border-t border-slate-100 bg-[#f8fafc] flex flex-col sm:flex-row items-center justify-end gap-3 sm:gap-4">
                <button 
                  onClick={resetModal}
-                 className="px-8 py-3 text-[#00bfa5] font-bold text-sm bg-[#e8f5f3] hover:bg-[#d5eeea] rounded-lg transition-colors"
+                 className="w-full sm:w-auto px-8 py-3 text-[#00bfa5] font-bold text-sm bg-[#e8f5f3] hover:bg-[#d5eeea] rounded-lg transition-colors"
                >
                  Cancelar
                </button>
                <button 
                  onClick={handleSaveUsuario}
-                 className="px-10 py-3 bg-[#00c8a5] text-white font-bold text-sm rounded-lg shadow-md hover:bg-[#00c8a5]/90 flex items-center gap-2 transition-all active:scale-[0.98]"
+                 className="w-full sm:w-auto px-10 py-3 bg-[#00c8a5] text-white font-bold text-sm rounded-lg shadow-md hover:bg-[#00c8a5]/90 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                >
                  <Save className="h-4 w-4" />
                  {editingUserId ? 'Actualizar' : 'Generar Invitación'}

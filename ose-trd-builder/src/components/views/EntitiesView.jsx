@@ -137,10 +137,11 @@ export default function EntitiesView({ entities, setEntities }) {
               setErrors({});
               setView("create");
             }}
-            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2 rounded-md bg-primary px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap"
           >
             <Plus className="h-4 w-4" />
-            Crear Empresa
+            <span className="hidden sm:inline">Crear Empresa</span>
+            <span className="sm:hidden">Nuevo</span>
           </button>
         </div>
 
@@ -169,8 +170,8 @@ export default function EntitiesView({ entities, setEntities }) {
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">Crea la primera entidad cliente para empezar a comercializar y asignarles administradores.</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm">
-              <table className="w-full text-sm text-left">
+            <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm overflow-x-auto scrollbar-thin">
+              <table className="w-full min-w-[800px] text-sm text-left">
                 <thead className="bg-secondary/50 text-xs uppercase font-semibold text-muted-foreground border-b border-border">
                   <tr>
                     <th className="px-4 py-3 w-16 text-center">Logo</th>
@@ -235,7 +236,7 @@ export default function EntitiesView({ entities, setEntities }) {
   // ──── Vista Formulario (Create / Edit) ────
   return (
     <div className="flex h-full flex-col p-6 space-y-6 overflow-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setView("list")}
@@ -244,17 +245,17 @@ export default function EntitiesView({ entities, setEntities }) {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
               {view === "create" ? "Nueva Entidad" : "Editar Entidad"}
             </h1>
-            <p className="text-muted-foreground mt-1 text-sm">Organización cliente del ecosistema.</p>
+            <p className="text-muted-foreground mt-1 text-xs sm:text-sm">Organización cliente del ecosistema.</p>
           </div>
         </div>
         <div className="flex gap-2">
-           <button onClick={() => setView("list")} className="px-4 py-2 text-sm rounded-md border border-input hover:bg-secondary">
+           <button onClick={() => setView("list")} className="px-4 py-2 text-sm rounded-md border border-input hover:bg-secondary flex-1 sm:flex-none">
              Cancelar
            </button>
-           <button onClick={handleSave} className="flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90">
+           <button onClick={handleSave} className="flex items-center justify-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 flex-1 sm:flex-none">
              <Save className="h-4 w-4" />
              Guardar
            </button>
@@ -265,8 +266,8 @@ export default function EntitiesView({ entities, setEntities }) {
         
         {/* Información General */}
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Información General</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
+          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium text-sm sm:text-base">Información General</div>
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-muted-foreground">Tipo Entidad</label>
                <input value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
@@ -293,8 +294,8 @@ export default function EntitiesView({ entities, setEntities }) {
 
         {/* Identificación */}
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Identificación</div>
-          <div className="p-5 grid grid-cols-3 gap-4">
+          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium text-sm sm:text-base">Identificación</div>
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-muted-foreground">Tipo Doc.</label>
                <select value={formData.tipoDocumento} onChange={e=>setFormData({...formData, tipoDocumento: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
@@ -319,8 +320,8 @@ export default function EntitiesView({ entities, setEntities }) {
 
         {/* Ubicación */}
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Ubicación</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
+          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium text-sm sm:text-base">Ubicación</div>
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-muted-foreground">País</label>
                <input value={formData.pais} onChange={e=>setFormData({...formData, pais: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
@@ -341,8 +342,8 @@ export default function EntitiesView({ entities, setEntities }) {
 
         {/* Contacto */}
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Contacto</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
+          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium text-sm sm:text-base">Contacto</div>
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
                <label className="text-xs font-semibold text-muted-foreground">Nombre / Encargado</label>
                <input value={formData.nombreContacto} onChange={e=>setFormData({...formData, nombreContacto: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />

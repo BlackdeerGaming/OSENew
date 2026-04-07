@@ -1,5 +1,5 @@
 import React from "react";
-import { LogOut, User, Download, CheckCircle2 } from "lucide-react";
+import { LogOut, User, Download, CheckCircle2, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -163,21 +163,27 @@ export default function MainHeader({ onLogout, mainView, trdProps }) {
   };
 
   return (
-    <header className="sticky top-0 z-10 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-6 shadow-sm">
-      <div className="flex items-center gap-4 py-2">
+    <header className="sticky top-0 z-10 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-4 lg:px-6 shadow-sm">
+      <div className="flex items-center gap-3 lg:gap-4 py-2">
+        <button 
+          onClick={toggleSidebar}
+          className="p-2 lg:hidden hover:bg-slate-100 rounded-md transition-colors"
+        >
+          <Menu className="h-6 w-6 text-slate-600" />
+        </button>
         <div className="flex flex-col">
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Centro de control documental</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
+          <h1 className="text-lg lg:text-xl font-bold text-foreground tracking-tight">Centro de control</h1>
+          <p className="hidden sm:block text-xs lg:text-sm text-muted-foreground mt-0.5">Gestión documental con apoyo de IA.</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 flex-wrap justify-end">
+      <div className="flex items-center gap-2 lg:gap-4 flex-wrap justify-end">
         {/* Conditional rendering for TRD specific buttons */}
         {mainView === 'trd' && (
-          <div className="flex items-center gap-3 mr-2">
+          <div className="flex items-center gap-2 lg:gap-3 mr-1 lg:mr-2">
             <span
               className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border",
+                "hidden md:flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border text-nowrap",
                 status === "Borrador"
                   ? "bg-secondary text-secondary-foreground border-border"
                   : status === "Finalizado"
@@ -190,26 +196,25 @@ export default function MainHeader({ onLogout, mainView, trdProps }) {
             </span>
             <button
               onClick={handleExportPDF}
-              className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
+              className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs lg:text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
             >
               <Download className="h-4 w-4" />
-              Exportar TRD
+              <span className="hidden sm:inline">Exportar TRD</span>
             </button>
-            <div className="w-px h-6 bg-border mx-1" />
           </div>
         )}
 
         {/* Global SaaS Buttons */}
-        <button className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground transition-colors shadow-sm">
+        <button className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-xs lg:text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground transition-colors shadow-sm">
           <User className="h-4 w-4" />
-          Cuenta
+          <span className="hidden sm:inline">Cuenta</span>
         </button>
         <button 
           onClick={onLogout}
-          className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm"
+          className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs lg:text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm"
         >
           <LogOut className="h-4 w-4" />
-          Cerrar sesión
+          <span className="hidden sm:inline">Salir</span>
         </button>
       </div>
     </header>

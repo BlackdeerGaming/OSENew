@@ -83,6 +83,7 @@ function App() {
   // Global App Data State
   const [entities, setEntities] = useState([]);
   const [users, setUsers] = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Fetch initial data
   useEffect(() => {
@@ -700,34 +701,47 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
-      <div className="flex h-screen overflow-hidden">
-         <MainSidebar 
-           activeView={mainView} 
-           onNavigate={setMainView}
-           searchQuery={globalSearchQuery}
-           onSearchQueryChange={setGlobalSearchQuery}
-           currentUser={currentUser}
-         />
-         
-         <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-            <MainHeader 
-               onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
-               mainView={mainView}
-               trdProps={{ status: "En Progreso", rows: exportRows }}
-               currentUser={currentUser}
+      <div className="flex h-screen overflow-hidden relative">
+          {/* Overlay para móvil */}
+          {isSidebarOpen && (
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden transition-all duration-300"
+              onClick={() => setIsSidebarOpen(false)}
             />
+          )}
 
-            <div className="flex-1 overflow-hidden relative flex">
-              {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
-              {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
-              {mainView === 'copilot' && <CopilotView currentUser={currentUser} />}
-              {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
-              {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
-              
-              {/* TRD Módulo (Layout Anterior embebido) */}
-              {mainView === 'trd' && renderLegacyTRDLayout()}
-            </div>
-         </div>
+          <MainSidebar 
+            activeView={mainView} 
+            onNavigate={(view) => {
+              setMainView(view);
+              setIsSidebarOpen(false); // Cerrar al navegar en móvil
+            }}
+            searchQuery={globalSearchQuery}
+            onSearchQueryChange={setGlobalSearchQuery}
+            currentUser={currentUser}
+            isOpen={isSidebarOpen}
+          />
+          
+          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 relative">
+             <MainHeader 
+                onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
+                mainView={mainView}
+                trdProps={{ status: "En Progreso", rows: exportRows }}
+                currentUser={currentUser}
+                toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+             />
+
+             <div className="flex-1 overflow-hidden relative flex">
+               {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
+               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
+               {mainView === 'copilot' && <CopilotView currentUser={currentUser} />}
+               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
+               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
+               
+               {/* TRD Módulo (Layout Anterior embebido) */}
+               {mainView === 'trd' && renderLegacyTRDLayout()}
+             </div>
+          </div>
       </div>
     </div>
   );
