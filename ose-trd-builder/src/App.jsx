@@ -581,7 +581,6 @@ function App() {
             onLogin={handleLogin} 
             onNavigateToSignUp={() => setAuthView('signup')} 
             onNavigateToForgotPassword={() => setAuthView('forgot-password')} 
-            users={users} 
           />
         )}
         {authView === 'signup' && (

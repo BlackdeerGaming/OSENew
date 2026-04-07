@@ -143,6 +143,12 @@ class UserCreate(BaseModel):
     activationToken: str | None = None
     tokenExpiry: int | None = None
 
+class LoginRequest(BaseModel):
+    identifier: str
+    password: str
+    activationToken: str | None = None
+    tokenExpiry: int | None = None
+
 class UserUpdate(BaseModel):
     nombre: str | None = None
     apellido: str | None = None
@@ -498,6 +504,33 @@ async def request_reset(request: PasswordResetRequest):
 async def perform_reset(request: PerformResetRequest):
     print(f"✅ Contraseña actualizada para token {request.token}")
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
+
+@router.post("/login")
+async def login(req: LoginRequest):
+    if not supabase_client: raise HTTPException(500, "Error de conexión a la base de datos")
+    
+    # Buscar por email o username
+    res = supabase_client.table("profiles").select("*").or_(f"email.eq.{req.identifier},username.eq.{req.identifier}").execute()
+    
+    if not res.data:
+        raise HTTPException(401, "El usuario no existe")
+    
+    user_data = res.data[0]
+    
+    if not user_data.get("is_activated"):
+        raise HTTPException(401, "Esta cuenta aún no ha sido activada")
+        
+    # Verificación de contraseña (en texto plano por ahora según el requerimiento anterior, 
+    # en producción usaría hashing)
+    if user_data.get("password") != req.password:
+        raise HTTPException(401, "Contraseña incorrecta")
+        
+    return {
+        "id": user_data["id"],
+        "nombre": user_data["nombre"],
+        "email": user_data["email"],
+        "role": user_data["perfil"]
+    }
 
 # --- CRUD USUARIOS ---
 @router.get("/users")

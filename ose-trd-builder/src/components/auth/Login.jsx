@@ -1,40 +1,38 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, LayoutDashboard, AlertCircle } from 'lucide-react';
 
-export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword, users = [] }) {
+import API_BASE_URL from '../../config/api';
+
+export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword }) {
   const [formData, setFormData] = useState({ identifier: '', password: '' });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    const user = users.find(u => 
-      (u.email.toLowerCase() === formData.identifier.toLowerCase() || 
-       u.username?.toLowerCase() === formData.identifier.toLowerCase())
-    );
+    try {
+      const response = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
 
-    if (!user) {
-      setError('El usuario no existe.');
-      return;
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Error al iniciar sesión');
+      }
+
+      const userData = await response.json();
+      onLogin(userData);
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!user.isActivated) {
-      setError('Esta cuenta aún no ha sido activada. Revisa tu correo.');
-      return;
-    }
-
-    if (user.password !== formData.password) {
-      setError('Contraseña incorrecta.');
-      return;
-    }
-    
-    onLogin({ 
-      id: user.id,
-      nombre: user.nombre,
-      email: user.email,
-      role: user.perfil 
-    });
   };
 
   return (
