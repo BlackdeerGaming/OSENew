@@ -238,7 +238,7 @@ def extract_page_images(page: fitz.Page, page_num: int) -> list[bytes]:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-router = APIRouter(prefix="/api")
+router = APIRouter()  # Quitamos el prefijo /api para dejarlo en manos de vercel.json
 
 @router.get("/")
 async def root():
@@ -577,10 +577,10 @@ async def perform_reset(request: PerformResetRequest):
 
 app.include_router(router)
 
-# Root fallback to avoid 404 in root if /api is not matched at Vercel level
+# Root fallback
 @app.get("/")
-async def root():
-    return {"status": "ok", "message": "OSE Copilot API is running at /api"}
+async def health_check():
+    return {"status": "ok", "message": "Backend simplified and ready"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
