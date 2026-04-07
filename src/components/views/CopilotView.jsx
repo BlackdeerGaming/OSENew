@@ -4,17 +4,26 @@ import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
 export default function CopilotView() {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      role: 'assistant',
-      content: '¡Hola! Soy OSE Copilot. Sube un documento PDF para que pueda procesarlo con mi motor RAG (VectorDB + Embeddings) y responder tus consultas basándome estrictamente en esa información.'
-    }
-  ]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('ose_copilot_messages');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: 1,
+        role: 'assistant',
+        content: '¡Hola! Soy OSE Copilot. Sube un documento PDF para que pueda procesarlo con mi motor RAG (VectorDB + Embeddings) y responder tus consultas basándome estrictamente en esa información.'
+      }
+    ];
+  });
+  
   const [inputValue, setInputValue] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStep, setUploadStep] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [fileData, setFileData] = useState(null);
+  const [fileData, setFileData] = useState(() => {
+    const saved = localStorage.getItem('ose_copilot_file');
+    return saved ? JSON.parse(saved) : null;
+  });
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -24,6 +33,18 @@ export default function CopilotView() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    localStorage.setItem('ose_copilot_messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    if (fileData) {
+      localStorage.setItem('ose_copilot_file', JSON.stringify(fileData));
+    } else {
+      localStorage.removeItem('ose_copilot_file');
+    }
+  }, [fileData]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -46,15 +67,34 @@ export default function CopilotView() {
     }
 
     setIsUploading(true);
+    setUploadProgress(10);
+    setUploadStep('Subiendo archivo a la nube...');
+    
     const formData = new FormData();
     formData.append("file", file);
 
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev < 40) return prev + 5;
+        if (prev < 70) return prev + 2;
+        if (prev < 90) return prev + 0.5;
+        return prev;
+      });
+    }, 1000);
+
     try {
-      // Intentar conectarse al backend Python RAG
+      // Cambiar etapas de progreso basadas en el flujo
+      setTimeout(() => setUploadStep('Analizando estructura del documento...'), 2000);
+      setTimeout(() => setUploadStep('Ejecutando Visión IA (OCR Avanzado)...'), 4000);
+      setTimeout(() => setUploadStep('Indexando en VectorDB (Pinecone)...'), 7000);
+
       const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
         body: formData,
       });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
 
       if (!response.ok) {
         const errData = await response.json();
@@ -67,10 +107,11 @@ export default function CopilotView() {
       setMessages(prev => [...prev, {
         id: Date.now(),
         role: 'system',
-        content: `✅ Documento "${file.name}" indexado con éxito → ${data.chunks_created} chunks (${data.text_pages ?? '?'} páginas de texto + ${data.images_processed ?? 0} imágenes procesadas con visión IA).`
+        content: `✅ Documento "${file.name}" cargado y memorizado con éxito. Ya puedes hacerme preguntas sobre él.`
       }]);
 
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Upload error:", error);
       setMessages(prev => [...prev, {
         id: Date.now(),
@@ -79,7 +120,17 @@ export default function CopilotView() {
       }]);
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
+      setUploadStep('');
       e.target.value = ''; // reset input
+    }
+  };
+
+  const handleResetSession = () => {
+    if (window.confirm("¿Estás seguro de que deseas reiniciar la sesión? Se borrará el historial del chat y el documento activo.")) {
+      localStorage.removeItem('ose_copilot_messages');
+      localStorage.removeItem('ose_copilot_file');
+      window.location.reload();
     }
   };
 
@@ -165,13 +216,40 @@ export default function CopilotView() {
               </div>
           </div>
           
-          {/* Upload Button */}
-          <div>
-            <label className="cursor-pointer flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors">
-               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-               {isUploading ? "Procesando VectorDB..." : "Cargar PDF para RAG"}
-               <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-            </label>
+          {/* Upload Button & Progress */}
+          <div className="flex items-center gap-3">
+            {fileData && !isUploading && (
+              <button 
+                onClick={handleResetSession}
+                className="flex items-center gap-2 text-slate-400 hover:text-danger px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                title="Reiniciar Sesión"
+              >
+                <Loader2 className="w-3.5 h-3.5" /> Nueva Sesión
+              </button>
+            )}
+            
+            <div className="relative">
+              <label className="cursor-pointer flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors">
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <UploadCloud className="w-4 h-4" />}
+                {isUploading ? "Procesando..." : "Cargar PDF para RAG"}
+                <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+              </label>
+
+              {isUploading && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-border rounded-xl shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-primary uppercase tracking-wider">{uploadStep}</span>
+                    <span className="text-xs font-bold text-slate-600">{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-500 ease-out rounded-full"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
