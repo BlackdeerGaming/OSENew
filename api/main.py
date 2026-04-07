@@ -238,7 +238,7 @@ def extract_page_images(page: fitz.Page, page_num: int) -> list[bytes]:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-router = APIRouter()  # Quitamos el prefijo /api para dejarlo en manos de vercel.json
+router = APIRouter(prefix="/api")  # El prefijo es necesario porque Vercel pasa la ruta completa
 
 @router.get("/")
 async def root():
