@@ -8,6 +8,8 @@ import uvicorn
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
 import time
+import httpx
+import asyncio
 
 # Cargar variables de entorno
 load_dotenv()
@@ -31,6 +33,7 @@ OPENROUTER_MODEL    = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001
 SUPABASE_URL        = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 IMAGE_MIN_SIZE      = 8000  # bytes
+RESEND_API_KEY      = os.getenv("RESEND_API_KEY")
 
 # ─── Inicializar Supabase ─────────────────────────────────────────────────────
 
@@ -497,7 +500,39 @@ Retorna ÚNICAMENTE JSON válido, jamás uses código markdown como ```json. El 
 
 @router.post("/send-activation")
 async def send_activation(request: ActivationEmailRequest):
-    print(f"\n📧 [MOCK EMAIL] PARA: {request.email} | LINK: {request.link}\n")
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
+        <h2 style="color: #2563eb;">Bienvenido a OSE IA</h2>
+        <p>Hola <strong>{request.nombre}</strong>,</p>
+        <p>Has sido invitado a unirte a la plataforma OSE IA. Para activar tu cuenta y configurar tu contraseña, haz clic en el siguiente botón:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{request.link}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Activar Mi Cuenta</a>
+        </div>
+        <p style="font-size: 12px; color: #64748b;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br>{request.link}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+        <p style="font-size: 12px; color: #94a3b8;">Este enlace expirará en 30 minutos.</p>
+    </div>
+    """
+    
+    if RESEND_API_KEY:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "from": "OSE IA <onboarding@resend.dev>", # Cambiar por dominio verificado en prod
+                        "to": [request.email],
+                        "subject": "Activa tu cuenta en OSE IA",
+                        "html": html_content
+                    }
+                )
+                if res.status_code != 200:
+                    print(f"❌ Error Resend: {res.text}")
+        except Exception as e:
+            print(f"❌ Error enviando email: {e}")
+
+    print(f"\n📧 [EMAIL ENVIADO] PARA: {request.email} | LINK: {request.link}\n")
     return {"status": "sent", "message": f"Email sent to {request.email}"}
 
 @router.post("/request-reset")

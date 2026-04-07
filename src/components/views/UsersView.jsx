@@ -284,9 +284,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                     <td className="px-6 py-4">
                       <span className={cn(
                         "rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider",
-                        user.perfil === 'Administrador' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
+                        user.perfil === 'admin' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
                       )}>
-                        {user.perfil || 'user'}
+                        {user.perfil === 'admin' ? 'Administrador' : user.perfil === 'user' ? 'Consulta' : (user.perfil || 'user')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -469,22 +469,22 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                     <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
                        <div className={cn(
                           "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                          newUser.perfil === 'Administrador' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                          newUser.perfil === 'admin' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
                        )}>
                           <Check className="h-4 w-4 text-white" />
                        </div>
-                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'Administrador'})} />
+                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'admin'})} />
                        <span className="text-slate-400 font-semibold">Administrador</span>
                     </label>
                     
                     <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
                        <div className={cn(
                           "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                          newUser.perfil === 'Consulta' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                          newUser.perfil === 'user' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
                        )}>
                           <Check className="h-4 w-4 text-white" />
                        </div>
-                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'Consulta'})} />
+                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'user'})} />
                        <span className="text-[#00c8a5] font-semibold">Consulta</span>
                     </label>
                  </div>
