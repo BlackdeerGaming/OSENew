@@ -143,7 +143,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: null, entidadId: null
+      perfil: null, entidadId: isSuperAdmin ? null : currentUser.entidadId
     });
   };
 
