@@ -23,6 +23,7 @@ import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
 import API_BASE_URL from './config/api';
+import { RAGProvider } from './contexts/RAGContext';
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -732,7 +733,8 @@ function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
+    <RAGProvider>
+      <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
       <div className="flex h-screen overflow-hidden">
          <MainSidebar 
            activeView={mainView} 
@@ -763,6 +765,7 @@ function App() {
          </div>
       </div>
     </div>
+    </RAGProvider>
   );
 }
 
