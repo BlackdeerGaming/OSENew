@@ -133,6 +133,39 @@ class ActivationEmailRequest(BaseModel):
     nombre: str
     link: str
 
+class UserCreate(BaseModel):
+    nombre: str
+    apellido: str | None = ""
+    email: str
+    username: str
+    perfil: str
+    entidadId: str | None = None
+    activationToken: str | None = None
+    tokenExpiry: int | None = None
+
+class UserUpdate(BaseModel):
+    nombre: str | None = None
+    apellido: str | None = None
+    estado: str | None = None
+    perfil: str | None = None
+    entidadId: str | None = None
+    isActivated: bool | None = None
+
+class EntityCreate(BaseModel):
+    razonSocial: str
+    nit: str
+    email: str | None = None
+    telefono: str | None = None
+    pais: str | None = "Colombia"
+    departamento: str | None = None
+    ciudad: str | None = None
+    sigla: str | None = None
+    direccion: str | None = None
+    maxUsuarios: int | None = 10
+    maxDependencias: int | None = 20
+    estado: str | None = "Activo"
+    numeroDocumento: str | None = None # Alias for NIT in UI
+
 class PasswordResetRequest(BaseModel):
     email: str
 
@@ -465,6 +498,100 @@ async def request_reset(request: PasswordResetRequest):
 async def perform_reset(request: PerformResetRequest):
     print(f"✅ Contraseña actualizada para token {request.token}")
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
+
+# --- CRUD USUARIOS ---
+@router.get("/users")
+async def get_users():
+    if not supabase_client: return []
+    res = supabase_client.table("profiles").select("*").execute()
+    # Mapear snake_case a camelCase para el frontend
+    mapped = []
+    for u in res.data:
+        mapped.append({
+            "id": u["id"], "nombre": u["nombre"], "apellido": u["apellido"], "email": u["email"],
+            "username": u["username"], "perfil": u["perfil"], "estado": u["estado"],
+            "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
+            "activationToken": u.get("activation_token"), "tokenExpiry": u.get("token_expiry")
+        })
+    return mapped
+
+@router.post("/users")
+async def create_user(user: UserCreate):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    data = {
+        "nombre": user.nombre, "apellido": user.apellido, "email": user.email, "username": user.username,
+        "perfil": user.perfil, "entidad_id": user.entidadId, "activation_token": user.activationToken,
+        "token_expiry": user.tokenExpiry
+    }
+    res = supabase_client.table("profiles").insert(data).execute()
+    return res.data[0]
+
+@router.put("/users/{user_id}")
+async def update_user(user_id: str, user: UserUpdate):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    data = {}
+    if user.nombre is not None: data["nombre"] = user.nombre
+    if user.apellido is not None: data["apellido"] = user.apellido
+    if user.estado is not None: data["estado"] = user.estado
+    if user.perfil is not None: data["perfil"] = user.perfil
+    if user.entidadId is not None: data["entidad_id"] = user.entidadId
+    if user.isActivated is not None: data["is_activated"] = user.isActivated
+    
+    res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
+    return res.data[0]
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    supabase_client.table("profiles").delete().eq("id", user_id).execute()
+    return {"status": "deleted"}
+
+# --- CRUD ENTIDADES ---
+@router.get("/entities")
+async def get_entities():
+    if not supabase_client: return []
+    res = supabase_client.table("entities").select("*").execute()
+    # Mapear snake_case a camelCase
+    mapped = []
+    for e in res.data:
+        mapped.append({
+            "id": e["id"], "razonSocial": e["razon_social"], "nit": e["nit"], "email": e.get("email"),
+            "telefono": e.get("telefono"), "pais": e["pais"], "departamento": e.get("departamento"),
+            "ciudad": e.get("ciudad"), "sigla": e.get("sigla"), "direccion": e.get("direccion"),
+            "maxUsuarios": e["max_usuarios"], "maxDependencias": e["max_dependencias"], "estado": e["estado"]
+        })
+    return mapped
+
+@router.post("/entities")
+async def create_entity(entity: EntityCreate):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    data = {
+        "razon_social": entity.razonSocial, "nit": entity.nit or entity.numeroDocumento,
+        "email": entity.email, "telefono": entity.telefono, "pais": entity.pais,
+        "departamento": entity.departamento, "ciudad": entity.ciudad, "sigla": entity.sigla,
+        "direccion": entity.direccion, "max_usuarios": entity.maxUsuarios,
+        "max_dependencias": entity.maxDependencias, "estado": entity.estado
+    }
+    res = supabase_client.table("entities").insert(data).execute()
+    return res.data[0]
+
+@router.put("/entities/{entity_id}")
+async def update_entity(entity_id: str, entity: EntityCreate):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    data = {
+        "razon_social": entity.razonSocial, "nit": entity.nit, "email": entity.email,
+        "telefono": entity.telefono, "pais": entity.pais, "departamento": entity.departamento,
+        "ciudad": entity.ciudad, "sigla": entity.sigla, "direccion": entity.direccion,
+        "max_usuarios": entity.maxUsuarios, "max_dependencias": entity.maxDependencias, "estado": entity.estado
+    }
+    res = supabase_client.table("entities").update(data).eq("id", entity_id).execute()
+    return res.data[0]
+
+@router.delete("/entities/{entity_id}")
+async def delete_entity(entity_id: str):
+    if not supabase_client: raise HTTPException(400, "No Supabase")
+    supabase_client.table("entities").delete().eq("id", entity_id).execute()
+    return {"status": "deleted"}
 
 app.include_router(router)
 

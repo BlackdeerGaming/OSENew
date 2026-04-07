@@ -3,7 +3,8 @@ import { BrainCircuit, Send, Sparkles, UploadCloud, FileText, Loader2, User } fr
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
-export default function CopilotView() {
+export default function CopilotView({ currentUser }) {
+  const isSuperAdmin = currentUser?.perfil === 'superadmin';
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -156,11 +157,13 @@ export default function CopilotView() {
           
           {/* Upload Button */}
           <div>
-            <label className="cursor-pointer flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors">
-               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-               {isUploading ? "Procesando VectorDB..." : "Cargar PDF para RAG"}
-               <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-            </label>
+            {isSuperAdmin && (
+              <label className="cursor-pointer flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors">
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                {isUploading ? "Procesando VectorDB..." : "Cargar PDF para RAG"}
+                <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+              </label>
+            )}
           </div>
         </div>
 

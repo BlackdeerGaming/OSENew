@@ -59,42 +59,55 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
     const entidadSelected = entities.find(e => e.id === newUser.entidadId);
     
-    // Generación de Token de Invitación (30 min)
-    const token = Math.random().toString(36).substring(2, 11).toUpperCase();
-    const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
+    try {
+      if (editingUserId) {
+        // Update user in DB
+        const response = await fetch(`${API_BASE_URL}/users/${editingUserId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: newUser.nombre,
+            apellido: newUser.apellido,
+            perfil: newUser.perfil,
+            entidadId: newUser.entidadId,
+            estado: newUser.estado
+          })
+        });
 
-    if (editingUserId) {
-       // Update
-       setUsers(users.map(u => u.id === editingUserId ? {
-         ...newUser,
-         id: editingUserId,
-         entidadNombre: entidadSelected?.razonSocial || '',
-       } : u));
-       resetModal();
-    } else {
-       // Create
-       const userToAdd = {
-         ...newUser,
-         id: Date.now().toString(),
-         entidadNombre: entidadSelected?.razonSocial || '',
-         fechaCreacion: new Date().toLocaleDateString(),
-         activationToken: token,
-         tokenExpiry: expiry,
-         isActivated: false,
-         password: '' // Se definirá luego
-       };
-       setUsers([...users, userToAdd]);
-       
-       // Preparar link de invitación
-       const finalLink = `${window.location.origin}/?token=${token}`; 
-       setGeneratedLink(finalLink);
-       setShowInviteModal(true);
-       setShowModal(false);
+        if (response.ok) {
+          const userRes = await fetch(`${API_BASE_URL}/users`);
+          if (userRes.ok) setUsers(await userRes.json());
+          resetModal();
+        }
+      } else {
+        // Create user in DB
+        const token = Math.random().toString(36).substring(2, 11).toUpperCase();
+        const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
 
-       // ENVÍO AUTOMÁTICO DE EMAIL
-       setEmailStatus('sending');
-       try {
-          const response = await fetch(`${API_BASE_URL}/send-activation`, {
+        const response = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...newUser,
+            activationToken: token,
+            tokenExpiry: expiry
+          })
+        });
+
+        if (response.ok) {
+          const createdUser = await response.json();
+          // Actualizar estado global
+          setUsers([...users, createdUser]);
+          
+          // Preparar link de invitación
+          const finalLink = `${window.location.origin}/?token=${token}`; 
+          setGeneratedLink(finalLink);
+          setShowInviteModal(true);
+          setShowModal(false);
+
+          // ENVÍO AUTOMÁTICO DE EMAIL (Mock)
+          setEmailStatus('sending');
+          fetch(`${API_BASE_URL}/send-activation`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -102,17 +115,15 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
               nombre: newUser.nombre,
               link: finalLink
             })
-          });
-
-          if (response.ok) {
-            setEmailStatus('sent');
-          } else {
-            setEmailStatus('error');
-          }
-       } catch (error) {
-          console.error("Error enviando email:", error);
-          setEmailStatus('error');
-       }
+          }).then(res => {
+            if (res.ok) setEmailStatus('sent');
+            else setEmailStatus('error');
+          }).catch(() => setEmailStatus('error'));
+        }
+      }
+    } catch (err) {
+      console.error("Error saving user:", err);
+      alert("Hubo un error al guardar el usuario.");
     }
   };
 
@@ -128,9 +139,16 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if(confirm("¿Eliminar este usuario?")) {
-      setUsers(users.filter(u => u.id !== id));
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+          setUsers(users.filter(u => u.id !== id));
+        }
+      } catch (err) {
+        console.error("Error deleting user:", err);
+      }
     }
   };
 

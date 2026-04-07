@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Building2, Search, Plus, ListFilter, Play, FileEdit, Trash2, ShieldAlert, ArrowLeft, Image as ImageIcon, Save } from "lucide-react";
+import { Building2, Search, Plus, ListFilter, Play, FileEdit, Trash2, ShieldAlert, ArrowLeft, Image as ImageIcon, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import API_BASE_URL from "../../config/api";
 
 export default function EntitiesView({ entities, setEntities }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
@@ -61,34 +62,43 @@ export default function EntitiesView({ entities, setEntities }) {
     setView("edit");
   };
 
-  const handleDelete = (id) => {
-    if (confirm("¿Estás seguro de eliminar esta entidad cliente?")) {
-      setEntities(entities.filter(a => a.id !== id));
-    }
-  };
-
-  const validate = () => {
-    const newErrors = {};
-    if (!formData.razonSocial.trim()) newErrors.razonSocial = "Obligatorio";
-    if (!formData.numeroDocumento.trim()) newErrors.numeroDocumento = "Obligatorio";
-    if (!formData.correo.trim()) {
-      newErrors.correo = "Obligatorio";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.correo)) {
-      newErrors.correo = "Formato inválido";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
     
-    if (view === "create") {
-      setEntities([...entities, { ...formData, id: Date.now().toString() }]);
-    } else {
-      setEntities(entities.map(e => (e.id === selectedEntity.id ? { ...e, ...formData } : e)));
+    try {
+      const url = view === "create" ? `${API_BASE_URL}/entities` : `${API_BASE_URL}/entities/${selectedEntity.id}`;
+      const method = view === "create" ? "POST" : "PUT";
+      
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData)
+      });
+
+      if (!response.ok) throw new Error("Error saving entity");
+      
+      // Actualizar estado global refrescando desde API o optimísticamente
+      const entRes = await fetch(`${API_BASE_URL}/entities`);
+      if (entRes.ok) setEntities(await entRes.json());
+      
+      setView("list");
+    } catch (err) {
+      console.error("Error saving entity:", err);
+      alert("Hubo un error al guardar la entidad.");
     }
-    setView("list");
+  };
+
+  const handleDelete = async (id) => {
+    if (confirm("¿Estás seguro de eliminar esta entidad cliente?")) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/entities/${id}`, { method: "DELETE" });
+        if (response.ok) {
+          setEntities(entities.filter(a => a.id !== id));
+        }
+      } catch (err) {
+        console.error("Error deleting entity:", err);
+      }
+    }
   };
 
   const handleLogoUpload = (e) => {

@@ -81,58 +81,25 @@ function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // Global App Data State
-  const [entities, setEntities] = useState([
-    { 
-      id: 'e1', 
-      razonSocial: 'Alcaldía Municipal de Cota', 
-      nit: '800.123.456-7', 
-      email: 'contacto@cota-cundinamarca.gov.co', 
-      telefono: '3124567890',
-      pais: 'Colombia',
-      departamento: 'Cundinamarca',
-      ciudad: 'Cota',
-      sigla: 'AMC',
-      direccion: 'Carrera 4 # 12-34'
-    },
-    { 
-      id: 'e2', 
-      razonSocial: 'Gobernación de Antioquia', 
-      nit: '900.987.654-3', 
-      email: 'notificaciones@antioquia.gov.co', 
-      telefono: '6042345678',
-      pais: 'Colombia',
-      departamento: 'Antioquia',
-      ciudad: 'Medellín',
-      sigla: 'GDA',
-      direccion: 'Calle 42 # 52-186'
-    },
-    { 
-      id: 'e3', 
-      razonSocial: 'Ministerio de Transporte', 
-      nit: '899.999.001-9', 
-      email: 'tramites@mintransporte.gov.co', 
-      telefono: '6013240800',
-      pais: 'Colombia',
-      departamento: 'Bogotá D.C.',
-      ciudad: 'Bogotá',
-      sigla: 'MINTR',
-      direccion: 'Avenida El Dorado # 60-00'
-    }
-  ]);
-  const [users, setUsers] = useState([
-    { 
-      id: 'u0', 
-      nombre: 'Super', 
-      apellido: 'Admin', 
-      email: 'superadmin@ose.com', 
-      username: 'superadmin',
-      perfil: 'superadmin', 
-      estado: 'Activo', 
-      isActivated: true,
-      activationToken: null,
-      password: 'admin' 
-    }
-  ]);
+  const [entities, setEntities] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // Fetch initial data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [entRes, userRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/entities`),
+          fetch(`${API_BASE_URL}/users`)
+        ]);
+        if (entRes.ok) setEntities(await entRes.json());
+        if (userRes.ok) setUsers(await userRes.json());
+      } catch (err) {
+        console.error("Error fetching initial data:", err);
+      }
+    };
+    fetchData();
+  }, []);
 
 
   // Detectar tokens en la URL
