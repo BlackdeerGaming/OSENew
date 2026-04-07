@@ -519,16 +519,22 @@ async def send_activation(request: ActivationEmailRequest):
             async with httpx.AsyncClient() as client:
                 res = await client.post(
                     "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {RESEND_API_KEY}", 
+                        "Content-Type": "application/json",
+                        "User-Agent": "python-httpx/1.0"
+                    },
                     json={
-                        "from": "OSE IA <onboarding@resend.dev>", # Cambiar por dominio verificado en prod
+                        "from": "onboarding@resend.dev",
                         "to": [request.email],
                         "subject": "Activa tu cuenta en OSE IA",
                         "html": html_content
                     }
                 )
-                if res.status_code != 200:
-                    print(f"❌ Error Resend: {res.text}")
+                if res.status_code not in [200, 201]:
+                    print(f"❌ Error Resend ({res.status_code}): {res.text}")
+                else:
+                    print(f"✅ Email enviado exitosamente via Resend (ID: {res.json().get('id')})")
         except Exception as e:
             print(f"❌ Error enviando email: {e}")
 
