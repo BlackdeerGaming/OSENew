@@ -164,6 +164,21 @@ async def root():
         "supabase": bool(supabase_client)
     }
 
+@router.get("/rag-stat")
+async def rag_stat():
+    """Devuelve el conteo de documentos en el vector store."""
+    if not supabase_client:
+        return {"error": "Supabase no configurado"}
+    try:
+        res = supabase_client.table("rag_documents").select("id", count="exact").execute()
+        return {
+            "total_documents": res.count,
+            "db_status": "connected"
+        }
+    except Exception as e:
+        print(f"❌ Error en rag-stat: {e}")
+        return {"error": str(e)}
+
 @router.get("/debug-vars")
 async def debug_vars():
     return {
@@ -241,11 +256,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         print(f"❌ Error guardando en Supabase: {e}")
         raise HTTPException(status_code=500, detail=f"Error al indexar en la base de datos: {str(e)}")
 
+    print(f"✅ '{file.filename}' indexado en Supabase: {len(chunks)} chunks")
     return {
-        "message": "PDF procesado e indexado en Supabase con éxito",
+        "message": f"PDF '{file.filename}' procesado e indexado con éxito",
         "chunks_created": len(chunks),
         "text_pages": text_count,
-        "images_processed": 0,
         "vector_store": "supabase_pgvector"
     }
 
@@ -255,28 +270,51 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Supabase no está configurado.")
 
     try:
-        # Búsqueda manual vía RPC para evitar errores de compatibilidad en LangChain
-        query_vector = embeddings.embed_query(request.query)
+        print(f"\n🔍 --- INICIO CONSULTA RAG ---")
+        print(f"❓ Query: {request.query}")
+
+        # 1. Generar embedding con reintento simple
+        query_vector = None
+        for attempt in range(3):
+            try:
+                query_vector = embeddings.embed_query(request.query)
+                if query_vector: break
+            except Exception as e:
+                print(f"⚠️ Intento {attempt+1} fallido: {e}")
+                if attempt == 2: raise e
+
+        if not query_vector:
+            print("❌ No se pudo generar el vector de búsqueda.")
+            raise Exception("No embedding data received")
+        
+        print(f"✅ Embedding listo (Dim: {len(query_vector)})")
+
+        # 2. Búsqueda RPC
+        print("📡 Consultando Supabase...")
         rpc_res = supabase_client.rpc("match_rag_documents", {
             "query_embedding": query_vector,
             "match_count": 5
         }).execute()
 
-        source_docs = [
-            Document(page_content=row["content"], metadata=row["metadata"])
-            for row in rpc_res.data
-        ]
+        source_docs = []
+        if rpc_res.data:
+            print(f"📊 Fragmentos encontrados: {len(rpc_res.data)}")
+            source_docs = [
+                Document(page_content=row["content"], metadata=row["metadata"])
+                for row in rpc_res.data
+            ]
+        else:
+            print("⚠️ Supabase devolvió ZERO resultados.")
 
-        rag_chain = (
-            RAG_PROMPT
-            | llm
-            | StrOutputParser()
-        )
-
+        # 3. Respuesta LLM
+        print("🤖 Generando respuesta...")
+        rag_chain = ( RAG_PROMPT | llm | StrOutputParser() )
         answer = rag_chain.invoke({
             "context": format_docs(source_docs),
             "question": request.query
         })
+        
+        print(f"✅ Chat finalizado con éxito.")
         pages = sorted(set(
             d.metadata.get("page")
             for d in source_docs
