@@ -501,16 +501,43 @@ Retorna ÚNICAMENTE JSON válido, jamás uses código markdown como ```json. El 
 @router.post("/send-activation")
 async def send_activation(request: ActivationEmailRequest):
     html_content = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
-        <h2 style="color: #2563eb;">Bienvenido a OSE IA</h2>
-        <p>Hola <strong>{request.nombre}</strong>,</p>
-        <p>Has sido invitado a unirte a la plataforma OSE IA. Para activar tu cuenta y configurar tu contraseña, haz clic en el siguiente botón:</p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{request.link}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Activar Mi Cuenta</a>
+    <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border: 1px solid #e2e8f0;">
+            <div style="background-color: #0f172a; padding: 32px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.025em;">OSE IA</h1>
+                <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">Gestión Documental Inteligente</p>
+            </div>
+            <div style="padding: 40px 32px;">
+                <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">¡Hola, {request.nombre}!</h2>
+                <p style="color: #475569; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
+                    Has sido invitado a unirte a <strong>OSE IA</strong>. Nuestra plataforma utiliza inteligencia artificial para transformar la forma en que gestionas y consultas tu archivo documental.
+                </p>
+                <div style="background-color: #f1f5f9; border-radius: 8px; padding: 20px; margin-bottom: 32px; border-left: 4px solid #2563eb;">
+                    <p style="color: #1e293b; margin: 0; font-size: 14px; line-height: 1.5;">
+                        Para comenzar, es necesario que actives tu cuenta y definas una contraseña segura mediante el siguiente botón:
+                    </p>
+                </div>
+                <div style="text-align: center; margin-bottom: 32px;">
+                    <a href="{request.link}" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; transition: background-color 0.2s;">
+                        Activar mi cuenta ahora
+                    </a>
+                </div>
+                <p style="color: #64748b; margin: 0 0 8px 0; font-size: 13px;">
+                    ¿Tienes problemas con el botón? Copia y pega este enlace:
+                </p>
+                <p style="background-color: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px; color: #2563eb; margin: 0; word-break: break-all;">
+                    {request.link}
+                </p>
+            </div>
+            <div style="background-color: #f8fafc; padding: 24px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                <p style="color: #94a3b8; margin: 0; font-size: 12px;">
+                    Este enlace de invitación es único para ti y expirará en <strong>30 minutos</strong> automáticamente por motivos de seguridad.
+                </p>
+                <p style="color: #CBD5E1; margin: 16px 0 0 0; font-size: 11px;">
+                    &copy; 2026 OSE IA. Todos los derechos reservados.
+                </p>
+            </div>
         </div>
-        <p style="font-size: 12px; color: #64748b;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br>{request.link}</p>
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-        <p style="font-size: 12px; color: #94a3b8;">Este enlace expirará en 30 minutos.</p>
     </div>
     """
     
