@@ -1,7 +1,7 @@
 import os
 import re
 import base64
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -229,11 +229,13 @@ def extract_page_images(page: fitz.Page, page_num: int) -> list[bytes]:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-@app.get("/")
+router = APIRouter(prefix="/api")
+
+@router.get("/")
 async def root():
     return {"status": "ok", "model": OPENROUTER_MODEL, "vision_model": VISION_MODELS_FALLBACK[0]}
 
-@app.post("/upload")
+@router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     global vector_store
 
@@ -316,7 +318,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 
-@app.post("/chat")
+@router.post("/chat")
 async def chat(request: ChatRequest):
     global vector_store
 
@@ -350,7 +352,7 @@ async def chat(request: ChatRequest):
 
     return {"answer": answer, "sources": pages}
 
-@app.post("/generate-dependencias")
+@router.post("/generate-dependencias")
 async def generate_dependencias(request: GenerateDepsRequest):
     system_prompt = """Eres un experto en gestión organizacional y diseño de estructuras administrativas. 
 El usuario te dará una instrucción para crear dependencias. Debes extraer los nombres de las dependencias solicitadas, mantener EXACTAMENTE el orden en que las pidió, y rellenar la información faltante con datos simulados pero realistas y corporativos.
@@ -398,7 +400,7 @@ IMPORTANTE: RESPONDE SOLO CON EL JSON VÁLIDO. NO incluyas markdown (```json), e
         print(f"❌ Error generando dependencias: {e}")
         raise HTTPException(status_code=500, detail=f"Error al generar dependencias: {str(e)}\nRespuesta en crudo: {response.content if 'response' in locals() else 'N/A'}")
 
-@app.post("/agent-action")
+@router.post("/agent-action")
 async def agent_action(request: AgentActionRequest):
     import json
     
@@ -493,7 +495,7 @@ class ActivationEmailRequest(BaseModel):
     nombre: str
     link: str
 
-@app.post("/send-activation")
+@router.post("/send-activation")
 async def send_activation(request: ActivationEmailRequest):
     """
     Simula el envío de un correo electrónico de activación.
@@ -521,7 +523,7 @@ class PerformResetRequest(BaseModel):
     token: str
     new_password: str
 
-@app.post("/request-reset")
+@router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
     """
     Simula la solicitud de recuperación de contraseña.
@@ -545,13 +547,20 @@ async def request_reset(request: PasswordResetRequest):
         "message": "Si el correo está registrado, recibirás un enlace de recuperación."
     }
 
-@app.post("/perform-reset")
+@router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
     """
     Simula el proceso final de cambio de contraseña con el token.
     """
     print(f"✅ Contraseña actualizada para token {request.token}")
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
+
+app.include_router(router)
+
+# Root fallback to avoid 404 in root if /api is not matched at Vercel level
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "OSE Copilot API is running at /api"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
