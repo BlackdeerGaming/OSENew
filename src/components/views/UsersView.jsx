@@ -27,10 +27,6 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
   const canCreateAdmins = role === 'superadmin';
 
-  const filteredUsers = users.filter(u => 
-    u.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   const handleEdit = (user) => {
     setNewUser({ ...user });
@@ -156,18 +152,43 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     }
   };
 
+  // --- FILTRADO POR SEGURIDAD Y ROL ---
+  // Los superadministradores ven todo. 
+  // Los administradores solo ven los usuarios de su propia entidad.
+  const filteredUsers = users.filter(u => {
+    if (currentUser?.role === 'superadmin') return true;
+    if (currentUser?.role === 'admin') {
+      return u.entidadId === currentUser.entidadId;
+    }
+    return false; // Los usuarios normales no deberían ver este módulo
+  });
+
+  // --- BÚSQUEDA ---
+  const displayedUsers = filteredUsers.filter(u => 
+    u.nombre?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.username?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="flex-1 p-6 lg:p-8 h-full overflow-y-auto">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div className="flex-1 p-6 lg:p-10 overflow-y-auto w-full h-full animate-in fade-in duration-500">
+      
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Gestión de Usuarios</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Administra los accesos y roles dentro de la plataforma.</p>
+          <h1 className="text-3xl font-bold text-[#0f172a] tracking-tight">Gestión de Usuarios</h1>
+          <p className="text-slate-500 mt-1">
+             {currentUser?.role === 'superadmin' 
+               ? "Administración global de todos los accesos al sistema."
+               : `Personal y colaboradores de ${currentUser?.entidadNombre || 'la organización'}.`}
+          </p>
         </div>
+        
         <button 
           onClick={() => setShowModal(true)}
-          className="bg-primary text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md hover:opacity-90 flex items-center justify-center gap-2 transform active:scale-95 transition-all"
+          className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-5 w-5" />
           Nuevo Usuario
         </button>
       </div>
