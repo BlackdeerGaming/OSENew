@@ -56,7 +56,7 @@ export default function DashboardView({ stats, searchQuery, currentUser }) {
   const showActions = role === 'superadmin' || role === 'admin';
 
   return (
-    <div className="flex-1 p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-6">
+    <div className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-4 sm:gap-6">
       
       {/* Top Cards Indicator */}
       {showMetrics && (
@@ -195,13 +195,21 @@ export default function DashboardView({ stats, searchQuery, currentUser }) {
           showCopilot ? "xl:col-span-2" : "xl:col-span-1"
         )}>
           
-          {/* Analysis Cards */}
+          {/* Analysis Cards - Scrollable on mobile */}
           {showAnalysis && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-700">
-              <AnalysisWidget title="Resultado" desc="45 series detectadas" type="neutral" />
-              <AnalysisWidget title="Análisis" desc="La mayoría corresponde a Facturación" type="info" />
-              <AnalysisWidget title="Riesgos" desc="3 TRD no aprobadas" type="warning" />
-              <AnalysisWidget title="Recomendación" desc="Generar acta de eliminación" type="success" />
+            <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto pb-2 sm:pb-0 animate-in fade-in duration-700 scrollbar-hide">
+              <div className="min-w-[140px] flex-1">
+                <AnalysisWidget title="Resultado" desc="45 series" type="neutral" />
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <AnalysisWidget title="Análisis" desc="Facturación" type="info" />
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <AnalysisWidget title="Riesgos" desc="3 pendientes" type="warning" />
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <AnalysisWidget title="Recomendación" desc="Generar acta" type="success" />
+              </div>
             </div>
           )}
 
@@ -267,22 +275,22 @@ export default function DashboardView({ stats, searchQuery, currentUser }) {
 // Subcomponents
 
 function BotIcon({ className }) {
-  return <BrainCircuit className={cn("w-5 h-5", className)} />;
+  return <BrainCircuit className={cn("w-4 h-4 sm:w-5 sm:h-5", className)} />;
 }
 
 function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusColor }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-        <Icon className="w-16 h-16" />
+        <Icon className="w-12 h-12 sm:w-16 sm:h-16" />
       </div>
       <div className="flex items-start justify-between relative z-10">
         <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <h4 className={cn("text-2xl font-bold mt-1", statusColor || "text-slate-800")}>{value}</h4>
+          <p className="text-xs sm:text-sm font-medium text-slate-500 uppercase tracking-wider">{title}</p>
+          <h4 className={cn("text-xl sm:text-2xl font-bold mt-1", statusColor || "text-slate-800")}>{value}</h4>
         </div>
-        <div className={cn("p-2.5 rounded-lg", alert ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
-          <Icon className="w-5 h-5" />
+        <div className={cn("p-2 sm:p-2.5 rounded-lg", alert ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
+          <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
         </div>
       </div>
       <div className="mt-4 flex items-center gap-1.5">

@@ -16,6 +16,7 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import MainSidebar from './components/layout/MainSidebar';
 import MainHeader from './components/layout/MainHeader';
+import MobileBottomNav from './components/layout/MobileBottomNav';
 import DashboardView from './components/views/DashboardView';
 import CopilotView from './components/views/CopilotView';
 import UsersView from './components/views/UsersView';
@@ -719,6 +720,7 @@ function App() {
             onSearchQueryChange={setGlobalSearchQuery}
             currentUser={currentUser}
             isOpen={isSidebarOpen}
+            onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           />
           
           <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 relative">
@@ -730,7 +732,7 @@ function App() {
                 toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
              />
 
-             <div className="flex-1 overflow-hidden relative flex">
+             <div className="flex-1 overflow-hidden relative flex pb-24 lg:pb-0">
                {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
                {mainView === 'copilot' && <CopilotView currentUser={currentUser} />}
@@ -740,6 +742,14 @@ function App() {
                {/* TRD Módulo (Layout Anterior embebido) */}
                {mainView === 'trd' && renderLegacyTRDLayout()}
              </div>
+
+             {/* Barra de navegación inferior (Mobile only) */}
+             <MobileBottomNav 
+                activeView={mainView}
+                onNavigate={setMainView}
+                onToggleSidebar={() => setIsSidebarOpen(true)}
+                currentUser={currentUser}
+             />
           </div>
       </div>
     </div>

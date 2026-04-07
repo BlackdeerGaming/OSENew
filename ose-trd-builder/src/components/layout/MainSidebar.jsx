@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2 } from 'lucide-react';
+import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
@@ -11,7 +11,7 @@ const MAIN_NAV = [
   { id: 'settings', label: 'Configuración', icon: Settings },
 ];
 
-export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, isOpen }) {
+export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, isOpen, onToggle }) {
   const role = currentUser?.role || 'user';
 
   const filteredNav = MAIN_NAV.filter(item => {
@@ -26,14 +26,24 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
       "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 fixed lg:static inset-y-0 left-0 z-40 lg:z-20",
       isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
     )}>
-      <div className="p-6 border-b border-white/10 flex items-center gap-3">
-        <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg">
-          <FileSignature className="h-6 w-6 text-white" />
+      <div className="p-6 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg">
+            <FileSignature className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-white font-bold text-lg leading-tight">OSE</h1>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Gestión Inteligente</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-white font-bold text-lg leading-tight">OSE</h1>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Gestión Inteligente</p>
-        </div>
+        
+        {/* Close button for mobile */}
+        <button 
+          onClick={onToggle}
+          className="lg:hidden p-2 -mr-2 text-slate-400 hover:text-white transition-colors"
+        >
+          <X className="h-6 w-6" />
+        </button>
       </div>
 
       <div className="p-4">
