@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Building2, Search, Plus, ListFilter, Play, FileEdit, Trash2, ShieldAlert, ArrowLeft, Image as ImageIcon, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
+import API_BASE_URL from "../../config/api";
 
 export default function EntitiesView({ entities, setEntities }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
@@ -62,8 +63,16 @@ export default function EntitiesView({ entities, setEntities }) {
   };
 
   const handleDelete = (id) => {
-    if (confirm("¿Estás seguro de eliminar esta entidad cliente?")) {
-      setEntities(entities.filter(a => a.id !== id));
+    if (confirm("¿Estás seguro de eliminar esta entidad cliente de forma permanente?")) {
+      fetch(`${API_BASE_URL}/entities/${id}`, {
+        method: 'DELETE'
+      }).then(res => {
+        if (res.ok) {
+          setEntities(entities.filter(a => a.id !== id));
+        } else {
+          alert("Error al eliminar la entidad. Puede tener usuarios o dependencias asociadas.");
+        }
+      });
     }
   };
 
@@ -84,11 +93,35 @@ export default function EntitiesView({ entities, setEntities }) {
     if (!validate()) return;
     
     if (view === "create") {
-      setEntities([...entities, { ...formData, id: Date.now().toString() }]);
+      const newId = Date.now().toString();
+      const entityToAdd = { ...formData, id: newId };
+      
+      fetch(`${API_BASE_URL}/entities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entityToAdd)
+      }).then(res => {
+        if (res.ok) {
+          setEntities([...entities, entityToAdd]);
+          setView("list");
+        } else {
+          alert("Error al salvar entidad.");
+        }
+      });
     } else {
-      setEntities(entities.map(e => (e.id === selectedEntity.id ? { ...e, ...formData } : e)));
+      fetch(`${API_BASE_URL}/entities/${selectedEntity.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      }).then(res => {
+        if (res.ok) {
+          setEntities(entities.map(e => (e.id === selectedEntity.id ? { ...e, ...formData } : e)));
+          setView("list");
+        } else {
+          alert("Error al actualizar la entidad.");
+        }
+      });
     }
-    setView("list");
   };
 
   const handleLogoUpload = (e) => {

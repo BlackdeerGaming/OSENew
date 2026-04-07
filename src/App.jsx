@@ -155,19 +155,27 @@ function App() {
       setAuthView('reset-password');
     }
 
-    // Cargar usuarios iniciales desde el backend
-    const fetchUsers = async () => {
+    // Cargar usuarios y entidades iniciales desde el backend
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/users`);
-        if (res.ok) {
-          const data = await res.json();
+        const [usersRes, entitiesRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/users`),
+          fetch(`${API_BASE_URL}/entities`)
+        ]);
+
+        if (usersRes.ok) {
+          const data = await usersRes.json();
           if (data.length > 0) setUsers(data);
         }
+        if (entitiesRes.ok) {
+          const data = await entitiesRes.json();
+          if (data.length > 0) setEntities(data);
+        }
       } catch (err) {
-        console.error("Error fetching users:", err);
+        console.error("Error fetching initial data:", err);
       }
     };
-    fetchUsers();
+    fetchData();
   }, []);
 
   const handleActivateUser = async (token, newPassword) => {

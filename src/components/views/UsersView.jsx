@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit } from 'lucide-react';
+import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
@@ -63,57 +63,71 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     const token = Math.random().toString(36).substring(2, 11).toUpperCase();
     const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
 
-    if (editingUserId) {
-       // Update
-       setUsers(users.map(u => u.id === editingUserId ? {
+    setUsers(prev => {
+       const userBase = {
          ...newUser,
-         id: editingUserId,
          entidadNombre: entidadSelected?.razonSocial || '',
-       } : u));
-       resetModal();
-    } else {
-       // Create
-       const userToAdd = {
-         ...newUser,
-         id: Date.now().toString(),
-         entidadNombre: entidadSelected?.razonSocial || '',
-         fechaCreacion: new Date().toLocaleDateString(),
          activationToken: token,
          tokenExpiry: expiry,
          isActivated: false,
-         password: '' // Se definirá luego
+         password: ''
        };
-       setUsers([...users, userToAdd]);
-       
-       // Preparar link de invitación
-       const finalLink = `${window.location.origin}/?token=${token}`; 
-       setGeneratedLink(finalLink);
-       setShowInviteModal(true);
-       setShowModal(false);
 
-       // ENVÍO AUTOMÁTICO DE EMAIL
-       setEmailStatus('sending');
-       try {
-          const response = await fetch(`${API_BASE_URL}/send-activation`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: newUser.email,
-              nombre: newUser.nombre,
-              link: finalLink
-            })
-          });
+       if (editingUserId) {
+         // ACTUALIZAR EN BACKEND
+         fetch(`${API_BASE_URL}/users/${editingUserId}`, {
+           method: 'PUT',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify(userBase)
+         }).then(res => {
+           if (!res.ok) console.error("Error al actualizar usuario");
+         });
 
-          if (response.ok) {
-            setEmailStatus('sent');
-          } else {
-            setEmailStatus('error');
-          }
-       } catch (error) {
-          console.error("Error enviando email:", error);
-          setEmailStatus('error');
+         return prev.map(u => u.id === editingUserId ? { ...userBase, id: editingUserId } : u);
+       } else {
+         // CREAR EN BACKEND
+         const tempId = Date.now().toString();
+         const userToAdd = { ...userBase, id: tempId, fechaCreacion: new Date().toLocaleDateString() };
+
+         fetch(`${API_BASE_URL}/users`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify(userToAdd)
+         }).then(async res => {
+           if (res.ok) {
+             // Después de crear exitosamente en la DB, enviar email
+             const finalLink = `${window.location.origin}/?token=${token}`; 
+             setGeneratedLink(finalLink);
+             setShowInviteModal(true);
+             setShowModal(false);
+
+             setEmailStatus('sending');
+             try {
+               const mailRes = await fetch(`${API_BASE_URL}/send-activation`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                   email: newUser.email,
+                   nombre: newUser.nombre,
+                   link: finalLink
+                 })
+               });
+               setEmailStatus(mailRes.ok ? 'sent' : 'error');
+             } catch (e) {
+               console.error("Error enviando email:", e);
+               setEmailStatus('error');
+             }
+           } else {
+             const errorData = await res.json();
+             alert("Error al crear usuario: " + (errorData.detail || "Desconocido"));
+           }
+         });
+
+         return [...prev, userToAdd];
        }
-    }
+    });
+
+    if (editingUserId) resetModal();
   };
 
   const resetModal = () => {
@@ -129,8 +143,16 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   };
 
   const handleDelete = (id) => {
-    if(confirm("¿Eliminar este usuario?")) {
-      setUsers(users.filter(u => u.id !== id));
+    if(confirm("¿Eliminar este usuario de forma permanente?")) {
+      fetch(`${API_BASE_URL}/users/${id}`, {
+        method: 'DELETE'
+      }).then(res => {
+        if (res.ok) {
+          setUsers(users.filter(u => u.id !== id));
+        } else {
+          alert("Error al eliminar usuario.");
+        }
+      });
     }
   };
 
