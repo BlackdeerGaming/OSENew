@@ -91,9 +91,9 @@ CREATE TABLE IF NOT EXISTS rag_documents (
 );
 
 -- Índice para búsqueda vectorial rápida por similitud coseno
-CREATE INDEX IF NOT EXISTS rag_documents_embedding_idx
-ON rag_documents USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
+-- 2. Crear el nuevo índice HNSW (Más rápido y preciso)
+CREATE INDEX IF NOT EXISTS rag_documents_embedding_hnsw_idx 
+ON rag_documents USING hnsw (embedding vector_cosine_ops);
 
 -- ============================================================
 -- 4. FUNCIÓN DE BÚSQUEDA VECTORIAL (para el backend Python)
