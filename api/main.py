@@ -243,14 +243,37 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     # Guardar en Supabase pgvector
     try:
-        vector_store = await SupabaseVectorStore.afrom_documents(
-            documents=chunks,
-            embedding=embeddings,
-            client=supabase_client,
-            table_name="rag_documents",
-            query_name="match_rag_documents",
-        )
-        print(f"✅ '{file.filename}' indexado en Supabase: {len(chunks)} chunks")
+        # Indexar en Supabase MANUALMENTE para evitar errores de LangChain/OpenRouter
+        print(f"📦 Preparando {len(chunks)} fragmentos para indexar...")
+        
+        batch_size = 25
+        data_to_insert = []
+        
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            texts = [c.page_content for c in batch]
+            
+            # Embeddings con reintento por lote
+            batch_embeddings = None
+            for attempt in range(3):
+                try:
+                    batch_embeddings = embeddings.embed_documents(texts)
+                    if batch_embeddings: break
+                except Exception as e:
+                    print(f"⚠️ Reintento batch {i//batch_size + 1}, intento {attempt+1}: {e}")
+                    if attempt == 2: raise Exception("No embedding data received during upload")
+            
+            for doc, emb in zip(batch, batch_embeddings):
+                data_to_insert.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "embedding": emb
+                })
+
+        # Inserción directa en Supabase
+        print(f"📡 Insertando {len(data_to_insert)} registros en Supabase...")
+        supabase_client.table("rag_documents").insert(data_to_insert).execute()
+
     except Exception as e:
         print(f"❌ Error guardando en Supabase: {e}")
         raise HTTPException(status_code=500, detail=f"Error al indexar en la base de datos: {str(e)}")
