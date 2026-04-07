@@ -255,13 +255,17 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Supabase no está configurado.")
 
     try:
-        vector_store = SupabaseVectorStore(
-            client=supabase_client,
-            embedding=embeddings,
-            table_name="rag_documents",
-            query_name="match_rag_documents",
-        )
-        source_docs = vector_store.similarity_search(request.query, k=5)
+        # Búsqueda manual vía RPC para evitar errores de compatibilidad en LangChain
+        query_vector = embeddings.embed_query(request.query)
+        rpc_res = supabase_client.rpc("match_rag_documents", {
+            "query_embedding": query_vector,
+            "match_count": 5
+        }).execute()
+
+        source_docs = [
+            Document(page_content=row["content"], metadata=row["metadata"])
+            for row in rpc_res.data
+        ]
 
         rag_chain = (
             RAG_PROMPT
