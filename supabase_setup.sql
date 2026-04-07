@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS rag_documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   content TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
-  embedding vector(1024),  -- OpenAI text-embedding-3-small configurado a 1024
+  embedding vector(1536),  -- OpenAI text-embedding-3-small nativo (1536)
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -100,7 +100,7 @@ WITH (lists = 100);
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION match_rag_documents(
-  query_embedding vector(1024),
+  query_embedding vector(1536),
   match_count INT DEFAULT 5,
   filter JSONB DEFAULT '{}'
 )
