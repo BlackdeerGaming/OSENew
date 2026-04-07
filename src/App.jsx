@@ -24,6 +24,7 @@ import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
+import { useTRDData } from './hooks/useTRDData';
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -207,10 +208,15 @@ function App() {
     } : u));
   };
 
-  const [dependencias, setDependencias] = useState([]);
-  const [series, setSeries] = useState([]);
-  const [subseries, setSubseries] = useState([]);
-  const [trdRecords, setTrdRecords] = useState([]);
+  const {
+    dependencias, series, subseries, trdRecords,
+    setDependencias, setSeries, setSubseries, setTrdRecords,
+    addDependencia, deleteDependencia,
+    addSerie, deleteSerie,
+    addSubserie, deleteSubserie,
+    addTrdRecord,
+    isLoading: trdLoading, isSynced,
+  } = useTRDData();
 
   // UI State
   const handleUpdateUserProfile = (updatedData) => {
@@ -286,19 +292,17 @@ function App() {
 
          const newRecord = { ...payload, id: newId };
          
-         if (action.entity === 'dependencias') {
-            setDependencias(prev => [...prev, newRecord]);
-         } else if (action.entity === 'series') {
-            setSeries(prev => [...prev, newRecord]);
-         } else if (action.entity === 'subseries') {
-            setSubseries(prev => [...prev, newRecord]);
-         }
+         // Use Supabase-backed hook methods
+         if (action.entity === 'dependencias') addDependencia(newRecord);
+         else if (action.entity === 'series') addSerie(newRecord);
+         else if (action.entity === 'subseries') addSubserie(newRecord);
       } 
       else if (action.type === 'UPDATE') {
-         const updateFn = (prev) => prev.map(item => item.id === action.id ? { ...item, ...action.payload } : item);
-         if (action.entity === 'dependencias') setDependencias(updateFn);
-         else if (action.entity === 'series') setSeries(updateFn);
-         else if (action.entity === 'subseries') setSubseries(updateFn);
+         const updated = (list) => list.map(item => item.id === action.id ? { ...item, ...action.payload } : item);
+         // For updates, apply locally (Supabase update via addDependencia/addSerie which upserts)
+         if (action.entity === 'dependencias') { addDependencia({ ...dependencias.find(x => x.id === action.id), ...action.payload, id: action.id }); }
+         else if (action.entity === 'series') { addSerie({ ...series.find(x => x.id === action.id), ...action.payload, id: action.id }); }
+         else if (action.entity === 'subseries') { addSubserie({ ...subseries.find(x => x.id === action.id), ...action.payload, id: action.id }); }
       }
       else if (action.type === 'DELETE') {
          handleDelete(action.entity, action.id);
@@ -507,26 +511,21 @@ function App() {
 
     const isUpdate = !!activeFormData.id;
     const record = isUpdate ? activeFormData : { ...activeFormData, id: Date.now().toString() };
-    
-    const updateOrAdd = (list) => {
-      if (isUpdate) return list.map(item => item.id === record.id ? record : item);
-      return [...list, record];
-    };
 
     if (activeModule === 'dependencias') {
-      setDependencias(prev => updateOrAdd(prev));
+      addDependencia(record);
     } else if (activeModule === 'series') {
-      setSeries(prev => updateOrAdd(prev));
+      addSerie(record);
     } else if (activeModule === 'subseries') {
-      setSubseries(prev => updateOrAdd(prev));
+      addSubserie(record);
     } else if (activeModule === 'trdform') {
-      setTrdRecords(prev => updateOrAdd(prev));
+      addTrdRecord(record);
     }
 
     // Restart form
     setActiveFormData({});
     setFlowStep(0);
-    simulateAgentResponse(`¡Registro guardado exitosamente! Ha sido almacenado en tu base de datos.\nSi deseas registrar otro, ${currentFlow[0]?.query.toLowerCase()}`);
+    simulateAgentResponse(`¡Registro guardado exitosamente! Ha sido almacenado en Supabase. ☁️\nSi deseas registrar otro, ${currentFlow[0]?.query.toLowerCase()}`);
   };
 
   const handleEdit = (moduleType, record) => {
@@ -538,22 +537,12 @@ function App() {
   // Cascade delete when a TRD record linked to deleted ID
   const handleDelete = (moduleType, recordId) => {
     if (moduleType === 'dependencias') {
-      setDependencias(prev => prev.filter(d => d.id !== recordId));
-      // Cascade
-      setSeries(prev => prev.filter(s => s.dependenciaId !== recordId));
-      setSubseries(prev => prev.filter(s => s.dependenciaId !== recordId));
-      setTrdRecords(prev => prev.filter(t => t.dependenciaId !== recordId));
+      deleteDependencia(recordId); // Cascade handled by hook + DB
     } else if (moduleType === 'series') {
-      setSeries(prev => prev.filter(s => s.id !== recordId));
-      // Cascade
-      setSubseries(prev => prev.filter(s => s.serieId !== recordId));
-      setTrdRecords(prev => prev.filter(t => t.serieId !== recordId));
+      deleteSerie(recordId);
     } else if (moduleType === 'subseries') {
-      setSubseries(prev => prev.filter(s => s.id !== recordId));
-      // Cascade
-      setTrdRecords(prev => prev.filter(t => t.subserieId !== recordId));
+      deleteSubserie(recordId);
     }
-    
     if (activeFormData.id === recordId) {
       setActiveFormData({});
     }
