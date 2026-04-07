@@ -34,6 +34,17 @@ export default function CopilotView() {
       return;
     }
 
+    // Límite de Vercel Serverless (4.5 MB)
+    const MAX_SIZE = 4.5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        role: 'system',
+        content: `⚠️ El archivo "${file.name}" es demasiado grande (${(file.size / (1024 * 1024)).toFixed(2)} MB). El límite máximo para el motor RAG en la nube es de 4.5 MB. Por favor sube un archivo más pequeño.`
+      }]);
+      return;
+    }
+
     setIsUploading(true);
     const formData = new FormData();
     formData.append("file", file);

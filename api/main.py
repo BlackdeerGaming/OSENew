@@ -265,7 +265,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     if embeddings is None:
         raise HTTPException(status_code=503, detail="El motor de embeddings no está disponible.")
 
+    print(f"📥 REQUEST: POST /upload - File: {file.filename} - ContentType: {file.content_type}")
     content = await file.read()
+    print(f"📊 RECEIVED SIZE: {len(content) / (1024 * 1024):.2f} MB")
     documents = []
     text_count = 0
     image_count = 0
