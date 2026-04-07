@@ -27,6 +27,14 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
   const canCreateAdmins = role === 'superadmin';
 
+  const isSuperAdmin = role === 'superadmin';
+  const isAdmin = role === 'Administrador';
+
+  // Filtrar entidades basado en el rol del usuario actual
+  const selectableEntities = isSuperAdmin 
+    ? entities 
+    : entities.filter(e => e.id === currentUser.entidadId);
+
   const filteredUsers = users.filter(u => 
     u.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || 
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -346,18 +354,6 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                    <span className="bg-[#00c853] text-white text-[10px] h-5 w-5 flex items-center justify-center rounded-full font-bold">1</span>
                  )}
                </button>
-               <button 
-                 onClick={() => setActiveTab('entidades')}
-                 className={cn(
-                   "py-4 px-4 text-sm font-semibold flex items-center gap-2 transition-all relative border-b-2",
-                   activeTab === 'entidades' ? "text-[#00bfa5] border-[#00bfa5]" : "text-slate-400 border-transparent"
-                 )}
-               >
-                 Entidades
-                 {!newUser.entidadId && (
-                   <span className="bg-[#00c853] text-white text-[10px] h-5 w-5 flex items-center justify-center rounded-full font-bold">1</span>
-                 )}
-               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-8">
@@ -438,6 +434,20 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                        />
                     </div>
 
+                    <div className="space-y-1.5">
+                       <label className="text-sm font-semibold text-slate-700">Entidad / Empresa *</label>
+                       <select 
+                         value={newUser.entidadId || ''}
+                         onChange={e=>setNewUser({...newUser, entidadId: e.target.value})}
+                         className="w-full bg-[#f1f5f9] border-none rounded-lg h-12 px-4 text-sm outline-none"
+                       >
+                         <option value="">Seleccione Entidad</option>
+                         {selectableEntities.map(ent => (
+                           <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+                         ))}
+                       </select>
+                    </div>
+
                     <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
                        <p className="text-xs text-muted-foreground italic">Nota: Ya no es necesario asignar una contraseña manual. El sistema generará un enlace de activación seguro para el nuevo usuario.</p>
                     </div>
@@ -483,30 +493,6 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                        <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'Consulta'})} />
                        <span className="text-[#00c8a5] font-semibold">Consulta</span>
                     </label>
-                 </div>
-               )}
-
-               {activeTab === 'entidades' && (
-                 <div className="space-y-6">
-                    <h2 className="text-xl font-bold text-[#1e293b]">Lista de Empresas</h2>
-                    <div className="flex flex-col gap-3">
-                       {entities.length === 0 ? (
-                         <p className="text-sm text-slate-400 italic">No hay entidades creadas aún.</p>
-                       ) : (
-                         entities.map(ent => (
-                           <label key={ent.id} className="flex items-center gap-4 cursor-pointer p-4 rounded-xl bg-[#f8fafc] border border-slate-100 hover:bg-slate-50 transition-all">
-                              <div className={cn(
-                                 "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                                 newUser.entidadId === ent.id ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
-                              )}>
-                                 <Check className="h-4 w-4 text-white" />
-                              </div>
-                              <input type="radio" className="hidden" checked={newUser.entidadId === ent.id} onChange={()=>setNewUser({...newUser, entidadId: ent.id})} />
-                              <span className="text-sm font-semibold text-slate-700">{ent.razonSocial}</span>
-                           </label>
-                         ))
-                       )}
-                    </div>
                  </div>
                )}
             </div>
