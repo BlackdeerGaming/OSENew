@@ -723,7 +723,7 @@ function App() {
             onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           />
           
-          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 relative">
+      <div className="flex-1 h-full overflow-hidden bg-slate-50 relative w-full lg:w-auto">
              <MainHeader 
                 onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
                 mainView={mainView}
