@@ -496,6 +496,11 @@ ESTRUCTURA DEL JSON:
     }}
   ]
 }}
+
+CRÍTICO:
+- Si confirmas una creación/edición en 'message', DEBES incluir el objeto correspondiente en 'actions'.
+- NO respondas solo con texto si el usuario pidió una acción.
+- Usa IDs temporales (t1, t2...) para enlazar registros nuevos en una misma respuesta.
 """
     try:
         messages_llm = [SystemMessage(content=system_prompt)]
@@ -508,6 +513,16 @@ ESTRUCTURA DEL JSON:
 
         response = llm.invoke(messages_llm)
         content = response.content.strip()
+        
+        # Robustly extract JSON from the response
+        json_match = re.search(r'(\{.*\})', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Fallback to previous logic if regex fails
         for marker in ["```json", "```"]:
             content = content.replace(marker, "")
         content = content.strip()

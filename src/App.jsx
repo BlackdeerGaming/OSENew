@@ -300,16 +300,24 @@ function App() {
     }, 800 + Math.random() * 500); // slightly faster interactions
   };
 
-  const executeAgentActions = (actions) => {
+  const executeAgentActions = async (actions) => {
+    console.log('🤖 Orianna procesando acciones:', actions);
     const idMap = {};
-    actions.forEach(action => {
+    let actionsProcessed = 0;
+
+    for (const action of actions) {
+      // Normalize entity name
+      let entity = action.entity?.toLowerCase();
+      if (entity === 'dependency') entity = 'dependencias';
+      if (entity === 'serie') entity = 'series';
+      if (entity === 'subserie') entity = 'subseries';
+
       if (action.type === 'CREATE') {
          const newId = Date.now().toString() + "_" + Math.floor(Math.random()*10000);
          if (action.id) idMap[action.id] = newId;
 
          const rawPayload = { ...action.payload };
          
-         // Robust mapping for common variations in field names
          const payload = {
             nombre: rawPayload.nombre || rawPayload.name || "Sin nombre",
             codigo: rawPayload.codigo || rawPayload.code || (Math.floor(Math.random() * 900) + 100).toString(),
@@ -320,30 +328,36 @@ function App() {
             direccion: rawPayload.direccion || rawPayload.address || "Carrera 7 # 12-34",
             telefono: rawPayload.telefono || rawPayload.phone || "6012345678",
             dependeDe: idMap[rawPayload.dependeDe] || rawPayload.dependeDe || rawPayload.parent || "ninguna",
-            // For series/subseries
             dependenciaId: idMap[rawPayload.dependenciaId] || rawPayload.dependenciaId || rawPayload.dependencyId,
             serieId: idMap[rawPayload.serieId] || rawPayload.serieId || rawPayload.seriesId,
             tipoDocumental: rawPayload.tipoDocumental || rawPayload.documentType || "Documentos generales"
          };
 
          const newRecord = { ...payload, id: newId };
+         console.log(`✨ Creando ${entity}:`, newRecord);
          
-         // Use Supabase-backed hook methods
-         if (action.entity === 'dependencias') addDependencia(newRecord);
-         else if (action.entity === 'series') addSerie(newRecord);
-         else if (action.entity === 'subseries') addSubserie(newRecord);
+         if (entity === 'dependencias') await addDependencia(newRecord);
+         else if (entity === 'series') await addSerie(newRecord);
+         else if (entity === 'subseries') await addSubserie(newRecord);
+         actionsProcessed++;
       } 
       else if (action.type === 'UPDATE') {
-         const updated = (list) => list.map(item => item.id === action.id ? { ...item, ...action.payload } : item);
-         // For updates, apply locally (Supabase update via addDependencia/addSerie which upserts)
-         if (action.entity === 'dependencias') { addDependencia({ ...dependencias.find(x => x.id === action.id), ...action.payload, id: action.id }); }
-         else if (action.entity === 'series') { addSerie({ ...series.find(x => x.id === action.id), ...action.payload, id: action.id }); }
-         else if (action.entity === 'subseries') { addSubserie({ ...subseries.find(x => x.id === action.id), ...action.payload, id: action.id }); }
+         const entityId = idMap[action.id] || action.id;
+         console.log(`📝 Actualizando ${entity}:`, entityId, action.payload);
+         if (entity === 'dependencias') await addDependencia({ ...dependencias.find(x => x.id === entityId), ...action.payload, id: entityId });
+         else if (entity === 'series') await addSerie({ ...series.find(x => x.id === entityId), ...action.payload, id: entityId });
+         else if (entity === 'subseries') await addSubserie({ ...subseries.find(x => x.id === entityId), ...action.payload, id: entityId });
+         actionsProcessed++;
       }
       else if (action.type === 'DELETE') {
-         handleDelete(action.entity, action.id);
+         console.log(`🗑️ Eliminando ${entity}:`, action.id);
+         if (entity === 'dependencias') await deleteDependencia(action.id);
+         else if (entity === 'series') await deleteSerie(action.id);
+         else if (entity === 'subseries') await deleteSubserie(action.id);
+         actionsProcessed++;
       }
-    });
+    }
+    return actionsProcessed;
   };
 
   const handleUserMessage = (text) => {

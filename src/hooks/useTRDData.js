@@ -81,76 +81,109 @@ export function useTRDData() {
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    if (supabase) {
-      const { error } = await supabase.from('dependencias').upsert(mapDepToDB(newRecord));
-      if (error) { console.error('Error guardando dependencia:', error); return null; }
-    }
+    
+    // Optimistic local update
     setDependencias(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
+
+    if (supabase) {
+      console.log('📡 Guardando dependencia en Supabase...', newRecord);
+      const { error } = await supabase.from('dependencias').upsert(mapDepToDB(newRecord));
+      if (error) { 
+        console.error('❌ Error guardando dependencia en Supabase:', error); 
+        // Revert local state if needed? For now just log.
+        return null; 
+      }
+    }
     return newRecord;
   };
 
   const updateDependencia = async (id, data) => {
     const updated = { ...data, id };
+    
+    // Optimistic local update
+    setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x));
+
     if (supabase) {
+      console.log('📡 Actualizando dependencia en Supabase...', id);
       const { error } = await supabase.from('dependencias').update(mapDepToDB(data)).eq('id', id);
-      if (error) { console.error('Error actualizando dependencia:', error); return; }
+      if (error) { console.error('❌ Error actualizando dependencia:', error); return; }
     }
-    setDependencias(prev => prev.map(x => x.id === id ? updated : x));
   };
 
   const deleteDependencia = async (id) => {
-    if (supabase) {
-      await supabase.from('dependencias').delete().eq('id', id);
-      // Cascade handled by DB foreign keys
-    }
+    // Optimistic local update
     setDependencias(prev => prev.filter(x => x.id !== id));
     setSeries(prev => prev.filter(x => x.dependenciaId !== id));
     setSubseries(prev => prev.filter(x => x.dependenciaId !== id));
     setTrdRecords(prev => prev.filter(x => x.dependenciaId !== id));
+
+    if (supabase) {
+      console.log('📡 Eliminando dependencia en Supabase...', id);
+      const { error } = await supabase.from('dependencias').delete().eq('id', id);
+      if (error) { console.error('❌ Error eliminando dependencia:', error); }
+    }
   };
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    if (supabase) {
-      const { error } = await supabase.from('series').upsert(mapSerieToDB(newRecord));
-      if (error) { console.error('Error guardando serie:', error); return null; }
-    }
+    
+    // Optimistic local update
     setSeries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
+
+    if (supabase) {
+      console.log('📡 Guardando serie en Supabase...', newRecord);
+      const { error } = await supabase.from('series').upsert(mapSerieToDB(newRecord));
+      if (error) { console.error('❌ Error guardando serie en Supabase:', error); return null; }
+    }
     return newRecord;
   };
 
   const deleteSerie = async (id) => {
-    if (supabase) await supabase.from('series').delete().eq('id', id);
+    // Optimistic local update
     setSeries(prev => prev.filter(x => x.id !== id));
     setSubseries(prev => prev.filter(x => x.serieId !== id));
     setTrdRecords(prev => prev.filter(x => x.serieId !== id));
+
+    if (supabase) {
+      console.log('📡 Eliminando serie en Supabase...', id);
+      await supabase.from('series').delete().eq('id', id);
+    }
   };
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    if (supabase) {
-      const { error } = await supabase.from('subseries').upsert(mapSubserieToDB(newRecord));
-      if (error) { console.error('Error guardando subserie:', error); return null; }
-    }
+    
+    // Optimistic local update
     setSubseries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
+
+    if (supabase) {
+      console.log('📡 Guardando subserie en Supabase...', newRecord);
+      const { error } = await supabase.from('subseries').upsert(mapSubserieToDB(newRecord));
+      if (error) { console.error('❌ Error guardando subserie en Supabase:', error); return null; }
+    }
     return newRecord;
   };
 
   const deleteSubserie = async (id) => {
-    if (supabase) await supabase.from('subseries').delete().eq('id', id);
+    // Optimistic local update
     setSubseries(prev => prev.filter(x => x.id !== id));
     setTrdRecords(prev => prev.filter(x => x.subserieId !== id));
+
+    if (supabase) {
+      console.log('📡 Eliminando subserie en Supabase...', id);
+      await supabase.from('subseries').delete().eq('id', id);
+    }
   };
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
