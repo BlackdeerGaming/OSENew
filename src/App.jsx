@@ -318,7 +318,23 @@ function App() {
 
          const rawPayload = { ...action.payload };
          
-         // Robust mapping for common variations in field names
+         // Helper to resolve name to ID from state if idMap fails
+         const resolveId = (providedId, collection, collectionName) => {
+            if (!providedId) return null;
+            if (idMap[providedId]) return idMap[providedId];
+            
+            // Try to find by name if it's not a known temp ID
+            const found = collection.find(x => 
+               x.id === providedId || 
+               x.nombre?.toLowerCase() === providedId.toLowerCase() ||
+               x.name?.toLowerCase() === providedId.toLowerCase()
+            );
+            
+            if (found) return found.id;
+            console.warn(`⚠️ No se pudo resolver ID para ${collectionName}: ${providedId}`);
+            return providedId; // Fallback
+         };
+
          const payload = {
             // Group 1: Common
             nombre: rawPayload.nombre || rawPayload.name || "Sin nombre",
@@ -329,12 +345,12 @@ function App() {
             ciudad: rawPayload.ciudad || rawPayload.city || "Bogotá",
             direccion: rawPayload.direccion || rawPayload.address || "Carrera 7 # 12-34",
             telefono: rawPayload.telefono || rawPayload.phone || "6012345678",
-            dependeDe: idMap[rawPayload.dependeDe] || rawPayload.dependeDe || rawPayload.parent || "ninguna",
+            dependeDe: resolveId(rawPayload.dependeDe, dependencias, 'dependencia') || "ninguna",
             
-            // Group 2: Hierarchy links
-            dependenciaId: idMap[rawPayload.dependenciaId] || rawPayload.dependenciaId || rawPayload.dependencyId,
-            serieId: idMap[rawPayload.serieId] || rawPayload.serieId || rawPayload.seriesId,
-            subserieId: idMap[rawPayload.subserieId] || rawPayload.subserieId || rawPayload.subseriesId,
+            // Group 2: Hierarchy links (CRITICAL for DB FKs)
+            dependenciaId: resolveId(rawPayload.dependenciaId || rawPayload.dependencyId, dependencias, 'dependencia'),
+            serieId: resolveId(rawPayload.serieId || rawPayload.seriesId, series, 'serie'),
+            subserieId: resolveId(rawPayload.subserieId || rawPayload.subseriesId, subseries, 'subserie'),
             
             // Group 3: TRD Metadata / Valuations
             tipoDocumental: rawPayload.tipoDocumental || rawPayload.documentType || "Documentos generales",

@@ -493,7 +493,8 @@ REGLAS DE FORMATO DE PAYLOAD (OBLIGATORIO):
 REGLAS DE RESPUESTA:
 - Retorna ÚNICAMENTE JSON válido.
 - SI EL USUARIO PIDE 'CREAR LA TRD': Debes crear Dependencia -> Serie -> Subserie (si aplica) -> Y OBLIGATORIAMENTE el 'trd_records' asociado para que los datos sean visibles en la Tabla Final.
-- Si creas un registro, INVENTA valores realistas para los campos obligatorios basado en el contexto.
+- IMPORTANTE: Si una entidad (dependencia/serie) YA EXISTE en el contexto, USA SU ID REAL proporcionado arriba en lugar de un nombre para los campos parentales (ej: serieId, dependenciaId).
+- Si creas un registro nuevo, INVENTA valores realistas para los campos obligatorios basado en el contexto.
 
 ESTRUCTURA DEL JSON:
 {{
