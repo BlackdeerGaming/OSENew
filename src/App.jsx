@@ -8,7 +8,7 @@ import SubserieForm from './components/forms/SubserieForm';
 import TRDForm from './components/forms/TRDForm';
 import StructuredDataView from './components/data/StructuredDataView';
 import TRDGenerator from './components/trd/TRDGenerator';
-import { Save } from 'lucide-react';
+import { Save, Bot } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
@@ -717,10 +717,7 @@ function App() {
       <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full rounded-br-2xl">
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-primary/[0.02] to-transparent" />
         <div className="relative p-6 h-full flex flex-col">
-          <div className="mb-10">
-            <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Documencio <span className="text-blue-600">IA</span></h1>
-            <p className="text-slate-500 mt-2 text-lg">Tu asistente inteligente para la gestión documental y búsqueda semántica.</p>
-          </div>
+          {/* Header removed as requested */}
           
           <div className="flex-1">
             {activeModule === 'dependencias' && (
@@ -753,18 +750,7 @@ function App() {
           </div>
 
           {/* Save Button floating dock for forms */}
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200">
-              <Bot className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="font-bold text-slate-800 leading-tight">Orianna</h2>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">En línea</span>
-              </div>
-            </div>
-          </div>
+          {/* Orianna status moved to sidebar */}
 
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && currentUser?.role !== 'user' && (
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-8">
@@ -786,13 +772,16 @@ function App() {
     <RAGProvider>
       <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
       <div className="flex h-screen overflow-hidden">
-         <MainSidebar 
-           activeView={mainView} 
-           onNavigate={setMainView}
-           searchQuery={globalSearchQuery}
-           onSearchQueryChange={setGlobalSearchQuery}
-           currentUser={currentUser}
-         />
+          <MainSidebar 
+            activeView={mainView} 
+            onNavigate={(id) => {
+              setMainView(id);
+              if (id === 'trd') setActiveModule('trd');
+            }}
+            searchQuery={globalSearchQuery}
+            onSearchQueryChange={setGlobalSearchQuery}
+            currentUser={currentUser}
+          />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
             <MainHeader 

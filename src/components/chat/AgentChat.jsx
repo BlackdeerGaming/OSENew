@@ -34,7 +34,7 @@ export default function AgentChat({ messages, onSendMessage, isTyping, quickOpti
             <Bot className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Agente OSE</h2>
+            <h2 className="text-sm font-semibold text-foreground">Orianna IA</h2>
             <p className="text-xs text-muted-foreground">Especialista en Archivística (Ley 594)</p>
           </div>
         </div>

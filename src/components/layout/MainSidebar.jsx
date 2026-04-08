@@ -6,7 +6,7 @@ const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
   { id: 'copilot', label: 'Documencio (IA)', icon: Cpu },
-  { id: 'trd', label: 'Orianna (TRD Builder)', icon: FileSpreadsheet, badge: 'IA' },
+  { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'settings', label: 'Configuración', icon: Settings },
 ];
@@ -79,11 +79,7 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
         })}
       </nav>
       
-      <div className="p-4 mt-auto border-t border-white/10 flex items-center justify-center">
-        <div className="bg-white/5 rounded-full px-3 py-1 text-[10px] text-slate-400 border border-white/10 font-medium tracking-wide">
-          OSE Copilot v1.0
-        </div>
-      </div>
+      {/* Footer removed */}
     </aside>
   );
 }
