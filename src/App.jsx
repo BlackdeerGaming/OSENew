@@ -307,11 +307,24 @@ function App() {
          const newId = Date.now().toString() + "_" + Math.floor(Math.random()*10000);
          if (action.id) idMap[action.id] = newId;
 
-         const payload = { ...action.payload };
-         // Link parents mapping if they were created in the same batch
-         if (payload.dependeDe && idMap[payload.dependeDe]) payload.dependeDe = idMap[payload.dependeDe];
-         if (payload.dependenciaId && idMap[payload.dependenciaId]) payload.dependenciaId = idMap[payload.dependenciaId];
-         if (payload.serieId && idMap[payload.serieId]) payload.serieId = idMap[payload.serieId];
+         const rawPayload = { ...action.payload };
+         
+         // Robust mapping for common variations in field names
+         const payload = {
+            nombre: rawPayload.nombre || rawPayload.name || "Sin nombre",
+            codigo: rawPayload.codigo || rawPayload.code || (Math.floor(Math.random() * 900) + 100).toString(),
+            sigla: rawPayload.sigla || rawPayload.abbreviation || "GEN",
+            pais: rawPayload.pais || rawPayload.country || "Colombia",
+            departamento: rawPayload.departamento || rawPayload.state || "Cundinamarca",
+            ciudad: rawPayload.ciudad || rawPayload.city || "Bogotá",
+            direccion: rawPayload.direccion || rawPayload.address || "Carrera 7 # 12-34",
+            telefono: rawPayload.telefono || rawPayload.phone || "6012345678",
+            dependeDe: idMap[rawPayload.dependeDe] || rawPayload.dependeDe || rawPayload.parent || "ninguna",
+            // For series/subseries
+            dependenciaId: idMap[rawPayload.dependenciaId] || rawPayload.dependenciaId || rawPayload.dependencyId,
+            serieId: idMap[rawPayload.serieId] || rawPayload.serieId || rawPayload.seriesId,
+            tipoDocumental: rawPayload.tipoDocumental || rawPayload.documentType || "Documentos generales"
+         };
 
          const newRecord = { ...payload, id: newId };
          
@@ -337,13 +350,9 @@ function App() {
     setMessages(prev => [...prev, { sender: 'user', text }]);
     setCurrentOptions([]);
     
-    if (activeModule === 'trd') {
-      simulateAgentResponse("Te encuentras en una vista de resultados del cuadro. Dirígete a otro módulo para realizar modificaciones.");
-      return;
-    }
-
     // --- UNIVERSAL AI CRUD INTERCEPTOR ---
-    if (['dependencias', 'series', 'subseries', 'datos'].includes(activeModule)) {
+    // This allows Orianna to perform actions like CREATE/UPDATE/DELETE across all relevant modules
+    if (['dependencias', 'series', 'subseries', 'datos', 'trd', 'orgchart', 'trdform'].includes(activeModule)) {
        simulateAgentResponse("Procesando instrucción...");
        
        const context = { dependencias, series, subseries };
@@ -372,7 +381,7 @@ function App() {
           simulateAgentResponse("Lo siento, hubo un problema técnico ejecutando la instrucción con la IA.");
        });
        
-       return; // Detenemos el flujo antiguo (wizard) de este punto en adelante
+       return; 
     }
     // ---------------------------------------------
 

@@ -446,40 +446,56 @@ async def agent_action(request: AgentActionRequest):
     series = [{"id": s.get("id"), "nombre": s.get("nombre"), "dependenciaId": s.get("dependenciaId")} for s in request.context.series]
     subs = [{"id": s.get("id"), "nombre": s.get("nombre"), "serieId": s.get("serieId")} for s in request.context.subseries]
 
-    system_prompt = f"""Eres el Agente OSE, un orquestador inteligente del sistema de TRD (Tablas de Retención Documental).
-Tu objetivo es interpretar intenciones CRUD en el input del usuario (Crear, Leer, Actualizar, Eliminar) sobre la estructura jerárquica: Dependencias -> Series -> Subseries.
+    system_prompt = f"""Eres el Agente OSE (Orianna IA), un orquestador inteligente del sistema de TRD (Tablas de Retención Documental) basado en la Ley 594 de 2000 (Colombia).
+Tu objetivo es interpretar intenciones CRUD sobre la estructura: Dependencias -> Series -> Subseries.
 
 ESTADO ACTUAL DEL SISTEMA (Contexto):
 Dependencias: {json.dumps(deps, ensure_ascii=False)}
 Series: {json.dumps(series, ensure_ascii=False)}
 Subseries: {json.dumps(subs, ensure_ascii=False)}
 
-REGLAS DE VALIDACIÓN (CRÍTICAS):
+REGLAS DE FORMATO DE PAYLOAD (OBLIGATORIO):
 
-1. CREACIÓN DE SERIES (OBLIGATORIO):
-Para crear una Serie, debe existir una Dependencia asociada explícitamente.
-- Si NO existe: actions: [] y responde "Por favor indica el nombre exacto de la dependencia entre comillas."
+1. ENTIDAD 'dependencias':
+   - nombre: string (obligatorio)
+   - sigla: string (3-4 letras, ej: "DESP")
+   - codigo: string (numérico, ej: "100")
+   - pais: "Colombia"
+   - departamento: string (ej: "Cundinamarca")
+   - ciudad: string (ej: "Bogotá")
+   - direccion: string
+   - dependeDe: string (ID del padre o "ninguna")
 
-2. CREACIÓN DE SUBSERIES (OBLIGATORIO):
-Para crear una Subserie, debe existir una Dependencia y una Serie.
-- Si falta alguna: actions: [] y responde "Por favor indica el nombre de la dependencia y la serie entre comillas."
+2. ENTIDAD 'series':
+   - dependenciaId: string (ID obligatorio)
+   - nombre: string (obligatorio)
+   - codigo: string (numérico, ej: "100.1")
+   - tipoDocumental: string (lista separada por comas)
 
-3. FORMATO ESTRICTO:
-Retorna ÚNICAMENTE JSON válido, jamás uses código markdown como ```json. El objeto debe ser:
+3. ENTIDAD 'subseries':
+   - dependenciaId: string (ID obligatorio)
+   - serieId: string (ID obligatorio)
+   - nombre: string (obligatorio)
+   - codigo: string (numérico, ej: "100.1.01")
+   - tipoDocumental: string (lista separada por comas)
+
+REGLAS DE RESPUESTA:
+- Retorna ÚNICAMENTE JSON válido.
+- Si creas un registro, INVENTA valores realistas para los campos obligatorios (como codigo y sigla) basados en el contexto.
+- Si el usuario pide crear algo pero falta información de jerarquía (ej: crear serie sin decir en qué dependencia), PREGUNTA al usuario antes de actuar.
+
+ESTRUCTURA DEL JSON:
 {{
-  "message": "Tu respuesta amistosa",
+  "message": "Tu respuesta amistosa y confirmación",
   "actions": [
     {{
       "type": "CREATE" | "UPDATE" | "DELETE",
       "entity": "dependencias" | "series" | "subseries",
-      "id": "ID o null",
-      "payload": {{}}
+      "id": "ID real o temporal",
+      "payload": {{ ... }}
     }}
   ]
 }}
-
-4. JERARQUÍA MASIVA: Si creas dependencia y series al mismo tiempo, usa id temporal "t1" en el padre y "t1" en dependenciaId del hijo.
-5. ACTUALIZACIONES: Si modificas/eliminas un registro existente, usa su id real del ESTADO ACTUAL.
 """
     try:
         messages_llm = [SystemMessage(content=system_prompt)]
