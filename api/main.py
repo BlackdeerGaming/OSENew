@@ -122,6 +122,7 @@ class AgentActionContext(BaseModel):
     dependencias: list[dict]
     series: list[dict]
     subseries: list[dict]
+    trdRecords: list[dict] = []
 
 class HistoryMessage(BaseModel):
     role: str
@@ -445,6 +446,7 @@ async def agent_action(request: AgentActionRequest):
     deps = [{"id": d.get("id"), "nombre": d.get("nombre")} for d in request.context.dependencias]
     series = [{"id": s.get("id"), "nombre": s.get("nombre"), "dependenciaId": s.get("dependenciaId")} for s in request.context.series]
     subs = [{"id": s.get("id"), "nombre": s.get("nombre"), "serieId": s.get("serieId")} for s in request.context.subseries]
+    trds = [{"id": t.get("id"), "dependencia_id": t.get("dependenciaId"), "serie_id": t.get("serieId")} for t in request.context.trdRecords]
 
     system_prompt = f"""Eres el Agente OSE (Orianna IA), un orquestador inteligente del sistema de TRD (Tablas de Retención Documental) basado en la Ley 594 de 2000 (Colombia).
 Tu objetivo es interpretar intenciones CRUD sobre la estructura: Dependencias -> Series -> Subseries.
@@ -453,6 +455,7 @@ ESTADO ACTUAL DEL SISTEMA (Contexto):
 Dependencias: {json.dumps(deps, ensure_ascii=False)}
 Series: {json.dumps(series, ensure_ascii=False)}
 Subseries: {json.dumps(subs, ensure_ascii=False)}
+Valoraciones TRD: {json.dumps(trds, ensure_ascii=False)}
 
 REGLAS DE FORMATO DE PAYLOAD (OBLIGATORIO):
 
