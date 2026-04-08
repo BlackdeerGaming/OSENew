@@ -469,20 +469,31 @@ REGLAS DE FORMATO DE PAYLOAD (OBLIGATORIO):
 2. ENTIDAD 'series':
    - dependenciaId: string (ID obligatorio)
    - nombre: string (obligatorio)
-   - codigo: string (numérico, ej: "100.1")
+   - codigo: string (numérico, ej: "100-1")
    - tipoDocumental: string (lista separada por comas)
 
 3. ENTIDAD 'subseries':
    - dependenciaId: string (ID obligatorio)
    - serieId: string (ID obligatorio)
    - nombre: string (obligatorio)
-   - codigo: string (numérico, ej: "100.1.01")
+   - codigo: string (numérico, ej: "100-1-01")
    - tipoDocumental: string (lista separada por comas)
+
+4. ENTIDAD 'trd_records' (VALORACIÓN - Requerido para ver en Tabla Final):
+   - dependenciaId: string (ID obligatorio)
+   - serieId: string (ID obligatorio)
+   - subserieId: string (opcional)
+   - retencionGestion: number (ej: 2)
+   - retencionCentral: number (ej: 5)
+   - disposicion: "CT" | "E" | "S" | "D"
+   - procedimiento: string
+   - ddhh: "Sí" | "No"
+   - actoAdmo: string (ej: "Resolución 001 de 2024")
 
 REGLAS DE RESPUESTA:
 - Retorna ÚNICAMENTE JSON válido.
-- Si creas un registro, INVENTA valores realistas para los campos obligatorios (como codigo y sigla) basados en el contexto.
-- Si el usuario pide crear algo pero falta información de jerarquía (ej: crear serie sin decir en qué dependencia), PREGUNTA al usuario antes de actuar.
+- SI EL USUARIO PIDE 'CREAR LA TRD': Debes crear Dependencia -> Serie -> Subserie (si aplica) -> Y OBLIGATORIAMENTE el 'trd_records' asociado para que los datos sean visibles en la Tabla Final.
+- Si creas un registro, INVENTA valores realistas para los campos obligatorios basado en el contexto.
 
 ESTRUCTURA DEL JSON:
 {{
@@ -490,7 +501,7 @@ ESTRUCTURA DEL JSON:
   "actions": [
     {{
       "type": "CREATE" | "UPDATE" | "DELETE",
-      "entity": "dependencias" | "series" | "subseries",
+      "entity": "dependencias" | "series" | "subseries" | "trd_records",
       "id": "ID real o temporal",
       "payload": {{ ... }}
     }}

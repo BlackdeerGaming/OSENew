@@ -318,7 +318,9 @@ function App() {
 
          const rawPayload = { ...action.payload };
          
+         // Robust mapping for common variations in field names
          const payload = {
+            // Group 1: Common
             nombre: rawPayload.nombre || rawPayload.name || "Sin nombre",
             codigo: rawPayload.codigo || rawPayload.code || (Math.floor(Math.random() * 900) + 100).toString(),
             sigla: rawPayload.sigla || rawPayload.abbreviation || "GEN",
@@ -328,9 +330,23 @@ function App() {
             direccion: rawPayload.direccion || rawPayload.address || "Carrera 7 # 12-34",
             telefono: rawPayload.telefono || rawPayload.phone || "6012345678",
             dependeDe: idMap[rawPayload.dependeDe] || rawPayload.dependeDe || rawPayload.parent || "ninguna",
+            
+            // Group 2: Hierarchy links
             dependenciaId: idMap[rawPayload.dependenciaId] || rawPayload.dependenciaId || rawPayload.dependencyId,
             serieId: idMap[rawPayload.serieId] || rawPayload.serieId || rawPayload.seriesId,
-            tipoDocumental: rawPayload.tipoDocumental || rawPayload.documentType || "Documentos generales"
+            subserieId: idMap[rawPayload.subserieId] || rawPayload.subserieId || rawPayload.subseriesId,
+            
+            // Group 3: TRD Metadata / Valuations
+            tipoDocumental: rawPayload.tipoDocumental || rawPayload.documentType || "Documentos generales",
+            retencionGestion: rawPayload.retencionGestion || rawPayload.managementRetention || 2,
+            retencionCentral: rawPayload.retencionCentral || rawPayload.centralRetention || 10,
+            disposicion: rawPayload.disposicion || rawPayload.disposition || "CT",
+            procedimiento: rawPayload.procedimiento || rawPayload.procedure || "Conservación total según norma.",
+            ddhh: rawPayload.ddhh || "No",
+            actoAdmo: rawPayload.actoAdmo || "Resolución 001",
+            val_administrativo: rawPayload.val_administrativo ?? true,
+            val_legal: rawPayload.val_legal ?? true,
+            'disp_Conservación total': rawPayload.disp_conservacion_total || rawPayload.ct || true
          };
 
          const newRecord = { ...payload, id: newId };
@@ -339,6 +355,7 @@ function App() {
          if (entity === 'dependencias') await addDependencia(newRecord);
          else if (entity === 'series') await addSerie(newRecord);
          else if (entity === 'subseries') await addSubserie(newRecord);
+         else if (entity === 'trd_records' || entity === 'valoracion') await addTrdRecord(newRecord);
          actionsProcessed++;
       } 
       else if (action.type === 'UPDATE') {
@@ -347,6 +364,7 @@ function App() {
          if (entity === 'dependencias') await addDependencia({ ...dependencias.find(x => x.id === entityId), ...action.payload, id: entityId });
          else if (entity === 'series') await addSerie({ ...series.find(x => x.id === entityId), ...action.payload, id: entityId });
          else if (entity === 'subseries') await addSubserie({ ...subseries.find(x => x.id === entityId), ...action.payload, id: entityId });
+         else if (entity === 'trd_records') await addTrdRecord({ ...trdRecords.find(x => x.id === entityId), ...action.payload, id: entityId });
          actionsProcessed++;
       }
       else if (action.type === 'DELETE') {
