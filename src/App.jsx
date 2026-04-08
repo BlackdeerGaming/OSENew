@@ -403,7 +403,7 @@ function App() {
     if (['dependencias', 'series', 'subseries', 'datos', 'trd', 'orgchart', 'trdform'].includes(activeModule)) {
        simulateAgentResponse("Procesando instrucción...");
        
-       const context = { dependencias, series, subseries, trdRecords };
+       const context = { dependencias, series, subseries, trdRecords, entidades: userEntities };
        const history = messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'agent', content: m.text }));
        
        fetch(`${API_BASE_URL}/agent-action`, {
@@ -685,11 +685,12 @@ function App() {
     return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
   }, [currentUser, entities]);
 
-  // Auto pre-select entity when navigating to a form module if user has exactly one entity
+  // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
     setActiveModule(moduleId);
     const autoData = {};
-    if (userEntities.length === 1) {
+    if (userEntities.length > 0) {
+      console.log("📍 Auto-seleccionando entidad:", userEntities[0].nombre || userEntities[0].razonSocial);
       autoData.entidadId = userEntities[0].id;
     }
     setActiveFormData(autoData);
@@ -866,4 +867,5 @@ function App() {
 }
 
 export default App;
+
 

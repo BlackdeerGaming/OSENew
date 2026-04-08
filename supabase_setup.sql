@@ -146,3 +146,14 @@ CREATE POLICY "allow_all_service" ON rag_documents FOR ALL USING (true);
 -- ============================================================
 -- ✅ LISTO. Verifica en Table Editor que aparecen las 5 tablas.
 -- ============================================================
+-- Migration to add cloud_key columns for TRD modules
+ALTER TABLE dependencias ADD COLUMN IF NOT EXISTS cloud_key TEXT;
+ALTER TABLE series ADD COLUMN IF NOT EXISTS cloud_key TEXT;
+ALTER TABLE subseries ADD COLUMN IF NOT EXISTS cloud_key TEXT;
+ALTER TABLE trd_records ADD COLUMN IF NOT EXISTS cloud_key TEXT;
+
+-- Optional: create index for faster lookup
+CREATE INDEX IF NOT EXISTS idx_dependencias_cloud_key ON dependencias(cloud_key);
+CREATE INDEX IF NOT EXISTS idx_series_cloud_key ON series(cloud_key);
+CREATE INDEX IF NOT EXISTS idx_subseries_cloud_key ON subseries(cloud_key);
+CREATE INDEX IF NOT EXISTS idx_trd_records_cloud_key ON trd_records(cloud_key);

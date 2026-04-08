@@ -15,6 +15,7 @@ This skill allows the agent to generate a complete, coherent, and hierarchical T
    - `trd-series-creator` (Series naming, Sequential codes `DepCode-01`).
    - `trd-subseries-creator` (Subseries naming, Sequential codes `SerieCode-01`, TRD metadata).
 3. **Archival Realism**: Follow Law 594 of 2000 patterns.
+4. **Default Entity Assignment**: If multiple entities exist in the system, ALWAYS use the FIRST one from the `entidades` context as the default `entidadId` for all created dependencies, series, and records, unless explicitly told otherwise.
 
 ## expected_logic_steps
 El agente debe seguir estos pasos internamente para garantizar el 100% de realismo:

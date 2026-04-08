@@ -42,6 +42,12 @@ The code is assigned based on the **creation order** of children under the same 
 
 You can use `scripts/generate_codigo.py` to calculate the next available code for a parent.
 
+### 3. Default Entity Assignment
+When creating a dependency, if the user doesn't specify which entity (entidad) it belongs to:
+- The agent MUST check the `entidades` context.
+- The agent MUST use the **FIRST** entity in that list by default (assigning its ID to the `entidadId` field).
+- If NO entities are provided in context, the agent MUST ask the user before proceeding.
+
 ## Natural Language Hierarchy Recognition
 The agent must correctly interpret hierarchical relationships from various natural expressions:
 - **Direct dependency**: "X depende de Y", "X es hija de Y", "X cuelga de Y"

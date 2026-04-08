@@ -13,6 +13,7 @@ Before creating any series, the agent MUST ensure that the following data is pro
 
 1. **Nombre de la serie** (Full name, e.g., "Actas de Comité").
 2. **Dependencia Productora** (The administrative unit that creates the series).
+3. **Entidad** (The parent organization). If missing, always use the FIRST entity from the `entidades` context as the default.
 
 ### Missing Information Logic
 If any of these fields are missing, the agent MUST pause and request them explicitly:

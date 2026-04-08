@@ -13,6 +13,7 @@ Before creating any subseries, the agent MUST ensure that the following data is 
 
 1. **Nombre de la subserie** (Full name, e.g., "Licitaciones Públicas").
 2. **Serie a la que pertenece** (The parent documentary series).
+3. **Entidad** (The parent organization). If missing, always use the FIRST entity from the `entidades` context as the default.
 
 ### Missing Information Logic
 If any of these fields are missing, the agent MUST pause and request them explicitly:
