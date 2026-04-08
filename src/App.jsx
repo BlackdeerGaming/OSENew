@@ -700,7 +700,7 @@ function App() {
       />
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
-      {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && isAgentOpen && (
+      {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && (
         <section className="w-[350px] shrink-0 border-r border-border h-full shadow-lg z-10 bg-card transition-all duration-300">
           <AgentChat 
             messages={messages} 
