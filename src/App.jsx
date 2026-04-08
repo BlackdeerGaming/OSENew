@@ -403,7 +403,7 @@ function App() {
     if (['dependencias', 'series', 'subseries', 'datos', 'trd', 'orgchart', 'trdform'].includes(activeModule)) {
        simulateAgentResponse("Procesando instrucción...");
        
-       const context = { dependencias, series, subseries };
+       const context = { dependencias, series, subseries, trdRecords };
        const history = messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'agent', content: m.text }));
        
        fetch(`${API_BASE_URL}/agent-action`, {
@@ -415,9 +415,9 @@ function App() {
           if (!res.ok) throw new Error("Error HTTP");
           return res.json();
        })
-       .then(data => {
+       .then(async data => { console.log("🤖 Orianna Response:", data);
           if (data.actions && Array.isArray(data.actions) && data.actions.length > 0) {
-             executeAgentActions(data.actions);
+             await executeAgentActions(data.actions);
           }
           simulateAgentResponse(data.message || "Acción completada exitosamente.");
           // Reset old forms to prevent wizard conflicts
@@ -866,3 +866,4 @@ function App() {
 }
 
 export default App;
+

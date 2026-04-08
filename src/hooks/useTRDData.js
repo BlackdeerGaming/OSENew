@@ -1,10 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * Hook para gestionar el estado de la TRD (Dependencias, Series, Subseries, TRD Records)
- * con persistencia en Supabase. Si Supabase no está configurado, opera en modo local (localStorage).
- */
 export function useTRDData() {
   const [dependencias, setDependencias] = useState([]);
   const [series, setSeries] = useState([]);
@@ -13,117 +9,70 @@ export function useTRDData() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
-  // ─── Cargar datos iniciales ─────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    setIsLoading(true);
-    if (!supabase) {
-      // Modo local: cargar desde localStorage
-      const d = localStorage.getItem('trd_dependencias');
-      const s = localStorage.getItem('trd_series');
-      const ss = localStorage.getItem('trd_subseries');
-      const t = localStorage.getItem('trd_records');
-      if (d) setDependencias(JSON.parse(d));
-      if (s) setSeries(JSON.parse(s));
-      if (ss) setSubseries(JSON.parse(ss));
-      if (t) setTrdRecords(JSON.parse(t));
-      setIsLoading(false);
-      return;
-    }
+  // Load all data from Supabase
+  useEffect(() => {
+    async function loadData() {
+      if (!supabase) {
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        const [d, s, ss, trd] = await Promise.all([
+          supabase.from('dependencias').select('*').order('codigo'),
+          supabase.from('series').select('*').order('codigo'),
+          supabase.from('subseries').select('*').order('codigo'),
+          supabase.from('trd_records').select('*')
+        ]);
 
-    try {
-      const [depRes, serRes, subRes, trdRes] = await Promise.all([
-        supabase.from('dependencias').select('*').order('created_at'),
-        supabase.from('series').select('*').order('created_at'),
-        supabase.from('subseries').select('*').order('created_at'),
-        supabase.from('trd_records').select('*').order('created_at'),
-      ]);
-
-      if (depRes.data) setDependencias(depRes.data.map(mapDepFromDB));
-      if (serRes.data) setSeries(serRes.data.map(mapSerieFromDB));
-      if (subRes.data) setSubseries(subRes.data.map(mapSubserieFromDB));
-      if (trdRes.data) setTrdRecords(trdRes.data.map(mapTRDFromDB));
-      setIsSynced(true);
-      console.log('✅ TRD cargada desde Supabase');
-    } catch (e) {
-      console.error('❌ Error cargando desde Supabase:', e);
-    } finally {
-      setIsLoading(false);
+        if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
+        if (s.data) setSeries(s.data.map(mapSerieFromDB));
+        if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
+        if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
+        
+        setIsSynced(true);
+      } catch (err) {
+        console.error('Error loading TRD data:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
+    loadData();
   }, []);
-
-  useEffect(() => { loadAll(); }, [loadAll]);
-
-  // ─── Persistencia local de respaldo ────────────────────────────────────────
-  useEffect(() => {
-    if (!supabase) {
-      localStorage.setItem('trd_dependencias', JSON.stringify(dependencias));
-    }
-  }, [dependencias]);
-
-  useEffect(() => {
-    if (!supabase) {
-      localStorage.setItem('trd_series', JSON.stringify(series));
-    }
-  }, [series]);
-
-  useEffect(() => {
-    if (!supabase) {
-      localStorage.setItem('trd_subseries', JSON.stringify(subseries));
-    }
-  }, [subseries]);
-
-  useEffect(() => {
-    if (!supabase) {
-      localStorage.setItem('trd_records', JSON.stringify(trdRecords));
-    }
-  }, [trdRecords]);
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     
-    // Optimistic local update
+    // TRULY OPTIMISTIC: Update local state first
     setDependencias(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Guardando dependencia en Supabase...', newRecord);
-      const { error } = await supabase.from('dependencias').upsert(mapDepToDB(newRecord));
-      if (error) { 
-        console.error('❌ Error guardando dependencia en Supabase:', error); 
-        // Revert local state if needed? For now just log.
-        return null; 
-      }
+      console.log('📡 Syncing dependencia to Supabase...', newRecord);
+      const { error } = await supabase.from('dependencias').upsert(mapDependenciaToDB(newRecord));
+      if (error) console.error('❌ Supabase error (dependencia):', error);
     }
     return newRecord;
   };
 
   const updateDependencia = async (id, data) => {
-    const updated = { ...data, id };
-    
-    // Optimistic local update
-    setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x));
-
-    if (supabase) {
-      console.log('📡 Actualizando dependencia en Supabase...', id);
-      const { error } = await supabase.from('dependencias').update(mapDepToDB(data)).eq('id', id);
-      if (error) { console.error('❌ Error actualizando dependencia:', error); return; }
-    }
+     setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data } : x));
+     if (supabase) {
+       const { error } = await supabase.from('dependencias').update(mapDependenciaToDB(data)).eq('id', id);
+       if (error) console.error('❌ Supabase error (updating):', error);
+     }
   };
 
   const deleteDependencia = async (id) => {
-    // Optimistic local update
     setDependencias(prev => prev.filter(x => x.id !== id));
     setSeries(prev => prev.filter(x => x.dependenciaId !== id));
-    setSubseries(prev => prev.filter(x => x.dependenciaId !== id));
     setTrdRecords(prev => prev.filter(x => x.dependenciaId !== id));
 
     if (supabase) {
-      console.log('📡 Eliminando dependencia en Supabase...', id);
-      const { error } = await supabase.from('dependencias').delete().eq('id', id);
-      if (error) { console.error('❌ Error eliminando dependencia:', error); }
+      await supabase.from('dependencias').delete().eq('id', id);
     }
   };
 
@@ -131,28 +80,25 @@ export function useTRDData() {
   const addSerie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     
-    // Optimistic local update
+    // TRULY OPTIMISTIC: Update local state first
     setSeries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Guardando serie en Supabase...', newRecord);
+      console.log('📡 Syncing serie to Supabase...', newRecord);
       const { error } = await supabase.from('series').upsert(mapSerieToDB(newRecord));
-      if (error) { console.error('❌ Error guardando serie en Supabase:', error); return null; }
+      if (error) console.error('❌ Supabase error (serie):', error);
     }
     return newRecord;
   };
 
   const deleteSerie = async (id) => {
-    // Optimistic local update
     setSeries(prev => prev.filter(x => x.id !== id));
     setSubseries(prev => prev.filter(x => x.serieId !== id));
     setTrdRecords(prev => prev.filter(x => x.serieId !== id));
-
     if (supabase) {
-      console.log('📡 Eliminando serie en Supabase...', id);
       await supabase.from('series').delete().eq('id', id);
     }
   };
@@ -161,27 +107,23 @@ export function useTRDData() {
   const addSubserie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     
-    // Optimistic local update
+    // TRULY OPTIMISTIC: Update local state first
     setSubseries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Guardando subserie en Supabase...', newRecord);
+      console.log('📡 Syncing subserie to Supabase...', newRecord);
       const { error } = await supabase.from('subseries').upsert(mapSubserieToDB(newRecord));
-      if (error) { console.error('❌ Error guardando subserie en Supabase:', error); return null; }
+      if (error) console.error('❌ Supabase error (subserie):', error);
     }
     return newRecord;
   };
 
   const deleteSubserie = async (id) => {
-    // Optimistic local update
     setSubseries(prev => prev.filter(x => x.id !== id));
-    setTrdRecords(prev => prev.filter(x => x.subserieId !== id));
-
     if (supabase) {
-      console.log('📡 Eliminando subserie en Supabase...', id);
       await supabase.from('subseries').delete().eq('id', id);
     }
   };
@@ -189,14 +131,18 @@ export function useTRDData() {
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    if (supabase) {
-      const { error } = await supabase.from('trd_records').upsert(mapTRDToDB(newRecord));
-      if (error) { console.error('Error guardando TRD:', error); return null; }
-    }
+    
+    // TRULY OPTIMISTIC: Update local state first
     setTrdRecords(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
+
+    if (supabase) {
+      console.log('📡 Syncing TRD record to Supabase...', newRecord);
+      const { error } = await supabase.from('trd_records').upsert(mapTRDToDB(newRecord));
+      if (error) console.error('❌ Supabase error (TRD record):', error);
+    }
     return newRecord;
   };
 
@@ -207,92 +153,81 @@ export function useTRDData() {
     addDependencia, updateDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
-    addTrdRecord,
-    reload: loadAll,
+    addTrdRecord
   };
 }
 
-// ─── Mappers DB ↔ App ────────────────────────────────────────────────────────
+// ─── Mapping Helpers ────────────────────────────────────────────────────────
 
-function mapDepFromDB(r) {
+function mapDependenciaFromDB(d) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    sigla: r.sigla,
-    codigo: r.codigo,
-    pais: r.pais,
-    departamento: r.departamento,
-    ciudad: r.ciudad,
-    direccion: r.direccion,
-    telefono: r.telefono,
-    dependeDe: r.depende_de,
-    entidadId: r.entidad_id,
+    id: d.id,
+    nombre: d.nombre,
+    sigla: d.sigla,
+    codigo: d.codigo,
+    pais: d.pais,
+    departamento: d.departamento,
+    ciudad: d.ciudad,
+    direccion: d.direccion,
+    telefono: d.telefono,
+    dependeDe: d.depende_de,
+    entidadId: d.entidad_id
   };
 }
 
-function mapDepToDB(r) {
+function mapDependenciaToDB(d) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    sigla: r.sigla,
-    codigo: r.codigo,
-    pais: r.pais,
-    departamento: r.departamento,
-    ciudad: r.ciudad,
-    direccion: r.direccion,
-    telefono: r.telefono,
-    depende_de: r.dependeDe || null,
-    entidad_id: r.entidadId || null,
+    id: d.id,
+    nombre: d.nombre,
+    sigla: d.sigla,
+    codigo: d.codigo,
+    pais: d.pais,
+    departamento: d.departamento,
+    ciudad: d.ciudad,
+    direccion: d.direccion,
+    telefono: d.telefono,
+    depende_de: d.dependeDe,
+    entidad_id: d.entidadId
   };
 }
 
-function mapSerieFromDB(r) {
+function mapSerieFromDB(s) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    codigo: r.codigo,
-    tipoDocumental: r.tipo_documental,
-    descripcion: r.descripcion,
-    dependenciaId: r.dependencia_id,
-    entidadId: r.entidad_id,
+    id: s.id,
+    nombre: s.nombre,
+    codigo: s.codigo,
+    dependenciaId: s.dependencia_id,
+    tipoDocumental: s.tipo_documental
   };
 }
 
-function mapSerieToDB(r) {
+function mapSerieToDB(s) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    codigo: r.codigo,
-    tipo_documental: r.tipoDocumental,
-    descripcion: r.descripcion,
-    dependencia_id: r.dependenciaId,
-    entidad_id: r.entidadId || null,
+    id: s.id,
+    nombre: s.nombre,
+    codigo: s.codigo,
+    dependencia_id: s.dependenciaId,
+    tipo_documental: s.tipoDocumental
   };
 }
 
-function mapSubserieFromDB(r) {
+function mapSubserieFromDB(s) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    codigo: r.codigo,
-    tipoDocumental: r.tipo_documental,
-    descripcion: r.descripcion,
-    serieId: r.serie_id,
-    dependenciaId: r.dependencia_id,
-    entidadId: r.entidad_id,
+    id: s.id,
+    nombre: s.nombre,
+    codigo: s.codigo,
+    serieId: s.serie_id,
+    tipoDocumental: s.tipo_documental
   };
 }
 
-function mapSubserieToDB(r) {
+function mapSubserieToDB(s) {
   return {
-    id: r.id,
-    nombre: r.nombre,
-    codigo: r.codigo,
-    tipo_documental: r.tipoDocumental,
-    descripcion: r.descripcion,
-    serie_id: r.serieId,
-    dependencia_id: r.dependenciaId,
-    entidad_id: r.entidadId || null,
+    id: s.id,
+    nombre: s.nombre,
+    codigo: s.codigo,
+    serie_id: s.serieId,
+    tipo_documental: s.tipoDocumental
   };
 }
 
@@ -323,7 +258,7 @@ function mapTRDFromDB(r) {
     val_Legal: r.val_legal,
     val_Histórico: r.val_historico,
     rep_microfilmacion: r.rep_microfilmacion,
-    rep_digitalizacion: r.rep_digitalizacion,
+    rep_digitalizacion: r.rep_digitalizacion
   };
 }
 
