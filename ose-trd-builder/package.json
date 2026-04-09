@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "dom-to-image-more": "^3.7.2",
+    "jspdf": "^4.2.1"
+  }
+}

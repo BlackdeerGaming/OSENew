@@ -1,10 +1,11 @@
-import React from 'react';
-import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2, Cpu, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2, Cpu, FileSpreadsheet, FileUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
+  { id: 'import', label: 'Importación OCR', icon: FileUp },
+  { id: 'rag', label: 'Biblioteca RAG', icon: Database },
   { id: 'copilot', label: 'Documencio (IA)', icon: Cpu },
   { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },

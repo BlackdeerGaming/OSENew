@@ -87,8 +87,8 @@ llm = ChatOpenAI(
     model=OPENROUTER_MODEL,
     openai_api_key=OPENROUTER_API_KEY,
     openai_api_base="https://openrouter.ai/api/v1",
-    temperature=0.2,
-    max_tokens=1024,
+    temperature=0.1,
+    max_tokens=4096,
     default_headers={
         "HTTP-Referer": "https://ose-ia.vercel.app",
         "X-Title": "OSE Copilot RAG"
@@ -817,6 +817,180 @@ async def delete_entity(entity_id: str):
     if not supabase_client: raise HTTPException(400, "No Supabase")
     supabase_client.table("entities").delete().eq("id", entity_id).execute()
     return {"status": "deleted"}
+
+TRD_ANALYZE_PROMPT = """Eres un extractor de datos de alta precisión especializado en TRD Colombianas.
+Tu salida debe ser ÚNICAMENTE un objeto JSON. No incluyas explicaciones ni markdown.
+
+ESTRUCTURA OBLIGATORIA DEL JSON:
+{{
+  "message": "Resumen",
+  "actions": [
+    {{
+      "type": "CREATE",
+      "entity": "dependencias",
+      "id": "dep_1",
+      "payload": {{ "nombre": "Nombre Oficina", "codigo": "1.1", "sigla": "ABREVIATURA" }}
+    }},
+    {{
+      "type": "CREATE",
+      "entity": "series",
+      "id": "ser_1",
+      "payload": {{ "dependenciaId": "dep_1", "nombre": "Nombre Serie", "codigo": "11-2" }}
+    }},
+    {{
+      "type": "CREATE",
+      "entity": "subseries",
+      "id": "sub_1",
+      "payload": {{ "serieId": "ser_1", "dependenciaId": "dep_1", "nombre": "Nombre Subserie", "codigo": "11-2-14" }}
+    }},
+    {{
+      "type": "CREATE",
+      "entity": "trd_records",
+      "payload": {{
+        "dependenciaId": "dep_1",
+        "serieId": "ser_1",
+        "subserieId": "sub_1",
+        "retencionGestion": 2,
+        "retencionCentral": 8,
+        "disposicion": "CT",
+        "procedimiento": "Texto del procedimiento"
+      }}
+    }}
+  ]
+}}
+
+REGLAS DE ORO:
+1. Usa IDs temporales (dep_1, ser_1, sub_1) para vincular hijos con padres.
+2. Extrae TODOS los registros que veas en la tabla.
+3. Si un campo no aplica, usa null.
+4. Para la disposición usa abreviaturas: CT, E, S, D.
+
+TEXTO/VISIÓN:
+{text}
+"""
+
+@router.post("/analyze-trd")
+async def analyze_trd(file: UploadFile = File(...)):
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase no configurado.")
+    
+    print(f"🔍 Analizando TRD: {file.filename}")
+    content = await file.read()
+    extracted_text = ""
+    
+    try:
+        fitz_doc = fitz.open(stream=content)
+        pages_to_process = min(len(fitz_doc), 15)
+        for i in range(pages_to_process):
+            extracted_text += f"\n--- PÁGINA {i+1} ---\n" + fitz_doc[i].get_text()
+        fitz_doc.close()
+    except Exception as e:
+        print(f"❌ Error leyendo archivo con Fitz: {e}")
+        raise HTTPException(status_code=400, detail=f"Error leyendo el archivo: {str(e)}")
+
+    if len(extracted_text.strip()) < 50:
+        print("⚠️ Texto insuficiente extraído.")
+        # No levantamos error aún, dejemos que Vision intente salvarlo
+    
+    try:
+        # Usar el LLM para analizar la estructura
+        messages_llm = [
+            SystemMessage(content=TRD_ANALYZE_PROMPT.format(text=extracted_text))
+        ]
+        
+        # --- VISION FALLBACK ---
+        try:
+            fitz_doc = fitz.open(stream=content)
+            if len(fitz_doc) > 0:
+                page = fitz_doc[0]
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_data = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+                
+                messages_llm.append(HumanMessage(content=[
+                    {"type": "text", "text": "Aquí tienes la imagen real de la TRD. Por favor, identifica las filas y columnas para extraer las dependencias, series y subseries con sus tiempos de retención. Genera el JSON de acciones."},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_data}"}}
+                ]))
+            fitz_doc.close()
+        except Exception as vision_err:
+            print(f"⚠️ No se pudo cargar imagen para Visión: {vision_err}")
+
+        response = llm.invoke(messages_llm)
+        content_ai = response.content.strip()
+        print(f"🤖 IA Response received ({len(content_ai)} chars)")
+
+        # --- PERSISTENCIA EN RAG_DOCUMENTS ---
+        try:
+            # Guardamos el documento en la tabla RAG para que sea consultable luego
+            doc_metadata = {
+                "source": file.filename,
+                "type": "trd_upload",
+                "extracted_at": str(datetime.now()),
+                "pages": len(fitz_doc) if 'fitz_doc' in locals() else 0
+            }
+            
+            # Si el motor de embeddings está listo, los generamos
+            embedding_vector = None
+            if embeddings:
+                try:
+                    embedding_vector = embeddings.embed_query(extracted_text)
+                except Exception as emb_err:
+                    print(f"⚠️ No se pudo generar embedding: {emb_err}")
+
+            rag_payload = {
+                "content": extracted_text,
+                "metadata": doc_metadata,
+                "embedding": embedding_vector,
+                "filename": file.filename
+            }
+            
+            supabase_client.table("rag_documents").insert(rag_payload).execute()
+            print(f"✅ Documento '{file.filename}' guardado en RAG.")
+        except Exception as rag_err:
+            print(f"⚠️ Error guardando en RAG: {rag_err}")
+        
+        # Extraer JSON de la respuesta
+        json_match = re.search(r'(\{.*\})', content_ai, re.DOTALL)
+        if json_match:
+            try:
+                parsed_data = json.loads(json_match.group(1))
+                if not parsed_data.get("actions") or len(parsed_data["actions"]) == 0:
+                    parsed_data["message"] = f"La IA analizó pero no generó acciones. Respuesta bruta: {content_ai[:1000]}"
+                return parsed_data
+            except Exception as json_err:
+                print(f"❌ Error parseando JSON: {json_err}")
+                
+        return {
+            "message": f"No se pudo detectar el formato JSON. Respuesta de la IA: {content_ai[:1000]}",
+            "actions": [],
+            "raw": content_ai
+        }
+        
+    except Exception as e:
+        print(f"❌ Error en analyze-trd: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── CRUD RAG Documents ───────────────────────────────────────────────────────
+
+@router.get("/rag-documents")
+async def get_rag_documents():
+    if not supabase_client: return []
+    res = supabase_client.table("rag_documents").select("id, filename, metadata, created_at").order("created_at", desc=True).execute()
+    return res.data
+
+@router.delete("/rag-documents/{doc_id}")
+async def delete_rag_document(doc_id: str):
+    if not supabase_client: raise HTTPException(status_code=503)
+    supabase_client.table("rag_documents").delete().eq("id", doc_id).execute()
+    return {"status": "deleted"}
+
+@router.post("/rag-documents")
+async def create_rag_document(doc: dict):
+    if not supabase_client: raise HTTPException(status_code=503)
+    # Generar embedding si viene contenido
+    if "content" in doc and embeddings:
+        doc["embedding"] = embeddings.embed_query(doc["content"])
+    res = supabase_client.table("rag_documents").insert(doc).execute()
+    return res.data[0] if res.data else {}
 
 app.include_router(router)
 

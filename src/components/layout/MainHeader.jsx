@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export default function MainHeader({ onLogout, mainView, trdProps }) {
+export default function MainHeader({ onLogout, mainView, trdProps, onExportPDF }) {
   // Extract TRD props safely
   const { status = "Borrador", rows = [] } = trdProps || {};
 
@@ -172,28 +172,15 @@ export default function MainHeader({ onLogout, mainView, trdProps }) {
       </div>
 
       <div className="flex items-center gap-4 flex-wrap justify-end">
-        {/* Conditional rendering for TRD specific buttons */}
-        {mainView === 'trd' && (
+        {/* Botón de exportar de alta fidelidad para la Tabla Final */}
+        {mainView === 'trd' && onExportPDF && (
           <div className="flex items-center gap-3 mr-2">
-            <span
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border",
-                status === "Borrador"
-                  ? "bg-secondary text-secondary-foreground border-border"
-                  : status === "Finalizado"
-                  ? "bg-success/10 text-success border-success/20"
-                  : "bg-warning/10 text-warning border-warning/20"
-              )}
-            >
-              {status === "Finalizado" && <CheckCircle2 className="h-3 w-3" />}
-              {status}
-            </span>
             <button
-              onClick={handleExportPDF}
-              className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
+              onClick={onExportPDF}
+              className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-black text-white hover:bg-emerald-500 transition-all shadow-lg uppercase tracking-tighter"
             >
               <Download className="h-4 w-4" />
-              Exportar TRD
+              GENERAR PDF OFICIAL (DANE)
             </button>
             <div className="w-px h-6 bg-border mx-1" />
           </div>

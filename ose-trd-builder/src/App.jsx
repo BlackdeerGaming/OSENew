@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { jsPDF } from "jspdf";
+import domtoimage from "dom-to-image-more";
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import AgentChat from './components/chat/AgentChat';
@@ -69,6 +71,51 @@ const TRDFORM_FLOW = [
   { field: 'procedimiento', query: 'Describe brevemente el Procedimiento.', type: 'textarea', quick: [] },
   { field: 'actoAdmo', query: 'Finalmente, menciona el Acto Administrativo que lo sustenta.', type: 'textarea', quick: [] },
 ];
+
+  const handleExportTRD = async () => {
+    const element = document.getElementById('trd-final-report-area');
+    if (!element) return alert("No se pudo encontrar el reporte para exportar.");
+
+    // Guardar estilos originales para restaurarlos
+    const originalStyle = element.style.cssText;
+    
+    try {
+      // Forzar que el elemento ocupe todo su tamaño real para la captura
+      element.style.height = 'auto';
+      element.style.maxHeight = 'none';
+      element.style.overflow = 'visible';
+
+      const imgData = await domtoimage.toPng(element, {
+        bgcolor: '#ffffff',
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        quality: 1.0,
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+          margin: '0',
+          padding: '0'
+        }
+      });
+
+      // Restaurar estilo original
+      element.style.cssText = originalStyle;
+
+      const pdf = new jsPDF('p', 'mm', 'a4'); // 'p' para vertical (A4 es vertical en DANE)
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      // Si el reporte es muy largo, ajustamos el PDF o creamos varias páginas
+      // Por ahora, lo ajustamos al ancho de la página A4
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      pdf.save(`TRD_Oficial_${new Date().toLocaleDateString()}.pdf`);
+    } catch (error) {
+      console.error("Error al exportar TRD:", error);
+      element.style.cssText = originalStyle;
+      alert("Error al generar el PDF oficial completo.");
+    }
+  };
 
 function App() {
   // Auth State
@@ -672,13 +719,15 @@ function App() {
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
             )}
             {activeModule === 'trd' && (
-              <TRDGenerator 
-                rows={trdRows} 
-                selectedIds={selectedTrdIds}
-                onToggleRow={toggleTrdRow}
-                onToggleAll={toggleAllTrdRows}
-                currentUser={currentUser}
-              />
+              <div className="print-content h-full">
+                <TRDGenerator 
+                  rows={trdRows} 
+                  selectedIds={selectedTrdIds}
+                  onToggleRow={toggleTrdRow}
+                  onToggleAll={toggleAllTrdRows}
+                  currentUser={currentUser}
+                />
+              </div>
             )}
           </div>
 
@@ -727,6 +776,7 @@ function App() {
              <MainHeader 
                 onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
                 mainView={mainView}
+                onExportPDF={handleExportTRD}
                 trdProps={{ status: "En Progreso", rows: exportRows }}
                 currentUser={currentUser}
                 toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}

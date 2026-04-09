@@ -15,6 +15,8 @@ import ActivateAccount from './components/auth/ActivateAccount';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import MainSidebar from './components/layout/MainSidebar';
+import { jsPDF } from "jspdf";
+import html2canvas from 'html2canvas';
 import MainHeader from './components/layout/MainHeader';
 import DashboardView from './components/views/DashboardView';
 import CopilotView from './components/views/CopilotView';
@@ -22,6 +24,8 @@ import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
+import TRDImportView from './components/views/TRDImportView';
+import RAGDocumentView from './components/views/RAGDocumentView';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
@@ -508,9 +512,12 @@ function App() {
       serie: serie.nombre || "",
       subserie: subserie ? subserie.nombre : "",
       tipoDocumental: subserie ? subserie.tipoDocumental : serie.tipoDocumental || "",
-      retencionGestion: record.retencionGestion || "",
-      retencionCentral: record.retencionCentral || "",
-      disposicion: disposicionStr.join(", ") || record.disposicion || "N/A"
+      retencionGestion: record.retencionGestion || "0",
+      retencionCentral: record.retencionCentral || "0",
+      disposicion: disposicionStr.join(", ") || record.disposicion || "N/A",
+      procedimiento: record.procedimiento || "",
+      soporte: record.rep_digitalizacion || record.rep_microfilmacion ? 'ambos' : 'fisico',
+      reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna')
     };
   });
 
@@ -534,6 +541,45 @@ function App() {
   const handleLogin = (user) => {
     setCurrentUser(user);
     setAuthView('dashboard');
+  };
+
+  const handleExportTRD = async () => {
+    const element = document.getElementById('trd-final-report-area');
+    if (!element) return alert("No se pudo encontrar el reporte para exportar.");
+
+    // Guardar estilos originales
+    const originalStyle = element.style.cssText;
+    
+    try {
+      // 1. Preparar el lienzo para alta resolución (Estilo Organigrama)
+      element.style.height = 'auto';
+      element.style.maxHeight = 'none';
+      element.style.overflow = 'visible';
+      element.style.borderColor = '#cbd5e1'; // Forzar HEX para nitidez
+
+      const canvas = await html2canvas(element, {
+        scale: 2, // Retina resolution
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 1200 // Simular ancho de escritorio para layouts
+      });
+
+      // Restaurar estilos
+      element.style.cssText = originalStyle;
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      pdf.save(`TRD_Oficial_${new Date().toLocaleDateString()}.pdf`);
+    } catch (error) {
+      console.error("Error al exportar TRD:", error);
+      element.style.cssText = originalStyle;
+      alert("Error al generar el PDF oficial completo.");
+    }
   };
 
   // Determine which entities the current user can see/select
@@ -659,13 +705,18 @@ function App() {
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
             )}
             {activeModule === 'trd' && (
-              <TRDGenerator 
-                rows={trdRows} 
-                selectedIds={selectedTrdIds}
-                onToggleRow={toggleTrdRow}
-                onToggleAll={toggleAllTrdRows}
-                currentUser={currentUser}
-              />
+              <div id="trd-final-report-area" className="print-content h-full">
+                <TRDGenerator 
+                  rows={trdRows} 
+                  selectedIds={selectedTrdIds}
+                  onToggleRow={toggleTrdRow}
+                  onToggleAll={toggleAllTrdRows}
+                  currentUser={currentUser}
+                />
+              </div>
+            )}
+            {activeModule === 'import' && (
+              <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} />
             )}
           </div>
 
@@ -707,13 +758,16 @@ function App() {
             <MainHeader 
                onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
                mainView={mainView}
+               onExportPDF={handleExportTRD}
                trdProps={{ status: "En Progreso", rows: exportRows }}
                currentUser={currentUser}
             />
 
-            <div className="flex-1 overflow-hidden relative flex">
+            <div className="flex-1 overflow-y-auto relative flex">
               {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
+              {mainView === 'import' && <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} />}
+              {mainView === 'rag' && <RAGDocumentView currentUser={currentUser} />}
               {mainView === 'copilot' && <CopilotView currentUser={currentUser} />}
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
