@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Network, Download, ShieldAlert, Maximize, Loader2 } from 'lucide-react';
+import { Network, Download, ShieldAlert, Maximize, Loader2, Printer, X, ChevronRight } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { cn } from '@/lib/utils';
 
@@ -13,12 +13,46 @@ const TEXT_MUTED  = '#94a3b8';
 const BG          = '#f8fafc';
 
 // ─── Constantes de layout del canvas ──────────────────────────────────────────
-const NODE_W  = 220;
-const NODE_H  = 86;
-const H_GAP   = 52;   // separación horizontal entre hermanos
-const V_GAP   = 68;   // separación vertical entre niveles
-const PAD     = 48;   // margen exterior del lienzo
 const HD      = 2;    // factor de escala retina
+
+const PRINT_PRESETS = {
+  SINGLE_PAGE: {
+    nodeW: 230,
+    nodeH: 90,
+    hGap: 45,
+    vGap: 60,
+    pad: 50,
+    borderWidth: 3,
+    connectorWidth: 2.5,
+    backgroundColor: '#f1f5f9',
+    fontSize: 14,
+    title: 'Ajustar a una hoja (Horizontal)'
+  },
+  MULTI_PAGE: {
+    nodeW: 240,
+    nodeH: 96,
+    hGap: 60,
+    vGap: 100, 
+    pad: 60,
+    borderWidth: 2,
+    connectorWidth: 2,
+    backgroundColor: '#ffffff',
+    fontSize: 15,
+    title: 'Múltiples hojas (Distribución Maximizada)'
+  },
+  SCREEN: {
+    nodeW: 220,
+    nodeH: 86,
+    hGap: 52,
+    vGap: 68,
+    pad: 48,
+    borderWidth: 1.5,
+    connectorWidth: 1.5,
+    backgroundColor: BG,
+    fontSize: 13,
+    title: 'Pantalla'
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers de canvas
@@ -54,62 +88,62 @@ function fitText(ctx, text, maxW) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Algoritmo de layout (posiciona cada nodo en el espacio)
 // ─────────────────────────────────────────────────────────────────────────────
-function subtreeWidth(nodeId, all) {
+function subtreeWidth(nodeId, all, opts) {
   const ch = all.filter(n => n.dependeDe === nodeId);
-  if (!ch.length) return NODE_W;
-  const total = ch.reduce((s, c) => s + subtreeWidth(c.id, all), 0);
-  return Math.max(NODE_W, total + H_GAP * (ch.length - 1));
+  if (!ch.length) return opts.nodeW;
+  const total = ch.reduce((s, c) => s + subtreeWidth(c.id, all, opts), 0);
+  return Math.max(opts.nodeW, total + opts.hGap * (ch.length - 1));
 }
 
-function layoutTree(node, all, x, y, positions) {
+function layoutTree(node, all, x, y, positions, opts) {
   const children = all.filter(n => n.dependeDe === node.id);
-  const sw = subtreeWidth(node.id, all);
-  positions[node.id] = { x: x + (sw - NODE_W) / 2, y, node };
+  const sw = subtreeWidth(node.id, all, opts);
+  positions[node.id] = { x: x + (sw - opts.nodeW) / 2, y, node };
   let cx = x;
   for (const child of children) {
-    const cw = subtreeWidth(child.id, all);
-    layoutTree(child, all, cx, y + NODE_H + V_GAP, positions);
-    cx += cw + H_GAP;
+    const cw = subtreeWidth(child.id, all, opts);
+    layoutTree(child, all, cx, y + opts.nodeH + opts.vGap, positions, opts);
+    cx += cw + opts.hGap;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Renderizador Canvas — sin CSS, sin oklch, 100% portable a PDF
 // ─────────────────────────────────────────────────────────────────────────────
-function buildOrgCanvas(rootNode, allNodes) {
+function buildOrgCanvas(rootNode, allNodes, opts = PRINT_PRESETS.SCREEN) {
   const positions = {};
-  layoutTree(rootNode, allNodes, 0, 0, positions);
+  layoutTree(rootNode, allNodes, 0, 0, positions, opts);
 
   // Tamaño real del lienzo
   let maxX = 0, maxY = 0;
   for (const { x, y } of Object.values(positions)) {
-    maxX = Math.max(maxX, x + NODE_W);
-    maxY = Math.max(maxY, y + NODE_H);
+    maxX = Math.max(maxX, x + opts.nodeW);
+    maxY = Math.max(maxY, y + opts.nodeH);
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width  = (maxX + PAD * 2) * HD;
-  canvas.height = (maxY + PAD * 2) * HD;
+  canvas.width  = (maxX + opts.pad * 2) * HD;
+  canvas.height = (maxY + opts.pad * 2) * HD;
 
   const ctx = canvas.getContext('2d');
   ctx.scale(HD, HD);
-  ctx.translate(PAD, PAD);
+  ctx.translate(opts.pad, opts.pad);
 
   // Fondo
-  ctx.fillStyle = BG;
-  ctx.fillRect(-PAD, -PAD, maxX + PAD * 2, maxY + PAD * 2);
+  ctx.fillStyle = opts.backgroundColor;
+  ctx.fillRect(-opts.pad, -opts.pad, maxX + opts.pad * 2, maxY + opts.pad * 2);
 
   // ── Conectores (dibujados antes que las tarjetas) ──────────────────────────
   ctx.strokeStyle = NAVY_CONN;
-  ctx.lineWidth   = 1.5;
+  ctx.lineWidth   = opts.connectorWidth;
 
   for (const { x, y, node } of Object.values(positions)) {
     const children = allNodes.filter(n => n.dependeDe === node.id);
     if (!children.length) continue;
 
-    const pcx   = x + NODE_W / 2;
-    const pby   = y + NODE_H;
-    const midY  = pby + V_GAP / 2;
+    const pcx   = x + opts.nodeW / 2;
+    const pby   = y + opts.nodeH;
+    const midY  = pby + opts.vGap / 2;
 
     // Salida vertical del padre
     ctx.beginPath(); ctx.moveTo(pcx, pby); ctx.lineTo(pcx, midY); ctx.stroke();
@@ -119,8 +153,8 @@ function buildOrgCanvas(rootNode, allNodes) {
       const first = positions[children[0].id];
       const last  = positions[children[children.length - 1].id];
       ctx.beginPath();
-      ctx.moveTo(first.x + NODE_W / 2, midY);
-      ctx.lineTo(last.x  + NODE_W / 2, midY);
+      ctx.moveTo(first.x + opts.nodeW / 2, midY);
+      ctx.lineTo(last.x  + opts.nodeW / 2, midY);
       ctx.stroke();
     }
 
@@ -128,8 +162,8 @@ function buildOrgCanvas(rootNode, allNodes) {
     for (const child of children) {
       const cp = positions[child.id];
       ctx.beginPath();
-      ctx.moveTo(cp.x + NODE_W / 2, midY);
-      ctx.lineTo(cp.x + NODE_W / 2, cp.y);
+      ctx.moveTo(cp.x + opts.nodeW / 2, midY);
+      ctx.lineTo(cp.x + opts.nodeW / 2, cp.y);
       ctx.stroke();
     }
   }
@@ -142,46 +176,46 @@ function buildOrgCanvas(rootNode, allNodes) {
     ctx.shadowBlur    = 12;
     ctx.shadowOffsetY = 3;
     ctx.fillStyle = '#ffffff';
-    roundRect(ctx, x, y, NODE_W, NODE_H, 12);
+    roundRect(ctx, x, y, opts.nodeW, opts.nodeH, 12);
     ctx.fill();
     ctx.restore();
 
     // Borde de la tarjeta
     ctx.strokeStyle = NAVY_BORDER;
-    ctx.lineWidth   = 1.5;
-    roundRect(ctx, x, y, NODE_W, NODE_H, 12);
+    ctx.lineWidth   = opts.borderWidth;
+    roundRect(ctx, x, y, opts.nodeW, opts.nodeH, 12);
     ctx.stroke();
 
     // Nombre (con wrapping automático)
     ctx.fillStyle  = TEXT_DARK;
-    ctx.font       = 'bold 13px Arial, sans-serif';
+    ctx.font       = `bold ${opts.fontSize}px Arial, sans-serif`;
     ctx.textAlign  = 'center';
-    const lines    = fitText(ctx, node.nombre, NODE_W - 28);
-    const lineH    = 17;
-    const topY     = lines.length === 1 ? y + 26 : y + 18;
-    lines.slice(0, 2).forEach((ln, i) => ctx.fillText(ln, x + NODE_W / 2, topY + i * lineH));
+    const lines    = fitText(ctx, node.nombre, opts.nodeW - 28);
+    const lineH    = opts.fontSize + 4;
+    const topY     = lines.length === 1 ? y + opts.nodeH/2 - 12 : y + opts.nodeH/2 - 20;
+    lines.slice(0, 2).forEach((ln, i) => ctx.fillText(ln, x + opts.nodeW / 2, topY + i * lineH));
 
     // Badge del código
     ctx.font = 'bold 11px Arial, sans-serif';
     const bw = Math.max(56, ctx.measureText(node.codigo).width + 22);
-    const bx = x + NODE_W / 2 - bw / 2;
-    const by = y + NODE_H - 30;
+    const bx = x + opts.nodeW / 2 - bw / 2;
+    const by = y + opts.nodeH - 36; // Más arriba
     ctx.fillStyle = NAVY_LIGHT;
     roundRect(ctx, bx, by, bw, 20, 10);
     ctx.fill();
     ctx.fillStyle  = NAVY;
     ctx.font       = 'bold 11px "Courier New", monospace';
-    ctx.fillText(node.codigo, x + NODE_W / 2, by + 14);
+    ctx.fillText(node.codigo, x + opts.nodeW / 2, by + 14);
 
     // Sigla (opcional)
     if (node.sigla) {
       ctx.fillStyle = TEXT_MUTED;
       ctx.font      = '10px Arial, sans-serif';
-      ctx.fillText(node.sigla.toUpperCase(), x + NODE_W / 2, y + NODE_H - 8);
+      ctx.fillText(node.sigla.toUpperCase(), x + opts.nodeW / 2, y + opts.nodeH - 6); // Más abajo
     }
   }
 
-  return canvas;
+  return { canvas, positions, opts };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -245,6 +279,8 @@ const TreeNode = ({ node, allNodes }) => {
 export default function OrgChartView({ dependencias }) {
   const [selectedRootId, setSelectedRootId] = useState('');
   const [isExporting, setIsExporting]       = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [selectedPrintMode, setSelectedPrintMode] = useState('SINGLE_PAGE');
 
   // Drag & scroll
   const [isDragging, setIsDragging] = useState(false);
@@ -252,6 +288,25 @@ export default function OrgChartView({ dependencias }) {
   const scrollRef = React.useRef(null);
 
   const rootNode = dependencias.find(d => d.id === selectedRootId);
+
+  // ─── Helpers de impresión horizontal ────────────────────────────────────────
+  const countSubtree = (nodeId) => {
+    let count = 1;
+    dependencias.filter(n => n.dependeDe === nodeId).forEach(c => count += countSubtree(c.id));
+    return count;
+  };
+
+  const findExpansions = (nodeId, isRoot = true) => {
+    const list = [];
+    const children = dependencias.filter(n => n.dependeDe === nodeId);
+    children.forEach(c => {
+      const grandchildren = dependencias.filter(n => n.dependeDe === c.id);
+      if (grandchildren.length > 0) list.push(c);
+      list.push(...findExpansions(c.id, false));
+    });
+    return list;
+  };
+
 
   const onMouseDown = e => {
     setIsDragging(true);
@@ -274,31 +329,106 @@ export default function OrgChartView({ dependencias }) {
   };
 
   // ─── Exportar PDF usando canvas puro (sin captura DOM → sin oklch) ──────────
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (mode = 'SINGLE_PAGE') => {
     if (!rootNode) return;
     setIsExporting(true);
     try {
-      // Construir canvas con la función que dibuja sin CSS
-      const canvas = buildOrgCanvas(rootNode, dependencias);
+      const opts = PRINT_PRESETS[mode];
+      const pdf = new jsPDF('l', 'mm', 'a4'); 
+      const pW = pdf.internal.pageSize.getWidth();
+      const pH = pdf.internal.pageSize.getHeight();
+      const margin = 12;
+      const printableW = pW - margin * 2;
+      const printableH = pH - margin * 2;
 
-      const imgData   = canvas.toDataURL('image/png');
-      const imgW      = canvas.width  / HD;   // dimensiones lógicas
-      const imgH      = canvas.height / HD;
-      const orientation = imgW > imgH ? 'landscape' : 'portrait';
+      // Escala fija para mantener consistencia y legibilidad (ajustable)
+      const scale = 0.65;
+      const pageWidthPx = printableW / scale;
 
-      const pdf      = new jsPDF(orientation, 'mm', 'a4');
-      const pageW    = pdf.internal.pageSize.getWidth();
-      const pageH    = pdf.internal.pageSize.getHeight();
-      const aspect   = imgW / imgH;
+      // Función auxiliar para renderizar un conjunto de nodos en una o más páginas
+      const renderSubtree = (localRoot, localNodes, titlePrefix) => {
+        const { canvas, positions, opts: activeOpts } = buildOrgCanvas(localRoot, localNodes, opts);
+        const sortedNodes = Object.values(positions).sort((a, b) => a.x - b.x);
+        
+        let startIdx = 0;
+        let pagesCreated = 0;
 
-      let fw = pageW - 20;
-      let fh = fw / aspect;
-      if (fh > pageH - 20) { fh = pageH - 20; fw = fh * aspect; }
+        while (startIdx < sortedNodes.length) {
+          if (pagesCreated > 0 || pdf.internal.getNumberOfPages() > 1 || (titlePrefix !== 'General')) {
+             if (pagesCreated > 0 || (titlePrefix !== 'General')) pdf.addPage('l', 'mm', 'a4');
+          }
+          
+          // Algoritmo Greedy: Buscar la mayor cantidad de nodos que quepan (guiado por 5, pero flexible)
+          let count = Math.min(12, sortedNodes.length - startIdx); // Intentamos hasta 12 si caben
+          let bestFit = 0;
+          
+          while (count >= 1) {
+            const batch = sortedNodes.slice(startIdx, startIdx + count);
+            if (batch.length === 0) break;
+            
+            const minX = Math.min(...batch.map(n => n.x));
+            const maxX = Math.max(...batch.map(n => n.x + activeOpts.nodeW));
+            
+            // Si caben en el ancho de la página o si es el mínimo aceptable (3)
+            if ((maxX - minX) <= pageWidthPx || count <= 3) {
+              bestFit = count;
+              break;
+            }
+            count--;
+          }
+          if (bestFit === 0) bestFit = 1; // Fallback extremo
 
-      const mx = (pageW - fw) / 2;
-      const my = (pageH - fh) / 2;
+          const chunk = sortedNodes.slice(startIdx, startIdx + bestFit);
+          const minX = Math.max(0, Math.min(...chunk.map(n => n.x)) - 30); 
+          const maxX = Math.max(...chunk.map(n => n.x + activeOpts.nodeW)) + 30;
+          
+          const sX = (minX + activeOpts.pad) * HD;
+          const sW = (maxX - minX) * HD;
+          const sH = canvas.height;
 
-      pdf.addImage(imgData, 'PNG', mx, my, fw, fh);
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = sW;
+          sliceCanvas.height = sH;
+          const sCtx = sliceCanvas.getContext('2d');
+          sCtx.drawImage(canvas, sX, 0, sW, sH, 0, 0, sW, sH);
+          
+          const aspect = sW / sH;
+          let fw = printableW;
+          let fh = fw / aspect;
+          if (fh > printableH) { fh = printableH; fw = fh * aspect; }
+          
+          pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', (pW - fw) / 2, (pH - fh) / 2, fw, fh);
+          
+          pdf.setFontSize(10);
+          pdf.setTextColor(120);
+          pdf.text(`${titlePrefix} — Hoja ${pagesCreated + 1} — ${rootNode.nombre}`, margin, pH - 6);
+          
+          startIdx += bestFit;
+          pagesCreated++;
+        }
+      };
+
+      if (mode === 'SINGLE_PAGE') {
+        const { canvas } = buildOrgCanvas(rootNode, dependencias, opts);
+        const imgW = canvas.width / HD;
+        const imgH = canvas.height / HD;
+        const aspect = imgW / imgH;
+        let fw = printableW;
+        let fh = fw / aspect;
+        if (fh > printableH) { fh = printableH; fw = fh * aspect; }
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pW - fw) / 2, (pH - fh) / 2, fw, fh);
+      } else {
+        // 1. Estructura General
+        renderSubtree(rootNode, dependencias, 'Estructura General');
+
+        // 2. Vistas de Expansion (Hijas)
+        const expansions = findExpansions(rootNode.id);
+        for (const expNode of expansions) {
+          const subNodes = [expNode, ...dependencias.filter(n => n.dependeDe === expNode.id)];
+          renderSubtree(expNode, subNodes, `Detalle: ${expNode.nombre}`);
+        }
+      }
+
       pdf.save(`Organigrama_${rootNode.nombre.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
       console.error(err);
@@ -310,7 +440,110 @@ export default function OrgChartView({ dependencias }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG }}>
+      {showPrintModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: 20
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, width: '100%', maxWidth: 640,
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+            overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: NAVY_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Printer size={20} color={NAVY} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT_DARK }}>Configurar Impresión</h3>
+                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED }}>Formato horizontal optimizado para legibilidad</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowPrintModal(false)}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, color: TEXT_MUTED }}
+              >
+                <X size={20} />
+              </button>
+            </div>
 
+            <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Opción 1: Hoja Horizontal Única */}
+              <div 
+                onClick={() => setSelectedPrintMode('SINGLE_PAGE')}
+                style={{
+                  padding: 24, borderRadius: 16, border: `2px solid ${selectedPrintMode === 'SINGLE_PAGE' ? NAVY : '#f1f5f9'}`,
+                  background: selectedPrintMode === 'SINGLE_PAGE' ? '#f8fafc' : '#fff',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ 
+                  width: 48, height: 48, borderRadius: 12, 
+                  background: selectedPrintMode === 'SINGLE_PAGE' ? NAVY : '#f1f5f9',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: selectedPrintMode === 'SINGLE_PAGE' ? '#fff' : TEXT_MUTED
+                }}>
+                  <Maximize size={24} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: '0 0 4px', fontWeight: 700, color: TEXT_DARK, fontSize: 15 }}>Opción 1: Hoja Horizontal Única</p>
+                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED, lineHeight: 1.4 }}>
+                    Ajuste automático para que todo quepa en una hoja apaisada. Bordes gruesos y conectores reforzados.
+                  </p>
+                </div>
+                {selectedPrintMode === 'SINGLE_PAGE' && <ChevronRight size={20} color={NAVY} />}
+              </div>
+
+              {/* Opción 2: Distribución Horizontal Inteligente */}
+              <div 
+                onClick={() => setSelectedPrintMode('MULTI_PAGE')}
+                style={{
+                  padding: 24, borderRadius: 16, border: `2px solid ${selectedPrintMode === 'MULTI_PAGE' ? NAVY : '#f1f5f9'}`,
+                  background: selectedPrintMode === 'MULTI_PAGE' ? '#f8fafc' : '#fff',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ 
+                  width: 48, height: 48, borderRadius: 12, 
+                  background: selectedPrintMode === 'MULTI_PAGE' ? NAVY : '#f1f5f9',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: selectedPrintMode === 'MULTI_PAGE' ? '#fff' : TEXT_MUTED
+                }}>
+                  <Printer size={24} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: '0 0 4px', fontWeight: 700, color: TEXT_DARK, fontSize: 15 }}>Opción 2: Distribución Horizontal Inteligente</p>
+                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED, lineHeight: 1.4 }}>
+                    Divide el flujo (aprox. 5 dependencias por hoja) y genera vistas detalladas para dependencias con hijas.
+                  </p>
+                </div>
+                {selectedPrintMode === 'MULTI_PAGE' && <ChevronRight size={20} color={NAVY} />}
+              </div>
+            </div>
+
+            <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button 
+                onClick={() => setShowPrintModal(false)}
+                style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 14, fontWeight: 600, color: TEXT_DARK, cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  setShowPrintModal(false);
+                  handleExportPDF(selectedPrintMode);
+                }}
+                style={{ padding: '10px 28px', borderRadius: 10, border: 'none', background: NAVY, fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <Download size={18} />
+                Generar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={{
         background: '#fff', borderBottom: '1px solid #e2e8f0',
@@ -344,7 +577,7 @@ export default function OrgChartView({ dependencias }) {
 
           {rootNode && (
             <button
-              onClick={handleExportPDF}
+              onClick={() => setShowPrintModal(true)}
               disabled={isExporting}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
@@ -354,8 +587,8 @@ export default function OrgChartView({ dependencias }) {
                 opacity: isExporting ? 0.7 : 1
               }}
             >
-              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              {isExporting ? 'Generando...' : 'Exportar PDF'}
+              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+              {isExporting ? 'Generando...' : 'Imprimir / Exportar'}
             </button>
           )}
         </div>

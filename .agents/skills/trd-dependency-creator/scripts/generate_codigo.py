@@ -3,43 +3,27 @@ import sys
 def generate_codigo(parent_code, existing_sibling_codes):
     """
     Genera el siguiente código jerárquico basado en el código del padre
-    y los códigos de las dependencias hermanas ya existentes.
+    usando un sistema de prefijos (CódigoMadre + Secuencial).
     """
     # Si no hay padre, es la dependencia principal
     if not parent_code or parent_code.lower() == 'none' or parent_code == '':
         return "100"
 
-    try:
-        parent_val = int(parent_code)
-    except ValueError:
-        # Si el código del padre no es numérico, no podemos seguir la lógica
-        return "ERROR_PARENT_NON_NUMERIC"
-
-    # Convertir hermanos a enteros para cálculos
-    sibling_vals = []
+    parent_str = str(parent_code)
+    
+    # Extraer los sufijos numéricos de los hermanos que ya siguen este patrón
+    suffixes = []
     for c in existing_sibling_codes:
-        try:
-            sibling_vals.append(int(c))
-        except ValueError:
-            continue
-
-    if parent_val == 100:
-        # Nivel 1 (hijas de 100): Inician en 200 y crecen de 10 en 10
-        if not sibling_vals:
-            return "200"
-        return str(max(sibling_vals) + 10)
+        c_str = str(c)
+        if c_str.startswith(parent_str) and len(c_str) > len(parent_str):
+            suffix_part = c_str[len(parent_str):]
+            if suffix_part.isdigit():
+                suffixes.append(int(suffix_part))
     
-    # Nivel 2+ (hijas de dependencias nivel 1 o superior):
-    # La regla dice "crecerá de 10 en 10 para hijas directas", 
-    # pero el ejemplo de Nivel 1 ya usa el salto de 100 a 200.
-    # Si seguimos la lógica de bloques:
-    # Nivel 1: incrementos de 10 (200, 210, 220...)
-    # Nivel 2: incrementos de 1 (201, 202, 203...)
+    # El siguiente número es el máximo encontrado + 1, o simplemente 1
+    next_num = max(suffixes) + 1 if suffixes else 1
     
-    if not sibling_vals:
-        return str(parent_val + 1)
-    
-    return str(max(sibling_vals) + 1)
+    return f"{parent_str}{next_num}"
 
 if __name__ == "__main__":
     # Uso: python generate_codigo.py <parent_code> <sibling_code1> <sibling_code2> ...

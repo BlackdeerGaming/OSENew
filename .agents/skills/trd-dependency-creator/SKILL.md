@@ -26,17 +26,16 @@ When a dependency name is provided, the sigla MUST be generated automatically fo
 You can use the bundled script `scripts/generate_sigla.py` to calculate this or verify your own logic.
 
 ### 2. Hierarchical Code (Código) Generation
-The code is built based on the dependency's position in the organizational chart:
+The code is built strictly based on the parent dependency's code:
 
 - **Root Dependency**: The main dependency always starts at **100**.
-- **First Level Children (Daughters of 100)**:
-  - The first daughter receives **200**.
-  - Subsequent sisters at this level increment by **10** (**210, 220, 230...**).
-- **Second Level Children (Daughters of a Level 1 dependency)**:
-  - If parent is `200`, the first daughter receives **201**.
-  - Subsequent sisters at this level increment by **1** (**202, 203...**).
-- **Subsequent Levels**: 
-  - To maintain consistency in a 3-digit system, we follow the pattern of the last available digit or expand into sub-blocks (e.g., `201.1` or `2011`) if needed. *Note: Current implementation assumes 3 digits based on examples.*
+- **Child Dependency Construction**: Every child dependency must take its mother's code as a base and append a sequential number (1, 2, 3...).
+- **Level-by-Level Inheritance**: 
+  - If a mother's code is `100`, its daughters are `1001, 1002, 1003...`
+  - If a mother's code is `202`, its daughters are `2021, 2022, 2023...`
+  - If a mother's code is `2021`, its daughters are `20211, 20212, 20213...`
+
+This rule ensures that the hierarchy is visible in the code itself and that every unit belongs correctly to its immediate superior.
 
 The code is assigned based on the **creation order** of children under the same parent.
 

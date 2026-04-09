@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS dependencias (
   direccion TEXT,
   telefono TEXT,
   depende_de TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
+  entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS series (
   tipo_documental TEXT,
   descripcion TEXT,
   dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS subseries (
   descripcion TEXT,
   serie_id TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
   dependencia_id TEXT REFERENCES dependencias(id) ON DELETE CASCADE,
+  entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS trd_records (
   dependencia_id TEXT REFERENCES dependencias(id) ON DELETE CASCADE,
   serie_id TEXT REFERENCES series(id) ON DELETE CASCADE,
   subserie_id TEXT REFERENCES subseries(id) ON DELETE SET NULL,
+  entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   estado_conservacion TEXT,
   retenci_gestion INTEGER,
   retenci_central INTEGER,
@@ -152,8 +156,20 @@ ALTER TABLE series ADD COLUMN IF NOT EXISTS cloud_key TEXT;
 ALTER TABLE subseries ADD COLUMN IF NOT EXISTS cloud_key TEXT;
 ALTER TABLE trd_records ADD COLUMN IF NOT EXISTS cloud_key TEXT;
 
+-- Migration to add entity_id for multi-tenant support
+ALTER TABLE dependencias ADD COLUMN IF NOT EXISTS entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE;
+ALTER TABLE series ADD COLUMN IF NOT EXISTS entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE;
+ALTER TABLE subseries ADD COLUMN IF NOT EXISTS entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE;
+ALTER TABLE trd_records ADD COLUMN IF NOT EXISTS entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE;
+
 -- Optional: create index for faster lookup
 CREATE INDEX IF NOT EXISTS idx_dependencias_cloud_key ON dependencias(cloud_key);
 CREATE INDEX IF NOT EXISTS idx_series_cloud_key ON series(cloud_key);
 CREATE INDEX IF NOT EXISTS idx_subseries_cloud_key ON subseries(cloud_key);
 CREATE INDEX IF NOT EXISTS idx_trd_records_cloud_key ON trd_records(cloud_key);
+
+-- Index for entity_id lookups
+CREATE INDEX IF NOT EXISTS idx_dependencias_entity ON dependencias(entity_id);
+CREATE INDEX IF NOT EXISTS idx_series_entity ON series(entity_id);
+CREATE INDEX IF NOT EXISTS idx_subseries_entity ON subseries(entity_id);
+CREATE INDEX IF NOT EXISTS idx_trd_records_entity ON trd_records(entity_id);

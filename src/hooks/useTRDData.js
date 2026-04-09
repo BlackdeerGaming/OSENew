@@ -44,16 +44,18 @@ export function useTRDData() {
   const addDependencia = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     
-    // TRULY OPTIMISTIC: Update local state first
+    // Optimistic Update
     setDependencias(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Syncing dependencia to Supabase...', newRecord);
       const { error } = await supabase.from('dependencias').upsert(mapDependenciaToDB(newRecord));
-      if (error) console.error('❌ Supabase error (dependencia):', error);
+      if (error) {
+        console.error('❌ Supabase error (dependencia):', error);
+        throw error;
+      }
     }
     return newRecord;
   };
@@ -62,61 +64,52 @@ export function useTRDData() {
      setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data } : x));
      if (supabase) {
        const { error } = await supabase.from('dependencias').update(mapDependenciaToDB(data)).eq('id', id);
-       if (error) console.error('❌ Supabase error (updating):', error);
+       if (error) throw error;
      }
   };
 
   const deleteDependencia = async (id) => {
     setDependencias(prev => prev.filter(x => x.id !== id));
-    setSeries(prev => prev.filter(x => x.dependenciaId !== id));
-    setTrdRecords(prev => prev.filter(x => x.dependenciaId !== id));
-
     if (supabase) {
-      await supabase.from('dependencias').delete().eq('id', id);
+      const { error } = await supabase.from('dependencias').delete().eq('id', id);
+      if (error) throw error;
     }
   };
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    
-    // TRULY OPTIMISTIC: Update local state first
     setSeries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Syncing serie to Supabase...', newRecord);
       const { error } = await supabase.from('series').upsert(mapSerieToDB(newRecord));
-      if (error) console.error('❌ Supabase error (serie):', error);
+      if (error) throw error;
     }
     return newRecord;
   };
 
   const deleteSerie = async (id) => {
     setSeries(prev => prev.filter(x => x.id !== id));
-    setSubseries(prev => prev.filter(x => x.serieId !== id));
-    setTrdRecords(prev => prev.filter(x => x.serieId !== id));
     if (supabase) {
-      await supabase.from('series').delete().eq('id', id);
+      const { error } = await supabase.from('series').delete().eq('id', id);
+      if (error) throw error;
     }
   };
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    
-    // TRULY OPTIMISTIC: Update local state first
     setSubseries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Syncing subserie to Supabase...', newRecord);
       const { error } = await supabase.from('subseries').upsert(mapSubserieToDB(newRecord));
-      if (error) console.error('❌ Supabase error (subserie):', error);
+      if (error) throw error;
     }
     return newRecord;
   };
@@ -124,24 +117,22 @@ export function useTRDData() {
   const deleteSubserie = async (id) => {
     setSubseries(prev => prev.filter(x => x.id !== id));
     if (supabase) {
-      await supabase.from('subseries').delete().eq('id', id);
+      const { error } = await supabase.from('subseries').delete().eq('id', id);
+      if (error) throw error;
     }
   };
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
-    
-    // TRULY OPTIMISTIC: Update local state first
     setTrdRecords(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
     });
 
     if (supabase) {
-      console.log('📡 Syncing TRD record to Supabase...', newRecord);
       const { error } = await supabase.from('trd_records').upsert(mapTRDToDB(newRecord));
-      if (error) console.error('❌ Supabase error (TRD record):', error);
+      if (error) throw error;
     }
     return newRecord;
   };
@@ -171,7 +162,7 @@ function mapDependenciaFromDB(d) {
     direccion: d.direccion,
     telefono: d.telefono,
     dependeDe: d.depende_de,
-    entidadId: d.entidad_id
+    entityId: d.entity_id // Match backend
   };
 }
 
@@ -186,8 +177,8 @@ function mapDependenciaToDB(d) {
     ciudad: d.ciudad,
     direccion: d.direccion,
     telefono: d.telefono,
-    depende_de: d.dependeDe,
-    entidad_id: d.entidadId
+    depende_de: (d.dependeDe === "ninguna" || !d.dependeDe) ? null : d.dependeDe,
+    entity_id: d.entityId || d.entidadId || null // Match backend
   };
 }
 
@@ -197,6 +188,7 @@ function mapSerieFromDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     dependenciaId: s.dependencia_id,
+    entityId: s.entity_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -207,6 +199,7 @@ function mapSerieToDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     dependencia_id: s.dependenciaId,
+    entity_id: s.entityId || s.entidadId || null,
     tipo_documental: s.tipoDocumental
   };
 }
@@ -217,6 +210,8 @@ function mapSubserieFromDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     serieId: s.serie_id,
+    dependenciaId: s.dependencia_id,
+    entityId: s.entity_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -227,6 +222,8 @@ function mapSubserieToDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     serie_id: s.serieId,
+    dependencia_id: s.dependenciaId || null,
+    entity_id: s.entityId || s.entidadId || null,
     tipo_documental: s.tipoDocumental
   };
 }
@@ -237,7 +234,7 @@ function mapTRDFromDB(r) {
     dependenciaId: r.dependencia_id,
     serieId: r.serie_id,
     subserieId: r.subserie_id,
-    entidadId: r.entidad_id,
+    entityId: r.entity_id,
     estadoConservacion: r.estado_conservacion,
     retencionGestion: r.retenci_gestion,
     retencionCentral: r.retenci_central,
@@ -267,8 +264,8 @@ function mapTRDToDB(r) {
     id: r.id,
     dependencia_id: r.dependenciaId,
     serie_id: r.serieId,
-    subserie_id: r.subserieId || null,
-    entidad_id: r.entidadId || null,
+    subserie_id: (r.subserieId === "ninguna" || r.subserieId === "no aplica" || !r.subserieId) ? null : r.subserieId,
+    entity_id: r.entityId || r.entidadId || null,
     estado_conservacion: r.estadoConservacion,
     retenci_gestion: r.retencionGestion ? parseInt(r.retencionGestion) : null,
     retenci_central: r.retencionCentral ? parseInt(r.retencionCentral) : null,
