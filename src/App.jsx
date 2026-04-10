@@ -8,15 +8,13 @@ import SubserieForm from './components/forms/SubserieForm';
 import TRDForm from './components/forms/TRDForm';
 import StructuredDataView from './components/data/StructuredDataView';
 import TRDGenerator from './components/trd/TRDGenerator';
-import { Save, Bot } from 'lucide-react';
+import { Save, Bot, ArrowLeft, Printer } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import MainSidebar from './components/layout/MainSidebar';
-import { jsPDF } from "jspdf";
-import html2canvas from 'html2canvas';
 import MainHeader from './components/layout/MainHeader';
 import DashboardView from './components/views/DashboardView';
 import CopilotView from './components/views/CopilotView';
@@ -24,6 +22,7 @@ import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
+
 import TRDImportView from './components/views/TRDImportView';
 import RAGDocumentView from './components/views/RAGDocumentView';
 import API_BASE_URL from './config/api';
@@ -83,10 +82,12 @@ function App() {
   const [activationToken, setActivationToken] = useState(null);
   const [resetToken, setResetToken] = useState(null);
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
+  const [entidadLogoBase64, setEntidadLogoBase64] = useState(null);
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
 
   // Global App Data State
   const [entities, setEntities] = useState([
@@ -141,7 +142,6 @@ function App() {
       password: 'admin' 
     }
   ]);
-
 
   // Detectar tokens en la URL
   useEffect(() => {
@@ -250,7 +250,8 @@ function App() {
     addSubserie, deleteSubserie,
     addTrdRecord,
     isLoading: trdLoading, isSynced,
-  } = useTRDData();
+    refreshData
+  } = useTRDData(currentUser?.id);
 
   // UI State
   const handleUpdateUserProfile = (updatedData) => {
@@ -270,6 +271,9 @@ function App() {
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(true);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
+
+  // Selective Export TRD Filter
+  const [selectedDependencia, setSelectedDependencia] = useState("TODAS");
   
   // Chat State
   const [messages, setMessages] = useState([]);
@@ -324,6 +328,25 @@ function App() {
           if (action.id) idMap[action.id] = newId;
 
           const rawPayload = { ...action.payload };
+          
+          // Auto-create missing dependencies if they don't exist by name
+          let depId = rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre;
+          const foundDep = dependencias.find(x => x.id === depId || x.nombre?.toLowerCase() === depId?.toLowerCase());
+          if (!foundDep && depId && !idMap[depId] && entity === 'trd_records') {
+              const strId = Date.now().toString() + "_dep";
+              idMap[depId] = strId;
+              await addDependencia({ id: strId, entityId: userEntities[0]?.id, nombre: depId, sigla: "GEN", codigo: (Math.floor(Math.random() * 900) + 100).toString() });
+          }
+
+          let serId = rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre;
+          const foundSer = series.find(x => x.id === serId || x.nombre?.toLowerCase() === serId?.toLowerCase());
+          if (!foundSer && serId && !idMap[serId] && entity === 'trd_records') {
+              const strId = Date.now().toString() + "_ser";
+              idMap[serId] = strId;
+              let actualDepId = idMap[depId] || foundDep?.id;
+              await addSerie({ id: strId, entityId: userEntities[0]?.id, dependenciaId: actualDepId, nombre: serId, codigo: (Math.floor(Math.random() * 90) + 10).toString(), tipoDocumental: rawPayload.tipoDocumental || "Documentos" });
+          }
+
           const resolveId = (providedId, collection) => {
               if (!providedId) return null;
               if (idMap[providedId]) return idMap[providedId];
@@ -342,9 +365,9 @@ function App() {
               direccion: rawPayload.direccion || "Carrera 7 # 12-34",
               telefono: rawPayload.telefono || "6012345678",
               dependeDe: resolveId(rawPayload.dependeDe, dependencias) || "ninguna",
-              dependenciaId: resolveId(rawPayload.dependenciaId || rawPayload.dependencyId, dependencias),
-              serieId: resolveId(rawPayload.serieId || rawPayload.seriesId, series),
-              subserieId: resolveId(rawPayload.subserieId || rawPayload.subseriesId, subseries),
+              dependenciaId: resolveId(rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre, dependencias),
+              serieId: resolveId(rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre, series),
+              subserieId: resolveId(rawPayload.subserieId || rawPayload.subseriesId || rawPayload.subserieNombre, subseries),
               tipoDocumental: rawPayload.tipoDocumental || "Documentos generales",
               retencionGestion: rawPayload.retencionGestion || 2,
               retencionCentral: rawPayload.retencionCentral || 10,
@@ -494,7 +517,7 @@ function App() {
     }
   };
 
-  // Calculate TRD Rows globally so Header can export PDF
+  // Calculate TRD Rows globally
   const trdRows = trdRecords.map(record => {
     const dep = dependencias.find(d => d.id === record.dependenciaId) || {};
     const serie = series.find(s => s.id === record.serieId) || {};
@@ -521,8 +544,16 @@ function App() {
     };
   });
 
-  // Filtered rows for PDF (only selected, or all if none selected)
-  const exportRows = selectedTrdIds.size === 0 ? trdRows : trdRows.filter(r => selectedTrdIds.has(r.id));
+  // Filtered rows for UI and PDF
+  const filteredTrdRows = React.useMemo(() => {
+    if (selectedDependencia === "TODAS") return trdRows;
+    return trdRows.filter(r => r.dependencia === selectedDependencia);
+  }, [trdRows, selectedDependencia]);
+
+  const uniqueDependencias = React.useMemo(() => {
+    const deps = new Set(trdRows.map(r => r.dependencia || "Sin Oficina"));
+    return Array.from(deps);
+  }, [trdRows]);
 
   const toggleTrdRow = (id) => {
     setSelectedTrdIds(prev => {
@@ -534,52 +565,13 @@ function App() {
   };
 
   const toggleAllTrdRows = (checked) => {
-    if (checked) setSelectedTrdIds(new Set(trdRows.map(r => r.id)));
+    if (checked) setSelectedTrdIds(new Set(filteredTrdRows.map(r => r.id)));
     else setSelectedTrdIds(new Set());
   };
 
   const handleLogin = (user) => {
     setCurrentUser(user);
     setAuthView('dashboard');
-  };
-
-  const handleExportTRD = async () => {
-    const element = document.getElementById('trd-final-report-area');
-    if (!element) return alert("No se pudo encontrar el reporte para exportar.");
-
-    // Guardar estilos originales
-    const originalStyle = element.style.cssText;
-    
-    try {
-      // 1. Preparar el lienzo para alta resolución (Estilo Organigrama)
-      element.style.height = 'auto';
-      element.style.maxHeight = 'none';
-      element.style.overflow = 'visible';
-      element.style.borderColor = '#cbd5e1'; // Forzar HEX para nitidez
-
-      const canvas = await html2canvas(element, {
-        scale: 2, // Retina resolution
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 1200 // Simular ancho de escritorio para layouts
-      });
-
-      // Restaurar estilos
-      element.style.cssText = originalStyle;
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      pdf.save(`TRD_Oficial_${new Date().toLocaleDateString()}.pdf`);
-    } catch (error) {
-      console.error("Error al exportar TRD:", error);
-      element.style.cssText = originalStyle;
-      alert("Error al generar el PDF oficial completo.");
-    }
   };
 
   // Determine which entities the current user can see/select
@@ -592,6 +584,37 @@ function App() {
       : currentUser.entidadId ? [currentUser.entidadId] : [];
     return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
   }, [currentUser, entities]);
+
+  const currentEntity = userEntities.find(e => e.id === currentUser?.entidadId) || userEntities[0];
+
+  // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
+  useEffect(() => {
+    if (!currentEntity?.logoUrl) {
+      setEntidadLogoBase64(null);
+      return;
+    }
+
+    const convertToBase64 = async () => {
+      try {
+        const response = await fetch(currentEntity.logoUrl, { mode: 'cors' });
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.warn("⚠️ No se pudo pre-cargar el logo en Base64 (CORS):", err);
+        return null;
+      }
+    };
+
+    convertToBase64().then(base64 => setEntidadLogoBase64(base64));
+  }, [currentEntity]);
+
+  const handleExportTRD = () => {
+    setIsPrinting(true);
+  };
 
   // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
@@ -683,7 +706,6 @@ function App() {
       <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full rounded-br-2xl">
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-primary/[0.02] to-transparent" />
         <div className="relative p-6 h-full flex flex-col">
-          {/* Header removed as requested */}
           
           <div className="flex-1">
             {activeModule === 'dependencias' && (
@@ -707,21 +729,20 @@ function App() {
             {activeModule === 'trd' && (
               <div id="trd-final-report-area" className="print-content h-full">
                 <TRDGenerator 
-                  rows={trdRows} 
+                  rows={filteredTrdRows} 
                   selectedIds={selectedTrdIds}
                   onToggleRow={toggleTrdRow}
                   onToggleAll={toggleAllTrdRows}
                   currentUser={currentUser}
+                  currentEntity={currentEntity}
+                  logoBase64={entidadLogoBase64}
                 />
               </div>
             )}
-            {activeModule === 'import' && (
-              <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} />
-            )}
+            <div style={{ display: activeModule === 'import' ? 'block' : 'none', height: '100%' }}>
+              <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} currentEntity={currentEntity} logoBase64={entidadLogoBase64} />
+            </div>
           </div>
-
-          {/* Save Button floating dock for forms */}
-          {/* Orianna status moved to sidebar */}
 
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && currentUser?.role !== 'user' && (
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-8">
@@ -739,6 +760,50 @@ function App() {
     </div>
   );
 
+  // 🔥 EL PORTAL: Si estamos imprimiendo, matamos el resto del DOM 🔥
+  if (isPrinting) {
+    return (
+      <div className="bg-slate-100 min-h-screen w-full flex flex-col items-center overflow-auto print:block print:overflow-visible">
+        {/* Barra de Herramientas de Previsualización */}
+        <div className="w-full flex justify-between items-center px-6 py-3 bg-slate-900 text-white sticky top-0 z-[100] shadow-lg print:hidden">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsPrinting(false)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-bold transition-all border border-slate-700 active:scale-95"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              VOLVER A LA GESTIÓN
+            </button>
+            <div className="h-6 w-px bg-slate-800" />
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Previsualización de Reporte Oficial</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
+            >
+              <Printer className="h-4 w-4" />
+              DESCARGAR PDF OFICIAL
+            </button>
+          </div>
+        </div>
+
+        <div className="w-full flex-1 flex justify-center p-0 m-0 print:block">
+          <TRDGenerator 
+            rows={filteredTrdRows} 
+            selectedIds={selectedTrdIds}
+            onToggleRow={() => {}} 
+            onToggleAll={() => {}}
+            currentUser={currentUser}
+            currentEntity={currentEntity}
+            logoBase64={entidadLogoBase64}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <RAGProvider>
       <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
@@ -752,14 +817,26 @@ function App() {
             searchQuery={globalSearchQuery}
             onSearchQueryChange={setGlobalSearchQuery}
             currentUser={currentUser}
+            currentEntity={userEntities.length > 0 && currentUser?.role !== 'superadmin' ? userEntities[0] : null}
           />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
             <MainHeader 
-               onLogout={() => { setAuthView('login'); setCurrentUser(null); }}
+               onLogout={() => { 
+                 setAuthView('login'); 
+                 setCurrentUser(null); 
+                 setSelectedDependencia("TODAS");
+                 setSelectedTrdIds(new Set());
+               }}
                mainView={mainView}
                onExportPDF={handleExportTRD}
-               trdProps={{ status: "En Progreso", rows: exportRows }}
+               trdProps={{ 
+                 status: "En Progreso", 
+                 rows: filteredTrdRows,
+                 availableDependencias: uniqueDependencias,
+                 selectedDependencia,
+                 onSelectDependencia: setSelectedDependencia
+               }}
                currentUser={currentUser}
             />
 

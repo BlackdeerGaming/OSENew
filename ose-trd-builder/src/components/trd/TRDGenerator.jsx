@@ -44,8 +44,8 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
       </div>
 
       {/* DANE FORMAT CONTAINER */}
-      <div className="flex justify-center p-4 md:p-8">
-        <div id="trd-final-report-area" className="bg-white shadow-2xl border border-slate-300 w-full max-w-[215mm] p-[8mm] flex flex-col font-sans print:shadow-none print:border-none print:p-0 print:m-0 h-fit">
+      <div className="flex justify-center p-4 md:p-8 print:block print:p-0 print:m-0 print:w-full print:flex-none">
+        <div id="trd-final-report-area" className="bg-white shadow-2xl border border-slate-300 w-full max-w-[215mm] p-[8mm] flex flex-col font-sans print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:text-[8px] h-fit">
           
           {/* OFICIAL HEADER */}
           <div className="border-[0.1px] border-slate-400 flex flex-col overflow-hidden rounded-sm">
@@ -87,7 +87,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
 
             {/* TABLE HEADERS */}
             <div className="flex text-[7px] font-black text-center divide-x-[0.1px] divide-slate-400 border-b-[0.1px] border-slate-400 bg-white">
-              <div className="w-16 flex flex-col">
+              <div className="w-16 print:w-[10%] shrink-0 flex flex-col">
                 <div className="h-8 flex items-center justify-center bg-slate-50">CÓDIGO</div>
                 <div className="h-6 grid grid-cols-3 border-t-[0.1px] border-slate-400 divide-x-[0.1px] divide-slate-400">
                   <div className="flex items-center justify-center">D</div>
@@ -95,24 +95,24 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                   <div className="flex items-center justify-center">SUB</div>
                 </div>
               </div>
-              <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 uppercase min-w-[180px]">
+              <div className="flex-1 print:flex-none print:w-[25%] flex items-center justify-center p-1 bg-slate-50 uppercase min-w-[180px] print:min-w-0">
                 Serie, Subserie y Tipos Documentales
               </div>
-              <div className="w-14 flex flex-col">
+              <div className="w-14 print:w-[10%] shrink-0 flex flex-col">
                 <div className="h-8 flex items-center justify-center bg-slate-50 leading-[8px] p-0.5 uppercase">Soporte o Formato</div>
                 <div className="h-6 grid grid-cols-2 border-t-[0.1px] border-slate-400 divide-x-[0.1px] divide-slate-400 uppercase">
                   <div className="flex items-center justify-center">SF</div>
                   <div className="flex items-center justify-center">SE</div>
                 </div>
               </div>
-              <div className="w-16 flex flex-col">
+              <div className="w-16 print:w-[10%] shrink-0 flex flex-col">
                 <div className="h-8 flex items-center justify-center bg-slate-50 leading-[8px] p-1 uppercase">Tiempo de Retención (Años)</div>
                 <div className="h-6 grid grid-cols-2 border-t-[0.1px] border-slate-400 divide-x-[0.1px] divide-slate-400 uppercase font-black">
                   <div className="flex items-center justify-center">A/G</div>
                   <div className="flex items-center justify-center">A/C</div>
                 </div>
               </div>
-              <div className="w-24 flex flex-col">
+              <div className="w-24 print:w-[15%] shrink-0 flex flex-col">
                 <div className="h-8 flex items-center justify-center bg-slate-50 uppercase">Disposición Final</div>
                 <div className="h-6 grid grid-cols-4 border-t-[0.1px] border-slate-400 divide-x-[0.1px] divide-slate-400">
                   <div className="flex items-center justify-center">CT</div>
@@ -121,7 +121,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                   <div className="flex items-center justify-center">E</div>
                 </div>
               </div>
-              <div className="w-48 flex items-center justify-center p-1 bg-slate-50 uppercase">Procedimiento</div>
+              <div className="w-48 print:w-[30%] shrink-0 flex items-center justify-center p-1 bg-slate-50 uppercase">Procedimiento</div>
             </div>
 
             {/* DATA ROWS */}
@@ -134,12 +134,12 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
 
                 return (
                   <div key={row.id || idx} className="flex text-[7px] min-h-[36px] divide-x-[0.1px] divide-slate-400 items-stretch bg-white">
-                    <div className="w-16 grid grid-cols-3 divide-x-[0.1px] divide-slate-400 text-center font-bold">
+                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-3 divide-x-[0.1px] divide-slate-400 text-center font-bold">
                       <div className="flex items-center justify-center">{d}</div>
                       <div className="flex items-center justify-center">{s}</div>
                       <div className="flex items-center justify-center">{sub}</div>
                     </div>
-                    <div className="flex-1 p-1.5 flex flex-col gap-0.5 min-w-[180px]">
+                    <div className="flex-1 print:flex-none print:w-[25%] p-1.5 flex flex-col gap-0.5 min-w-[180px] print:min-w-0">
                        {sub ? (
                          <>
                            <span className="font-black uppercase text-[7.5px] text-slate-800">{row.subserie}</span>
@@ -155,21 +155,21 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                          <span className="font-black uppercase text-[8px] text-slate-900 bg-slate-50/50">{row.serie}</span>
                        )}
                     </div>
-                    <div className="w-14 grid grid-cols-2 divide-x-[0.1px] divide-slate-400 text-center">
+                    <div className="w-14 print:w-[10%] shrink-0 grid grid-cols-2 divide-x-[0.1px] divide-slate-400 text-center">
                        <div className="flex items-center justify-center">{row.soporte === 'fisico' || !row.soporte ? <Check className="h-2 w-2" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.soporte === 'electronico' ? <Check className="h-2 w-2" /> : ''}</div>
                     </div>
-                    <div className="w-16 grid grid-cols-2 divide-x-[0.1px] divide-slate-400 text-center font-black bg-slate-50/20">
+                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-2 divide-x-[0.1px] divide-slate-400 text-center font-black bg-slate-50/20">
                        <div className="flex items-center justify-center">{row.retencionGestion}</div>
                        <div className="flex items-center justify-center">{row.retencionCentral}</div>
                     </div>
-                    <div className="w-24 grid grid-cols-4 divide-x-[0.1px] divide-slate-400 text-center font-black">
+                    <div className="w-24 print:w-[15%] shrink-0 grid grid-cols-4 divide-x-[0.1px] divide-slate-400 text-center font-black">
                        <div className="flex items-center justify-center">{row.disposicion === 'Conservación total' || row.disposicion === 'CT' ? <Check className="h-2 w-2" /> : ''}</div>
                        <div className="flex items-center justify-center text-[6px]">{(row.reproduccion === 'Digitalización' || row.reproduccion === 'Microfilmación') ? 'D' : ''}</div>
                        <div className="flex items-center justify-center">{row.disposicion === 'Selección' ? <Check className="h-2 w-2" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.disposicion === 'Eliminación' ? <Check className="h-2 w-2" /> : ''}</div>
                     </div>
-                    <div className="w-48 p-1.5 text-justify leading-[9px] text-slate-700 font-medium">
+                    <div className="w-48 print:w-[30%] shrink-0 p-1.5 text-justify leading-[9px] text-slate-700 font-medium">
                        {row.procedimiento || "No especificado."}
                     </div>
                   </div>

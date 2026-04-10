@@ -26,7 +26,7 @@ export default function AgentChat({ messages, onSendMessage, isTyping, quickOpti
   };
 
   return (
-    <div className="flex h-full flex-col bg-background/50 backdrop-blur-sm border-r border-border shadow-sm">
+    <div className="flex h-full flex-col bg-background/50 backdrop-blur-sm border-r border-border shadow-sm print:hidden">
       {/* Intro Banner */}
       <div className="p-4 border-b border-border bg-secondary/50 flex justify-between items-center">
         <div className="flex items-center gap-3">

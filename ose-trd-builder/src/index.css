@@ -62,3 +62,39 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-primary); 
 }
+
+/* 🖨️ REGLAS DE IMPRESIÓN (PORTAL DE IMPRESIÓN SEGURO) 🖨️ */
+@media print {
+  /* 1. RESET ESTRUCTURAL: Al usar el Portal del DOM, la página está vacía exceptuando el reporte */
+  html, 
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* 2. EL REPORTE: Ocupa toda la hoja */
+  #trd-final-report-area {
+    visibility: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 215.9mm !important; /* Ancho exacto Letter */
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 3. CONFIGURACIÓN DE PÁGINA */
+  @page {
+    size: letter portrait;
+    margin: 0; /* Aprovechamos cada milímetro */
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+}

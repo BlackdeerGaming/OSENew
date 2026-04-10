@@ -1,82 +1,113 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Search, Table, Trash2, ArrowRight, Eye, Printer, X, FileText } from 'lucide-react';
+import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, Printer, X, FileText, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import API_BASE_URL from '../../config/api';
 import TRDReportDANE from '../trd/TRDGenerator';
+import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import html2canvas from 'html2canvas';
 
-const TRDImportView = ({ onImportComplete, currentUser }) => {
-  const [file, setFile] = useState(null);
-  const [status, setStatus] = useState('idle'); 
-  const [detectedActions, setDetectedActions] = useState([]);
-  const [selectedIndices, setSelectedIndices] = useState(new Set());
-  const [error, setError] = useState(null);
-  const [aiResponse, setAiResponse] = useState(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64 }) => {
+  const [imports, setImports] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Para la previsualización modal
+  const [previewImportId, setPreviewImportId] = useState(null);
+  const [selectedIndices, setSelectedIndices] = useState(new Set()); // Para el import actual revisado
 
-  const onDrop = useCallback((acceptedFiles) => {
-    if (acceptedFiles[0]) {
-      setFile(acceptedFiles[0]);
-      setStatus('idle');
-      setError(null);
-      setAiResponse(null);
-      setSelectedIndices(new Set());
+  useEffect(() => {
+    fetchImports();
+  }, []);
+
+  const fetchImports = async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch(`${API_BASE_URL}/imports`);
+      if (res.ok) {
+        const data = await res.json();
+        setImports(data);
+      }
+    } catch (err) {
+      console.error("Error cargando previsualizaciones:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onDrop = useCallback(async (acceptedFiles) => {
+    // Add multiple files to local state as "uploading"
+    const newImports = acceptedFiles.map(f => ({
+       id: "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000), // temporary string-based ID
+       filename: f.name,
+       status: 'analyzing',
+       file_url: null,
+       actions: [],
+       error: null,
+       ocr_engaged: false,
+       isUploading: true,
+       rawFile: f
+    }));
+    
+    setImports(prev => [...newImports, ...prev]);
+
+    // Process each file
+    for (const item of newImports) {
+      const formData = new FormData();
+      formData.append('file', item.rawFile);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error('Error de lectura/procesamiento');
+        const data = await response.json();
+        
+        setImports(prev => prev.map(imp => {
+           if (imp.id === item.id) {
+              return {
+                 ...imp,
+                 id: data.import_id || imp.id,
+                 status: 'reviewing',
+                 actions: data.actions || [],
+                 message: data.message,
+                 ocr_engaged: data.ocr_engaged || false,
+                 isUploading: false
+              };
+           }
+           return imp;
+        }));
+
+      } catch (err) {
+        setImports(prev => prev.map(imp => imp.id === item.id ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
+      }
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.png', '.jpg', '.jpeg'] },
-    multiple: false
+    multiple: true
   });
 
-  const handleStartAnalysis = async () => {
-    if (!file) return;
-    setStatus('analyzing');
-    setError(null);
-    setAiResponse(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
+  const handleDeleteImport = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("¿Estás seguro de descartar y eliminar esta importación?")) return;
+    
+    setImports(prev => prev.filter(imp => imp.id !== id));
+    // If it's a temp ID it won't exist in backend, otherwise delete explicitly
     try {
-      const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error('Error al analizar. Verifique que el documento sea legible.');
-
-      const data = await response.json();
-      const actions = data.actions || [];
-      setDetectedActions(actions);
-      // Por defecto seleccionamos todo
-      setSelectedIndices(new Set(actions.map((_, i) => i)));
-      setAiResponse(data.message || data.raw || "Análisis completado.");
-      setStatus('reviewing');
-    } catch (err) {
-      setError(err.message);
-      setStatus('idle');
-    }
+      await fetch(`${API_BASE_URL}/imports/${id}`, { method: 'DELETE' });
+    } catch {}
   };
 
-  const handleCommit = async () => {
-    const actionsToRun = detectedActions.filter((_, i) => selectedIndices.has(i));
-    if (actionsToRun.length === 0) return alert("Selecciona al menos un registro para importar.");
-
-    setStatus('committing');
-    try {
-      if (onImportComplete) {
-        await onImportComplete(actionsToRun);
-      }
-      setStatus('success');
-    } catch (err) {
-      setError("Error al sincronizar con la nube.");
-      setStatus('reviewing');
-    }
+  const openPreview = (imp) => {
+    setPreviewImportId(imp.id);
+    setSelectedIndices(new Set(imp.actions.map((_, i) => i))); // Default select all
   };
+
+  const currentPreviewImport = useMemo(() => imports.find(i => i.id === previewImportId), [imports, previewImportId]);
 
   const toggleSelection = (index) => {
     setSelectedIndices(prev => {
@@ -87,14 +118,44 @@ const TRDImportView = ({ onImportComplete, currentUser }) => {
     });
   };
 
-  const toggleAll = (checked) => {
-    if (checked) setSelectedIndices(new Set(detectedActions.map((_, i) => i)));
+  const toggleAll = (checked, total) => {
+    if (checked) setSelectedIndices(new Set(Array.from({length: total}, (_, i) => i)));
     else setSelectedIndices(new Set());
   };
 
-  // Convertimos las acciones seleccionadas al formato que espera el reporte DANE
+  const handleCommit = async () => {
+    if (!currentPreviewImport) return;
+    const actionsToRun = currentPreviewImport.actions.filter((_, i) => selectedIndices.has(i));
+    if (actionsToRun.length === 0) return alert("Selecciona al menos un registro para importar.");
+
+    try {
+      // Modificar status temporalmente en UI
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+      setPreviewImportId(null);
+      
+      // Llamar al action de TRDImportView (propuesta de App.jsx)
+      if (onImportComplete) {
+        await onImportComplete(actionsToRun);
+      }
+      
+      // Update en backend a que la sesión está finalizada
+      await fetch(`${API_BASE_URL}/imports/${currentPreviewImport.id}`, {
+         method: 'PUT',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ status: 'success' })
+      });
+      
+      alert("¡Registros sincronizados con éxito a las tablas definitivas!");
+    } catch (err) {
+      alert("Hubo un problema sincronizando: " + err.message);
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'reviewing' } : imp));
+    }
+  };
+
+  // Convertimos las acciones seleccionadas al formato DANE
   const previewRows = useMemo(() => {
-    return detectedActions
+    if (!currentPreviewImport) return [];
+    return currentPreviewImport.actions
       .filter((_, i) => selectedIndices.has(i))
       .filter(a => a.entity === 'trd_records' || a.entity === 'valoracion')
       .map(a => ({
@@ -109,43 +170,48 @@ const TRDImportView = ({ onImportComplete, currentUser }) => {
         disposicion: a.payload.disposicion || "CT",
         procedimiento: a.payload.procedimiento || ""
       }));
-  }, [detectedActions, selectedIndices]);
+  }, [currentPreviewImport, selectedIndices]);
 
   const handleExportPDF = async () => {
-    // Apuntamos directamente al ID interno del papel que ahora está dentro de TRDGenerator
-    const element = document.getElementById('trd-final-report-area');
-    if (!element) return alert("No se pudo capturar el reporte oficial.");
-
-    const originalStyle = element.style.cssText;
-
+    const element = document.getElementById("trd-final-report-area");
+    if (!element) return;
+    
+    // Cambiamos a cursor de espera temporalmente
+    document.body.style.cursor = 'wait';
+    
     try {
-      // 1. Preparar para alta resolución
-      element.style.height = 'auto';
-      element.style.maxHeight = 'none';
-      element.style.overflow = 'visible';
-      element.style.borderColor = '#cbd5e1';
-
-      const canvas = await html2canvas(element, {
-        scale: 2,
+      const canvas = await html2canvas(element, { 
+        scale: 3, 
         useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 1200
+        backgroundColor: '#ffffff'
       });
+      const dataUrl = canvas.toDataURL("image/png", 1.0);
 
-      element.style.cssText = originalStyle;
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+      const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      pdf.save(`Previsualizacion_TRD_${new Date().toLocaleDateString()}.pdf`);
+      let heightLeft = pdfHeight;
+      let position = 0;
+
+      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Previsualizacion_DANE_${Date.now()}.pdf`);
     } catch (error) {
-      console.error("Error al generar PDF visual:", error);
-      element.style.cssText = originalStyle;
-      alert("Error al procesar el reporte dinámico. Intenta cerrar y volver a abrir la previsualización.");
+      console.error("Error al exportar:", error);
+      alert("Hubo un error al generar el PDF.");
+    } finally {
+      document.body.style.cursor = 'default';
     }
   };
 
@@ -154,258 +220,215 @@ const TRDImportView = ({ onImportComplete, currentUser }) => {
       {/* Header Section */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 px-2">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Importación Inteligente TRD</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Importación Inteligente Masiva</h1>
           <p className="text-slate-500 max-w-2xl">
-            Sube tus archivos escaneados. Orianna IA extraerá la estructura y poblará el sistema, guardando además una copia en la 
-            <span className="font-bold text-primary ml-1 underline decoration-primary/20">Biblioteca RAG</span>.
+            Sube múltiples archivos escaneados o digitales. Orianna IA extraerá la estructura de cada uno, 
+            preservando tu progreso automáticamente y almacenándolos en la <span className="font-bold text-primary ml-1 underline decoration-primary/20">Biblioteca RAG</span>.
           </p>
         </div>
-        {status === 'reviewing' && (
-          <button 
-            onClick={() => setIsPreviewOpen(true)}
-            className="flex items-center gap-2 px-6 py-2.5 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-          >
-            <Eye className="h-4 w-4" />
-            Previsualizar Reporte DANE
-          </button>
-        )}
       </section>
 
-      <AnimatePresence mode="wait">
-        {status === 'idle' || status === 'analyzing' ? (
-          <motion.div
-            key="upload"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="px-2"
-          >
-            <div 
-              {...getRootProps()} 
-              className={`relative border-2 border-dashed rounded-3xl p-20 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer shadow-sm
-                ${isDragActive ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-slate-200 bg-white hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5'}`}
-            >
-              <input {...getInputProps()} />
-              <div className="p-5 bg-primary/10 rounded-2xl mb-6 text-primary">
-                {status === 'analyzing' ? <Loader2 className="h-12 w-12 animate-spin" /> : <FileUp className="h-12 w-12" />}
-              </div>
-              
-              <h3 className="text-2xl font-black text-slate-900 mb-2">
-                {file ? file.name : "Selecciona tu TRD"}
-              </h3>
-              <p className="text-slate-400 font-medium mb-8">Formatos admitidos: PDF, PNG, JPG (Detección OCR activada)</p>
-              
-              {!file && status === 'idle' && (
-                <button className="px-8 py-3 bg-slate-950 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg">
-                  Explorar Archivos
-                </button>
-              )}
-            </div>
+      {/* Main Container - Dos Columnas (Dropzone y Lista) */}
+      <div className="flex flex-col gap-8 px-2">
+         {/* Zona de Carga Múltiple */}
+         <div 
+           {...getRootProps()} 
+           className={`relative border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer shadow-sm
+             ${isDragActive ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-slate-200 bg-white hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5'}`}
+         >
+           <input {...getInputProps()} />
+           <div className="p-4 bg-primary/10 rounded-2xl mb-4 text-primary">
+             <FileUp className="h-10 w-10" />
+           </div>
+           
+           <h3 className="text-lg font-black text-slate-900 mb-1">
+             Arrastra y suelta tus TRDs aquí
+           </h3>
+           <p className="text-slate-400 font-medium mb-4 text-sm">Escaneos, PDFs o Imágenes. Sube varias simultáneamente.</p>
+           
+           <button className="px-6 py-2.5 bg-slate-950 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-lg">
+             Explorar Archivos
+           </button>
+         </div>
 
-            {file && status === 'idle' && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-center mt-8">
-                <button 
-                  onClick={handleStartAnalysis}
-                  className="flex items-center gap-3 px-10 py-4 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-105 hover:bg-primary/90 transition-all active:scale-95"
-                >
-                  <Scan className="h-6 w-6" />
-                  ANALIZAR E INDEXAR EN RAG
-                </button>
-              </motion.div>
-            )}
-
-            {error && (
-              <div className="flex items-center gap-3 p-5 mt-8 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 font-medium">
-                <AlertCircle className="h-6 w-6 shrink-0" />
-                {error}
-              </div>
-            )}
-          </motion.div>
-        ) : status === 'reviewing' || status === 'committing' ? (
-          <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 px-2">
+         {/* Lista de Importaciones */}
+         <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest pl-2">Cola de Procesamiento & Sesiones</h3>
             
-            {/* Health indicators */}
-            <div className="flex flex-wrap gap-4">
-               <div className="flex items-center gap-3 px-4 py-2 bg-white border border-slate-200 rounded-xl">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-tighter">OCR: Alta Fidelidad</span>
-               </div>
-               <div className="flex items-center gap-3 px-4 py-2 bg-white border border-slate-200 rounded-xl">
-                  <Database className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-tighter">Persistencia RAG: Lista</span>
-               </div>
-            </div>
+            {isLoading ? (
+               <div className="p-10 flex justify-center items-center"><Loader2 className="animate-spin text-slate-300 w-10 h-10" /></div>
+            ) : imports.length === 0 ? (
+               <div className="text-center py-10 text-slate-400 text-sm italic border rounded-3xl border-dashed">No hay importaciones activas o completadas en este momento.</div>
+            ) : (
+               <AnimatePresence>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {imports.map((imp) => (
+                     <motion.div 
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
+                        key={imp.id} 
+                        onClick={() => imp.status === 'reviewing' && openPreview(imp)}
+                        className={`p-5 rounded-3xl border transition-all ${
+                           imp.status === 'analyzing' ? 'border-blue-200 bg-blue-50/50 cursor-wait' :
+                           imp.status === 'reviewing' ? 'border-amber-200 bg-amber-50/20 shadow-lg hover:shadow-amber-200/50 cursor-pointer hover:-translate-y-1' :
+                           imp.status === 'success' ? 'border-emerald-200 bg-emerald-50/30' :
+                           'border-rose-200 bg-rose-50'
+                        }`}
+                     >
+                        <div className="flex justify-between items-start mb-4">
+                           <div className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-100">
+                              {imp.status === 'analyzing' ? <Loader2 className="animate-spin h-5 w-5 text-blue-500"/> :
+                               imp.status === 'reviewing' ? <Eye className="h-5 w-5 text-amber-500" /> :
+                               imp.status === 'success' ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> :
+                               <AlertCircle className="h-5 w-5 text-rose-500" />
+                              }
+                           </div>
+                           <button onClick={(e) => handleDeleteImport(imp.id, e)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-white rounded-lg transition-colors">
+                              <Trash2 className="h-4 w-4" />
+                           </button>
+                        </div>
+                        <h4 className="font-bold text-slate-900 text-sm truncate" title={imp.filename}>{imp.filename}</h4>
+                        
+                        {/* Status Label */}
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                           <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-1 rounded-md ${
+                              imp.status === 'analyzing' ? 'bg-blue-100 text-blue-700' :
+                              imp.status === 'reviewing' ? 'bg-amber-100/50 text-amber-700' :
+                              imp.status === 'success' ? 'bg-emerald-100 text-emerald-700' :
+                              'bg-rose-100 text-rose-700'
+                           }`}>
+                              {imp.status === 'analyzing' ? 'Deduciendo Arquitectura' :
+                               imp.status === 'reviewing' ? 'Esperando Aprobación' :
+                               imp.status === 'success' ? 'Importación Finalizada' : 'Error en lectura'}
+                           </span>
+                           {imp.ocr_engaged && (
+                              <span className="flex items-center gap-1 text-[10px] uppercase font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md border border-indigo-100">
+                                 <ImageIcon className="h-3 w-3" /> OCR IA
+                              </span>
+                           )}
+                        </div>
 
-            {/* Table Area */}
-            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden min-h-[500px] flex flex-col">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                <div className="flex flex-col">
-                  <h3 className="text-base font-bold text-slate-900">Registros Identificados</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Valida la información antes de confirmar</p>
-                </div>
-                <div className="flex items-center gap-3">
-                   <span className="text-xs font-bold text-slate-400">{selectedIndices.size} seleccionados de {detectedActions.length}</span>
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-white shadow-sm z-10">
-                    <tr className="border-b border-slate-100 text-[10px] uppercase font-black text-slate-400 tracking-wider">
-                      <th className="px-6 py-4 w-10">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedIndices.size === detectedActions.length}
-                          onChange={(e) => toggleAll(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                        />
-                      </th>
-                      <th className="px-6 py-4">Entidad</th>
-                      <th className="px-6 py-4">Contenido</th>
-                      <th className="px-6 py-4">Código</th>
-                      <th className="px-6 py-4">Estado RAG</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {detectedActions.map((action, idx) => {
-                      const isSelected = selectedIndices.has(idx);
-                      return (
-                        <tr key={idx} className={`transition-colors hover:bg-slate-50/50 ${isSelected ? 'bg-primary/5' : ''}`}>
-                          <td className="px-6 py-4">
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              onChange={() => toggleSelection(idx)}
-                              className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                              action.entity.includes('dependencias') ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                              action.entity.includes('series') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                              'bg-emerald-50 text-emerald-600 border-emerald-100'
-                            }`}>
-                              {action.entity.replace('_records', '').replace('es', '')}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-bold text-slate-800">{action.payload.nombre || "Registro TRD"}</span>
-                              {action.payload.procedimiento && (
-                                <span className="text-[10px] text-slate-400 truncate max-w-xs">{action.payload.procedimiento}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">
-                            {action.payload.codigo || "—"}
-                          </td>
-                          <td className="px-6 py-4">
-                             <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[10px] uppercase">
-                               <CheckCircle2 className="h-3 w-3" /> Indexado
-                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Floating Action Bar */}
-            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
-               <div className="bg-slate-900 rounded-3xl p-4 shadow-2xl flex items-center justify-between border border-white/10 ring-8 ring-slate-900/5 backdrop-blur-xl">
-                  <div className="flex items-center gap-4 pl-4">
-                    <div className="p-2 bg-white/10 rounded-xl">
-                      <Database className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                       <p className="text-white font-black text-sm uppercase tracking-tight">Procesar Importación</p>
-                       <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{selectedIndices.size} registros seleccionados</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setStatus('idle')} className="px-6 py-2 text-slate-400 hover:text-white font-bold text-xs uppercase tracking-widest transition-colors">
-                      Cancelar
-                    </button>
-                    <button 
-                      onClick={handleCommit}
-                      className="px-8 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
-                    >
-                      {status === 'committing' ? <Loader2 className="animate-spin h-4 w-4" /> : 'Confirmar e Importar'}
-                    </button>
-                  </div>
-               </div>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center p-20 bg-white rounded-3xl border border-slate-200 text-center shadow-xl">
-            <div className="h-24 w-24 bg-emerald-500 rounded-full flex items-center justify-center text-white mb-8 shadow-2xl shadow-emerald-500/30">
-              <CheckCircle2 className="h-12 w-12" />
-            </div>
-            <h2 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">¡Dato y Documento Sincronizados!</h2>
-            <p className="text-slate-500 font-medium mb-10 max-w-sm">
-              La TRD se ha estructurado en tus tablas y el archivo fuente ya está disponible en la Biblioteca RAG para Orianna.
-            </p>
-            <button 
-              onClick={() => setStatus('idle')}
-              className="flex items-center gap-3 px-10 py-4 bg-slate-950 text-white rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl"
-            >
-              Cargar otra TRD
-              <ArrowRight className="h-5 w-5" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                        {imp.status === 'reviewing' && (
+                           <div className="mt-4 text-xs font-medium text-slate-500 flex items-center gap-2">
+                              Extraídos: <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded shadow-sm border">{imp.actions?.length || 0}</span>
+                              <span className="ml-auto text-[10px] text-primary group-hover:underline">Click para Revisar</span>
+                           </div>
+                        )}
+                        {imp.error && <p className="text-xs text-rose-600 mt-3 font-medium">{imp.error}</p>}
+                     </motion.div>
+                  ))}
+                 </div>
+               </AnimatePresence>
+            )}
+         </div>
+      </div>
 
       {/* DANE PREVIEW MODAL */}
       <AnimatePresence>
-        {isPreviewOpen && (
+        {currentPreviewImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
             <motion.div 
                initial={{ opacity: 0 }} 
                animate={{ opacity: 1 }} 
                exit={{ opacity: 0 }} 
-               onClick={() => setIsPreviewOpen(false)}
+               onClick={() => setPreviewImportId(null)}
                className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 30 }}
-              className="relative w-full max-w-6xl h-full bg-slate-100 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+               initial={{ opacity: 0, scale: 0.95, y: 30 }}
+               animate={{ opacity: 1, scale: 1, y: 0 }}
+               exit={{ opacity: 0, scale: 0.95, y: 30 }}
+               className="relative w-full max-w-7xl h-full bg-slate-100 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
             >
                {/* Modal Header */}
-               <div className="p-4 bg-white border-b border-slate-200 flex items-center justify-between print:hidden">
+               <div className="p-4 bg-white border-b border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 print:hidden">
                  <div className="flex items-center gap-3">
-                   <FileText className="h-6 w-6 text-rose-600" />
+                   <div className="p-2 bg-rose-50 rounded-lg"><FileText className="h-6 w-6 text-rose-600" /></div>
                    <div>
-                     <h2 className="font-black text-slate-900 uppercase text-xs tracking-tighter">Previsualización Dinámica DANE</h2>
-                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{previewRows.length} registros seleccionados</p>
+                     <h2 className="font-black text-slate-900 uppercase text-xs tracking-tighter">
+                        Revisión: <span className="font-medium bg-slate-100 px-2 py-0.5 rounded ml-1 text-slate-600 lowercase">{currentPreviewImport.filename}</span>
+                     </h2>
+                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                        {selectedIndices.size} registros aprobados de {currentPreviewImport.actions?.length}
+                     </p>
                    </div>
                  </div>
-                 <div className="flex items-center gap-2">
+
+                 {/* Selector Masivo y Acciones */}
+                 <div className="flex items-center gap-2 ml-auto w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                   <label className="flex items-center gap-2 text-xs font-bold text-slate-600 mr-2 shrink-0 cursor-pointer">
+                     <input type="checkbox" checked={selectedIndices.size === currentPreviewImport.actions.length && currentPreviewImport.actions.length > 0} 
+                            onChange={(e) => toggleAll(e.target.checked, currentPreviewImport.actions.length)} className="h-4 w-4 rounded" />
+                     Incluir Todos
+                   </label>
+                   
                    <button 
-                    onClick={handleExportPDF}
-                    className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
+                     id="pdf-download-btn"
+                     onClick={handleExportPDF}
+                     className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-700 transition-all shadow-sm shrink-0"
                    >
                      <Printer className="h-4 w-4" />
-                     DESCARGAR REPORTE DANE (PDF)
+                     DESCARGAR DANE
                    </button>
                    <button 
-                    onClick={() => setIsPreviewOpen(false)}
-                    className="p-2 text-slate-400 hover:text-slate-600 transition-colors"
+                     onClick={handleCommit}
+                     className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-500 transition-all shadow-emerald-600/20 shadow-lg active:scale-95 shrink-0"
                    >
+                     CREAR TABLA FINAL EN NUBE
+                     <Database className="h-4 w-4" />
+                   </button>
+
+                   <div className="h-8 w-px bg-slate-200 mx-2 shrink-0" />
+                   <button onClick={() => setPreviewImportId(null)} className="p-2 text-slate-400 bg-slate-100 rounded-lg hover:text-slate-600 transition-colors shrink-0">
                      <X className="h-6 w-6" />
                    </button>
                  </div>
                </div>
 
-               {/* Modal Content - Here we inject the TRDReportDANE with the SELECTED records only */}
-               <div className="flex-1 overflow-y-auto p-4 md:p-8">
-                 <div id="trd-report-print-area" className="mx-auto bg-slate-100 rounded-xl overflow-hidden shadow-inner">
-                    <TRDReportDANE rows={previewRows} currentUser={currentUser} />
-                 </div>
+               {/* Grid Dividido: Izquierda Panel de Selección, Derecha Tablero DANE */}
+               <div className="flex-1 flex overflow-hidden">
+                  
+                  {/* Panel Izquierdo: Lista de Registros */}
+                  <div className="w-[300px] md:w-[400px] border-r border-slate-200 bg-white flex flex-col shrink-0 overflow-y-auto print:hidden">
+                     <div className="p-4 border-b border-slate-100 bg-slate-50 sticky top-0 z-10">
+                        <p className="text-xs font-black text-slate-500 uppercase">1. Afina la Estructura</p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-medium">Desmarca los registros que la IA haya alucinado por error antes de volcar la estructura al gestor.</p>
+                     </div>
+                     <div className="divide-y divide-slate-100">
+                        {currentPreviewImport.actions.map((act, i) => {
+                           const isSelected = selectedIndices.has(i);
+                           return (
+                              <label key={i} className={`flex items-start gap-3 p-4 cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-slate-50'}`}>
+                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i)} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary" />
+                                 <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                       <span className={`px-1.5 py-0.5 text-[8px] font-black uppercase rounded ${act.entity.includes('dependenc') ? 'bg-blue-100 text-blue-700' : act.entity.includes('serie') ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                          {act.entity.substring(0, 3)}
+                                       </span>
+                                       <span className="text-xs font-bold text-slate-900 truncate">
+                                          {act.payload.codigo}
+                                       </span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 leading-tight">
+                                       {act.payload.nombre || act.payload.serieNombre || "Registro de TRD"}
+                                    </p>
+                                 </div>
+                              </label>
+                           );
+                        })}
+                     </div>
+                  </div>
+
+                  {/* Panel Derecho: Previsualización Oficial DANE */}
+                  <div className="flex-1 overflow-y-auto bg-slate-100 p-4 md:p-8 flex flex-col items-center">
+                     <div className="mb-4 text-center print:hidden">
+                        <p className="text-xs font-black text-slate-500 uppercase">2. Revisa el Tablero Automático</p>
+                     </div>
+
+                     <div id="trd-report-print-area" className="mx-auto w-full bg-white shadow-sm ring-1 ring-slate-200">
+                        <TRDReportDANE rows={previewRows} currentUser={currentUser} currentEntity={currentEntity} logoBase64={logoBase64} />
+                     </div>
+                  </div>
+               
                </div>
             </motion.div>
           </div>

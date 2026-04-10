@@ -12,7 +12,7 @@ const MAIN_NAV = [
   { id: 'settings', label: 'Configuración', icon: Settings },
 ];
 
-export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser }) {
+export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity }) {
   const role = currentUser?.role || 'user';
 
   const filteredNav = MAIN_NAV.filter(item => {
@@ -34,14 +34,32 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
   });
 
   return (
-    <aside className="w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 relative z-20">
+    <aside className="w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 relative z-20 print:hidden">
       <div className="p-6 border-b border-white/10 flex items-center gap-3">
-        <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg">
-          <FileSignature className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h1 className="text-white font-bold text-lg leading-tight">OSE</h1>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Gestión Inteligente</p>
+        {currentEntity ? (
+           currentEntity.logoUrl ? (
+              <img src={currentEntity.logoUrl} alt="Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
+           ) : (
+              <div className="h-10 w-10 bg-primary/20 rounded-lg flex items-center justify-center shadow-lg border border-primary/50 shrink-0">
+                 <span className="text-white font-bold text-sm uppercase">{currentEntity.razonSocial?.substring(0,2)}</span>
+              </div>
+           )
+        ) : (
+          <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg shrink-0">
+            <FileSignature className="h-6 w-6 text-white" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          {currentEntity ? (
+            <h1 className="text-white font-bold text-sm leading-tight truncate" title={currentEntity.razonSocial}>
+               {currentEntity.razonSocial}
+            </h1>
+          ) : (
+             <h1 className="text-white font-bold text-lg leading-tight">OSE</h1>
+          )}
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate">
+             {currentEntity ? 'Portal Cliente' : 'Gestión Inteligente'}
+          </p>
         </div>
       </div>
 

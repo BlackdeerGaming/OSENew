@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-export function useTRDData() {
+export function useTRDData(userId = null) {
   const [dependencias, setDependencias] = useState([]);
   const [series, setSeries] = useState([]);
   const [subseries, setSubseries] = useState([]);
@@ -9,36 +9,40 @@ export function useTRDData() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
-  // Load all data from Supabase
-  useEffect(() => {
-    async function loadData() {
-      if (!supabase) {
-        setIsLoading(false);
-        return;
-      }
-      
-      try {
-        const [d, s, ss, trd] = await Promise.all([
-          supabase.from('dependencias').select('*').order('codigo'),
-          supabase.from('series').select('*').order('codigo'),
-          supabase.from('subseries').select('*').order('codigo'),
-          supabase.from('trd_records').select('*')
-        ]);
-
-        if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
-        if (s.data) setSeries(s.data.map(mapSerieFromDB));
-        if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
-        if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
-        
-        setIsSynced(true);
-      } catch (err) {
-        console.error('Error loading TRD data:', err);
-      } finally {
-        setIsLoading(false);
-      }
+  const loadData = async () => {
+    if (!supabase) {
+      setIsLoading(false);
+      return;
     }
+    
+    setIsLoading(true);
+    try {
+      const [d, s, ss, trd] = await Promise.all([
+        supabase.from('dependencias').select('*').order('codigo'),
+        supabase.from('series').select('*').order('codigo'),
+        supabase.from('subseries').select('*').order('codigo'),
+        supabase.from('trd_records').select('*')
+      ]);
+
+      if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
+      if (s.data) setSeries(s.data.map(mapSerieFromDB));
+      if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
+      if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
+      
+      setIsSynced(true);
+    } catch (err) {
+      console.error('Error loading TRD data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load all data from Supabase when userId changes (especially on login)
+  useEffect(() => {
     loadData();
-  }, []);
+  }, [userId]);
+
+  const refreshData = () => loadData();
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
@@ -144,7 +148,7 @@ export function useTRDData() {
     addDependencia, updateDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
-    addTrdRecord
+    addTrdRecord, refreshData
   };
 }
 

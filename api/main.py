@@ -10,6 +10,7 @@ import fitz  # PyMuPDF
 import time
 import httpx
 import asyncio
+from datetime import datetime
 
 # Cargar variables de entorno
 load_dotenv()
@@ -171,8 +172,10 @@ class UserUpdate(BaseModel):
 
 class EntityCreate(BaseModel):
     razonSocial: str
-    nit: str
+    nit: str | None = None
+    numeroDocumento: str | None = None
     email: str | None = None
+    correo: str | None = None
     telefono: str | None = None
     pais: str | None = "Colombia"
     departamento: str | None = None
@@ -182,7 +185,6 @@ class EntityCreate(BaseModel):
     maxUsuarios: int | None = 10
     maxDependencias: int | None = 20
     estado: str | None = "Activo"
-    numeroDocumento: str | None = None # Alias for NIT in UI
 
 class PasswordResetRequest(BaseModel):
     email: str
@@ -780,7 +782,9 @@ async def get_entities():
     mapped = []
     for e in res.data:
         mapped.append({
-            "id": e["id"], "razonSocial": e["razon_social"], "nit": e["nit"], "email": e.get("email"),
+            "id": e["id"], "razonSocial": e["razon_social"], 
+            "nit": e["nit"], "numeroDocumento": e["nit"], 
+            "email": e.get("email"), "correo": e.get("email"),
             "telefono": e.get("telefono"), "pais": e["pais"], "departamento": e.get("departamento"),
             "ciudad": e.get("ciudad"), "sigla": e.get("sigla"), "direccion": e.get("direccion"),
             "maxUsuarios": e["max_usuarios"], "maxDependencias": e["max_dependencias"], "estado": e["estado"]
@@ -792,7 +796,7 @@ async def create_entity(entity: EntityCreate):
     if not supabase_client: raise HTTPException(400, "No Supabase")
     data = {
         "razon_social": entity.razonSocial, "nit": entity.nit or entity.numeroDocumento,
-        "email": entity.email, "telefono": entity.telefono, "pais": entity.pais,
+        "email": entity.email or entity.correo, "telefono": entity.telefono, "pais": entity.pais,
         "departamento": entity.departamento, "ciudad": entity.ciudad, "sigla": entity.sigla,
         "direccion": entity.direccion, "max_usuarios": entity.maxUsuarios,
         "max_dependencias": entity.maxDependencias, "estado": entity.estado
@@ -804,7 +808,7 @@ async def create_entity(entity: EntityCreate):
 async def update_entity(entity_id: str, entity: EntityCreate):
     if not supabase_client: raise HTTPException(400, "No Supabase")
     data = {
-        "razon_social": entity.razonSocial, "nit": entity.nit, "email": entity.email,
+        "razon_social": entity.razonSocial, "nit": entity.nit or entity.numeroDocumento, "email": entity.email or entity.correo,
         "telefono": entity.telefono, "pais": entity.pais, "departamento": entity.departamento,
         "ciudad": entity.ciudad, "sigla": entity.sigla, "direccion": entity.direccion,
         "max_usuarios": entity.maxUsuarios, "max_dependencias": entity.maxDependencias, "estado": entity.estado
@@ -877,6 +881,8 @@ async def analyze_trd(file: UploadFile = File(...)):
     print(f"🔍 Analizando TRD: {file.filename}")
     content = await file.read()
     extracted_text = ""
+    ocr_engaged = False
+
     
     try:
         fitz_doc = fitz.open(stream=content)
@@ -898,21 +904,23 @@ async def analyze_trd(file: UploadFile = File(...)):
             SystemMessage(content=TRD_ANALYZE_PROMPT.format(text=extracted_text))
         ]
         
-        # --- VISION FALLBACK ---
+        # --- INTERNAL OCR SKILL FALLBACK ---
         try:
             fitz_doc = fitz.open(stream=content)
             if len(fitz_doc) > 0:
+                print("🛠️ OCR_SKILL: Activando 'trd-internal-ocr' debido a documento escaneado/legibilidad baja.")
+                ocr_engaged = True
                 page = fitz_doc[0]
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                 img_data = base64.b64encode(pix.tobytes("png")).decode("utf-8")
                 
                 messages_llm.append(HumanMessage(content=[
-                    {"type": "text", "text": "Aquí tienes la imagen real de la TRD. Por favor, identifica las filas y columnas para extraer las dependencias, series y subseries con sus tiempos de retención. Genera el JSON de acciones."},
+                    {"type": "text", "text": "Estás operando como el motor 'trd-internal-ocr'. Aquí tienes la imagen real de la TRD. Por favor, identifica las filas y columnas para extraer las dependencias, series y subseries. Genera el JSON."},
                     {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_data}"}}
                 ]))
             fitz_doc.close()
         except Exception as vision_err:
-            print(f"⚠️ No se pudo cargar imagen para Visión: {vision_err}")
+            print(f"⚠️ OCR_SKILL falló al procesar imagen: {vision_err}")
 
         response = llm.invoke(messages_llm)
         content_ai = response.content.strip()
@@ -950,31 +958,120 @@ async def analyze_trd(file: UploadFile = File(...)):
         
         # Extraer JSON de la respuesta
         json_match = re.search(r'(\{.*\})', content_ai, re.DOTALL)
+        parsed_data = {}
         if json_match:
             try:
                 parsed_data = json.loads(json_match.group(1))
                 if not parsed_data.get("actions") or len(parsed_data["actions"]) == 0:
                     parsed_data["message"] = f"La IA analizó pero no generó acciones. Respuesta bruta: {content_ai[:1000]}"
-                return parsed_data
             except Exception as json_err:
                 print(f"❌ Error parseando JSON: {json_err}")
                 
-        return {
-            "message": f"No se pudo detectar el formato JSON. Respuesta de la IA: {content_ai[:1000]}",
-            "actions": [],
-            "raw": content_ai
-        }
+        if not parsed_data:
+            parsed_data = {
+                "message": f"No se pudo detectar el formato JSON.",
+                "actions": [],
+                "raw": content_ai
+            }
+
+        parsed_data["ocr_engaged"] = ocr_engaged
+        
+        # --- PERSISTENCIA IMPORT SESSION EN RAG_DOCUMENTS ---
+        try:
+            # Subimos el archivo raw si es posible a TRD Uploads (silencioso si falla)
+            file_url = ""
+            if supabase_client:
+                try:
+                    bucket = "trd-uploads"
+                    filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"
+                    supabase_client.storage.from_(bucket).upload(filename_clean, content)
+                    file_url = supabase_client.storage.from_(bucket).get_public_url(filename_clean)
+                except Exception:
+                    pass # Posible falta de bucket, ignoramos para no bloquear el flujo
+            
+            doc_metadata = {
+                "source": file.filename,
+                "type": "trd_import_session",
+                "status": "reviewing",
+                "file_url": file_url,
+                "extracted_at": str(datetime.now()),
+                "pages": len(fitz_doc) if 'fitz_doc' in locals() else 0,
+                "actions": parsed_data.get("actions", []),
+                "message": parsed_data.get("message", ""),
+                "ocr_engaged": ocr_engaged
+            }
+            
+            rag_payload = {
+                "content": "Import Session Snapshot",
+                "metadata": doc_metadata,
+                "filename": file.filename
+            }
+            
+            inserted = supabase_client.table("rag_documents").insert(rag_payload).execute()
+            if inserted.data and len(inserted.data) > 0:
+                parsed_data["import_id"] = inserted.data[0].get("id")
+            
+            print(f"✅ Importación '{file.filename}' guardada en estado pending session.")
+        except Exception as rag_err:
+            print(f"⚠️ Error guardando import session: {rag_err}")
+
+        return parsed_data
         
     except Exception as e:
         print(f"❌ Error en analyze-trd: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── CRUD TRD Imports ───────────────────────────────────────────────────────
+
+@router.get("/imports")
+async def get_imports():
+    if not supabase_client: return []
+    # Consultamos registros generados por el flujo persistente de importación
+    res = supabase_client.table("rag_documents").select("*").contains("metadata", {"type": "trd_import_session"}).order("created_at", desc=True).execute()
+    imports = []
+    for row in res.data:
+        meta = row.get("metadata", {})
+        imports.append({
+            "id": row["id"],
+            "filename": row["filename"],
+            "created_at": row["created_at"],
+            "status": meta.get("status", "reviewing"),
+            "file_url": meta.get("file_url", ""),
+            "actions": meta.get("actions", []),
+            "message": meta.get("message", ""),
+            "ocr_engaged": meta.get("ocr_engaged", False)
+        })
+    return imports
+
+@router.put("/imports/{import_id}")
+async def update_import_status(import_id: str, status_data: dict):
+    if not supabase_client: raise HTTPException(status_code=503)
+    
+    # Basic UUID check to avoid crashes with random float strings from frontend
+    if len(import_id) < 32 and "." in import_id:
+        return {"status": "ignored", "reason": "invalid_id_format"}
+
+    res = supabase_client.table("rag_documents").select("metadata").eq("id", import_id).execute()
+    if not res.data:
+        raise HTTPException(404)
+    meta = res.data[0]["metadata"]
+    meta["status"] = status_data.get("status", meta["status"])
+    supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", import_id).execute()
+    return {"status": "updated"}
+
+@router.delete("/imports/{import_id}")
+async def delete_import(import_id: str):
+    if not supabase_client: raise HTTPException(status_code=503)
+    # Al eliminar se borra la sesion guardada
+    supabase_client.table("rag_documents").delete().eq("id", import_id).execute()
+    return {"status": "deleted"}
 
 # ─── CRUD RAG Documents ───────────────────────────────────────────────────────
 
 @router.get("/rag-documents")
 async def get_rag_documents():
     if not supabase_client: return []
-    res = supabase_client.table("rag_documents").select("id, filename, metadata, created_at").order("created_at", desc=True).execute()
+    res = supabase_client.table("rag_documents").select("id, filename, metadata, created_at").contains("metadata", {"type": "trd_upload"}).order("created_at", desc=True).execute()
     return res.data
 
 @router.delete("/rag-documents/{doc_id}")

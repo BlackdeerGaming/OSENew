@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle, Link } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
@@ -71,11 +71,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
          entidadNombre: newUser.entidadIds
            .map(id => entities.find(e => e.id === id)?.razonSocial)
            .filter(Boolean).join(', '),
-         entidadIds: newUser.entidadIds,
-         activationToken: token,
-         tokenExpiry: expiry,
-         isActivated: false,
-         password: ''
+         entidadIds: newUser.entidadIds
        };
 
        if (editingUserId) {
@@ -90,11 +86,19 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
            if (!res.ok) console.error("Error al actualizar usuario");
          });
 
-         return prev.map(u => u.id === editingUserId ? { ...userBase, id: editingUserId } : u);
+         return prev.map(u => u.id === editingUserId ? { ...u, ...userBase, id: editingUserId } : u);
        } else {
           // CREAR EN BACKEND
          const tempId = Date.now().toString();
-         const userToAdd = { ...userBase, id: tempId, fechaCreacion: new Date().toLocaleDateString() };
+         const userToAdd = { 
+            ...userBase, 
+            id: tempId, 
+            fechaCreacion: new Date().toLocaleDateString(),
+            activationToken: token,
+            tokenExpiry: expiry,
+            isActivated: false,
+            password: ''
+         };
 
          fetch(`${API_BASE_URL}/users`, {
            method: 'POST',
@@ -332,6 +336,18 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                     </td>
                     <td className="px-6 py-4 text-right">
                        <div className="flex items-center justify-end gap-2">
+                         {!user.isActivated && user.activationToken && (
+                           <button 
+                             title="Copiar enlace de invitación"
+                             onClick={() => {
+                               navigator.clipboard.writeText(`${window.location.origin}?token=${user.activationToken}`);
+                               alert("Enlace de activación copiado al portapapeles");
+                             }} 
+                             className="p-2 rounded-md text-amber-600/70 hover:bg-amber-600/10 hover:text-amber-600 transition-colors"
+                           >
+                              <Link className="w-4 h-4" />
+                           </button>
+                         )}
                          <button onClick={() => handleEdit(user)} className="p-2 rounded-md text-primary/70 hover:bg-primary/10 hover:text-primary transition-colors">
                             <FileEdit className="w-4 h-4" />
                          </button>

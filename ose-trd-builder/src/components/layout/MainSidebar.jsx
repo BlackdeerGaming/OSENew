@@ -23,7 +23,7 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
   });
   return (
     <aside className={cn(
-      "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 fixed lg:static inset-y-0 left-0 z-40 lg:z-20",
+      "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 fixed lg:static inset-y-0 left-0 z-40 lg:z-20 print:hidden",
       isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
     )}>
       <div className="p-6 border-b border-white/10 flex items-center justify-between">

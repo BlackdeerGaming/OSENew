@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { jsPDF } from "jspdf";
-import domtoimage from "dom-to-image-more";
+// Librerías de exportación eliminadas a favor de impresión nativa (Portal DOM)
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import AgentChat from './components/chat/AgentChat';
@@ -72,49 +71,8 @@ const TRDFORM_FLOW = [
   { field: 'actoAdmo', query: 'Finalmente, menciona el Acto Administrativo que lo sustenta.', type: 'textarea', quick: [] },
 ];
 
-  const handleExportTRD = async () => {
-    const element = document.getElementById('trd-final-report-area');
-    if (!element) return alert("No se pudo encontrar el reporte para exportar.");
-
-    // Guardar estilos originales para restaurarlos
-    const originalStyle = element.style.cssText;
-    
-    try {
-      // Forzar que el elemento ocupe todo su tamaño real para la captura
-      element.style.height = 'auto';
-      element.style.maxHeight = 'none';
-      element.style.overflow = 'visible';
-
-      const imgData = await domtoimage.toPng(element, {
-        bgcolor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight,
-        quality: 1.0,
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
-          margin: '0',
-          padding: '0'
-        }
-      });
-
-      // Restaurar estilo original
-      element.style.cssText = originalStyle;
-
-      const pdf = new jsPDF('p', 'mm', 'a4'); // 'p' para vertical (A4 es vertical en DANE)
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-      // Si el reporte es muy largo, ajustamos el PDF o creamos varias páginas
-      // Por ahora, lo ajustamos al ancho de la página A4
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      pdf.save(`TRD_Oficial_${new Date().toLocaleDateString()}.pdf`);
-    } catch (error) {
-      console.error("Error al exportar TRD:", error);
-      element.style.cssText = originalStyle;
-      alert("Error al generar el PDF oficial completo.");
-    }
+  const handleExportTRD = () => {
+    setIsPrinting(true);
   };
 
 function App() {
@@ -132,6 +90,7 @@ function App() {
   const [entities, setEntities] = useState([]);
   const [users, setUsers] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
 
   // Fetch initial data
   useEffect(() => {
@@ -149,6 +108,17 @@ function App() {
     };
     fetchData();
   }, []);
+
+  // 🔥 Lógica de Disparo y Auto-Retorno 🔥
+  useEffect(() => {
+    if (isPrinting) {
+      const timer = setTimeout(() => {
+        window.print();
+        setIsPrinting(false);
+      }, 500); // Pequeño delay para asegurar renderizado
+      return () => clearTimeout(timer);
+    }
+  }, [isPrinting]);
 
 
   // Detectar tokens en la URL
@@ -747,6 +717,21 @@ function App() {
       </main>
     </div>
   );
+
+  // 🔥 EL PORTAL: Si estamos imprimiendo, matamos el resto del DOM 🔥
+  if (isPrinting) {
+    return (
+      <div className="bg-white min-h-screen w-full flex justify-center p-0 m-0">
+        <TRDGenerator 
+          rows={trdRows} 
+          selectedIds={selectedTrdIds}
+          onToggleRow={() => {}} // No interactiva en impresión
+          onToggleAll={() => {}}
+          currentUser={currentUser}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">

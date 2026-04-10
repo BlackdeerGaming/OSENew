@@ -9,7 +9,7 @@ export default function MainHeader({ onLogout, mainView, trdProps, onExportPDF, 
   const { status = "Borrador", rows = [] } = trdProps || {};
 
   return (
-    <header className="h-14 sm:h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-sm transition-all duration-300">
+    <header className="h-14 sm:h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-sm transition-all duration-300 print:hidden">
       
       {/* Menu / Breadcrumb */}
       <div className="flex items-center gap-3 sm:gap-4">

@@ -93,20 +93,28 @@ export default function EntitiesView({ entities, setEntities }) {
     if (!validate()) return;
     
     if (view === "create") {
-      const newId = Date.now().toString();
-      const entityToAdd = { ...formData, id: newId };
-      
       fetch(`${API_BASE_URL}/entities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entityToAdd)
-      }).then(res => {
+        body: JSON.stringify(formData)
+      }).then(async res => {
         if (res.ok) {
-          setEntities([...entities, entityToAdd]);
+          const savedEntity = await res.json();
+          // Merge formData with backend generated fields (id, etc) but map python keys to frontend aliases for immediate use
+          const frontendReadyEntity = {
+            ...formData, 
+            id: savedEntity.id, 
+            numeroDocumento: savedEntity.nit || formData.numeroDocumento, 
+            correo: savedEntity.email || formData.correo 
+          };
+          setEntities([...entities, frontendReadyEntity]);
           setView("list");
         } else {
           alert("Error al salvar entidad.");
         }
+      }).catch(err => {
+        console.error("Save error:", err);
+        alert("Error de conexión al salvar entidad.");
       });
     } else {
       fetch(`${API_BASE_URL}/entities/${selectedEntity.id}`, {

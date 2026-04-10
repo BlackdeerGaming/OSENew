@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Search, Trash2, FileText, Calendar, Info, Clock, ExternalLink, HardDrive } from 'lucide-react';
+import { Database, Search, Trash2, FileText, Calendar, Info, Clock, ExternalLink, HardDrive, Download } from 'lucide-react';
 import API_BASE_URL from '@/config/api';
 
 export default function RAGDocumentView({ currentUser }) {
@@ -125,12 +125,27 @@ export default function RAGDocumentView({ currentUser }) {
                   <div className="p-3 bg-slate-50 rounded-xl group-hover:bg-primary/5 transition-colors">
                     <FileText className="h-6 w-6 text-slate-500 group-hover:text-primary transition-colors" />
                   </div>
-                  <button 
-                    onClick={() => handleDelete(doc.id)}
-                    className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex gap-2">
+                    {currentUser?.role === 'superadmin' && doc.metadata?.file_url && (
+                        <a 
+                          href={doc.metadata.file_url} 
+                          target="_blank" rel="noreferrer download"
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          title="Descarga Restringida: Documento Original"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                     )}
+                    {currentUser?.role === 'superadmin' && (
+                      <button 
+                        onClick={() => handleDelete(doc.id)}
+                        className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                        title="Eliminar del RAG"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 <h3 className="font-bold text-slate-900 mb-1 truncate" title={doc.filename}>

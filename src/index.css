@@ -63,58 +63,39 @@
   background: var(--color-primary); 
 }
 
-/* 🖨️ REGLAS DE IMPRESIÓN MAESTRAS 🖨️ */
+/* 🖨️ REGLAS DE IMPRESIÓN (PORTAL DE IMPRESIÓN SEGURO) 🖨️ */
 @media print {
-  /* 1. Ocultar agresivamente toda la interfaz web */
-  aside, 
-  nav, 
-  header, 
-  .no-print, 
-  button:not(.print-allow), 
-  .chat-container,
-  [role="complementary"] {
-    display: none !important;
+  /* 1. RESET ESTRUCTURAL: Al usar el Portal del DOM, la página está vacía exceptuando el reporte */
+  html, 
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    overflow: visible !important;
   }
 
-  /* 2. Resetear el layout de la app para que solo el reporte mande */
-  #root > div, 
-  main, 
-  .flex, 
-  .grid {
-    display: block !important;
-    padding: 0 !important;
+  /* 2. EL REPORTE: Ocupa toda la hoja */
+  #trd-final-report-area {
+    visibility: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 215.9mm !important; /* Ancho exacto Letter */
+    max-width: none !important;
     margin: 0 !important;
-    background: transparent !important;
+    padding: 0 !important;
+    border: none !important;
     box-shadow: none !important;
   }
 
-  /* 3. Aislar el contenido del reporte */
-  body * {
-    visibility: hidden;
-  }
-  
-  .print-content, 
-  .print-content * {
-    visibility: visible;
-  }
-
-  .print-content {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    visibility: visible !important;
-    display: block !important;
-    background: white !important;
-  }
-
-  /* 4. Evitar cortes de página feos en las filas de la tabla */
-  tr {
-    page-break-inside: avoid;
-  }
-  
+  /* 3. CONFIGURACIÓN DE PÁGINA */
   @page {
-    size: auto;
-    margin: 15mm;
+    size: letter portrait;
+    margin: 0; /* Aprovechamos cada milímetro */
+  }
+
+  tr {
+    page-break-inside: avoid !important;
   }
 }
+
