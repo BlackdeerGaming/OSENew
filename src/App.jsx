@@ -17,14 +17,13 @@ import ResetPassword from './components/auth/ResetPassword';
 import MainSidebar from './components/layout/MainSidebar';
 import MainHeader from './components/layout/MainHeader';
 import DashboardView from './components/views/DashboardView';
-import CopilotView from './components/views/CopilotView';
 import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
 
 import TRDImportView from './components/views/TRDImportView';
-import RAGDocumentView from './components/views/RAGDocumentView';
+import DocumentcioRAGView from './components/views/DocumentcioRAGView';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
@@ -844,8 +843,7 @@ function App() {
               {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
               {mainView === 'import' && <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} />}
-              {mainView === 'rag' && <RAGDocumentView currentUser={currentUser} />}
-              {mainView === 'copilot' && <CopilotView currentUser={currentUser} />}
+              {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} />}
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
               

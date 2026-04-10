@@ -258,6 +258,27 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=503, detail="El motor de embeddings no está disponible.")
 
     print(f"📥 POST /upload - File: {file.filename} - Type: {file.content_type}")
+
+    # ── Deduplication check ──────────────────────────────────────────────────────
+    try:
+        dup_check = (
+            supabase_client
+            .table("rag_documents")
+            .select("id")
+            .contains("metadata", {"source": file.filename})
+            .limit(1)
+            .execute()
+        )
+        if dup_check.data and len(dup_check.data) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"El documento '{file.filename}' ya existe en la Biblioteca RAG. Elimínalo primero si deseas reindexarlo."
+            )
+    except HTTPException:
+        raise
+    except Exception as dup_err:
+        print(f"⚠️ Error en chequeo de duplicados: {dup_err}")  # No bloquear el flujo
+
     content = await file.read()
     print(f"📊 Tamaño recibido: {len(content) / (1024*1024):.2f} MB")
 
@@ -932,6 +953,7 @@ async def analyze_trd(file: UploadFile = File(...)):
             doc_metadata = {
                 "source": file.filename,
                 "type": "trd_upload",
+                "is_trd_internal": True,
                 "extracted_at": str(datetime.now()),
                 "pages": len(fitz_doc) if 'fitz_doc' in locals() else 0
             }
@@ -947,8 +969,7 @@ async def analyze_trd(file: UploadFile = File(...)):
             rag_payload = {
                 "content": extracted_text,
                 "metadata": doc_metadata,
-                "embedding": embedding_vector,
-                "filename": file.filename
+                "embedding": embedding_vector
             }
             
             supabase_client.table("rag_documents").insert(rag_payload).execute()
@@ -992,6 +1013,7 @@ async def analyze_trd(file: UploadFile = File(...)):
             doc_metadata = {
                 "source": file.filename,
                 "type": "trd_import_session",
+                "is_trd_internal": True,
                 "status": "reviewing",
                 "file_url": file_url,
                 "extracted_at": str(datetime.now()),
@@ -1003,8 +1025,7 @@ async def analyze_trd(file: UploadFile = File(...)):
             
             rag_payload = {
                 "content": "Import Session Snapshot",
-                "metadata": doc_metadata,
-                "filename": file.filename
+                "metadata": doc_metadata
             }
             
             inserted = supabase_client.table("rag_documents").insert(rag_payload).execute()
@@ -1027,13 +1048,13 @@ async def analyze_trd(file: UploadFile = File(...)):
 async def get_imports():
     if not supabase_client: return []
     # Consultamos registros generados por el flujo persistente de importación
-    res = supabase_client.table("rag_documents").select("*").contains("metadata", {"type": "trd_import_session"}).order("created_at", desc=True).execute()
+    res = supabase_client.table("rag_documents").select("id, metadata, created_at").contains("metadata", {"type": "trd_import_session"}).order("created_at", desc=True).execute()
     imports = []
     for row in res.data:
         meta = row.get("metadata", {})
         imports.append({
             "id": row["id"],
-            "filename": row["filename"],
+            "filename": meta.get("source", ""),
             "created_at": row["created_at"],
             "status": meta.get("status", "reviewing"),
             "file_url": meta.get("file_url", ""),
@@ -1070,15 +1091,129 @@ async def delete_import(import_id: str):
 
 @router.get("/rag-documents")
 async def get_rag_documents():
+    """
+    Returns one entry per unique document (deduped by metadata.source).
+    Handles both regular PDF uploads (type='text' chunks) and TRD/import session rows.
+    """
     if not supabase_client: return []
-    res = supabase_client.table("rag_documents").select("id, filename, metadata, created_at").contains("metadata", {"type": "trd_upload"}).order("created_at", desc=True).execute()
-    return res.data
+    
+    try:
+        # Fetch ALL rows ordered oldest-first so we get the 'first chunk' as representative
+        res = supabase_client.table("rag_documents") \
+            .select("id, metadata, created_at") \
+            .order("created_at", desc=False) \
+            .execute()
+        
+        # Deduplicate by source filename — keep first row encountered per source
+        seen_sources = {}
+        for row in res.data:
+            meta = row.get("metadata") or {}
+            source = meta.get("source", "")
+            if not source:
+                continue  # skip rows without a source
+            if source not in seen_sources:
+                seen_sources[source] = {
+                    "id": row["id"],
+                    "filename": meta.get("label") or source,
+                    "metadata": meta,
+                    "created_at": row["created_at"]
+                }
+            else:
+                # If a later chunk/row has extra metadata (e.g. is_trd_internal), merge it in
+                existing_meta = seen_sources[source]["metadata"]
+                for key in ("is_trd_internal", "label", "description", "type", "file_url", "pages", "status"):
+                    if key in meta and key not in existing_meta:
+                        existing_meta[key] = meta[key]
+        
+        # Sort result by created_at descending (newest first)
+        docs = sorted(seen_sources.values(), key=lambda d: d["created_at"], reverse=True)
+        return docs
+
+    except Exception as e:
+        print(f"❌ Error en GET /rag-documents: {e}")
+        return []
+
+
+@router.get("/rag-documents/{doc_id}/content")
+async def get_rag_document_content(doc_id: str):
+    """Returns the full text content of a document by concatenating all its chunks."""
+    if not supabase_client: raise HTTPException(status_code=503)
+    try:
+        # First, get the source filename from the representative row
+        row_res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if not row_res.data:
+            raise HTTPException(status_code=404, detail="Documento no encontrado.")
+        source = (row_res.data[0].get("metadata") or {}).get("source")
+        if not source:
+            raise HTTPException(status_code=400, detail="El documento no tiene fuente definida.")
+
+        # Fetch ALL chunks for this source, ordered by page
+        chunks_res = (
+            supabase_client.table("rag_documents")
+            .select("content, metadata, created_at")
+            .contains("metadata", {"source": source})
+            .order("created_at", desc=False)
+            .execute()
+        )
+
+        # Group by page number, deduplicate overlapping chunks
+        pages: dict[int, list] = {}
+        for chunk in chunks_res.data:
+            page_num = (chunk.get("metadata") or {}).get("page", 0)
+            pages.setdefault(page_num, []).append(chunk.get("content", ""))
+
+        # Build full text page by page
+        full_pages = []
+        for page_num in sorted(pages.keys()):
+            # Join multiple chunks of same page (avoid duplicates from overlap)
+            page_text = "\n".join(pages[page_num])
+            full_pages.append({"page": page_num, "text": page_text})
+
+        return {
+            "source": source,
+            "total_pages": len(full_pages),
+            "pages": full_pages
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error en /rag-documents/{doc_id}/content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/rag-documents/{doc_id}")
 async def delete_rag_document(doc_id: str):
     if not supabase_client: raise HTTPException(status_code=503)
+    # Look up source filename so we can delete ALL chunks for this document
+    try:
+        row_res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if row_res.data:
+            source = (row_res.data[0].get("metadata") or {}).get("source")
+            if source:
+                # Delete ALL rows with this source (all chunks of the same file)
+                supabase_client.table("rag_documents").delete().contains("metadata", {"source": source}).execute()
+                return {"status": "deleted", "source": source}
+    except Exception as e:
+        print(f"⚠️ Error en delete por source: {e}")
+    # Fallback: delete only the specific row
     supabase_client.table("rag_documents").delete().eq("id", doc_id).execute()
     return {"status": "deleted"}
+
+@router.put("/rag-documents/{doc_id}")
+async def update_rag_document(doc_id: str, update: dict):
+    """Update editable metadata fields of a RAG document (label, description, is_trd_internal)."""
+    if not supabase_client: raise HTTPException(status_code=503)
+    # Fetch current metadata
+    res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Documento no encontrado.")
+    current_meta = res.data[0].get("metadata", {}) or {}
+    # Merge only allowed editable fields
+    editable_fields = {"label", "description", "is_trd_internal"}
+    for field in editable_fields:
+        if field in update:
+            current_meta[field] = update[field]
+    supabase_client.table("rag_documents").update({"metadata": current_meta}).eq("id", doc_id).execute()
+    return {"status": "updated", "metadata": current_meta}
 
 @router.post("/rag-documents")
 async def create_rag_document(doc: dict):
@@ -1088,6 +1223,7 @@ async def create_rag_document(doc: dict):
         doc["embedding"] = embeddings.embed_query(doc["content"])
     res = supabase_client.table("rag_documents").insert(doc).execute()
     return res.data[0] if res.data else {}
+
 
 app.include_router(router)
 

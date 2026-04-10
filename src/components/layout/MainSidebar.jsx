@@ -1,12 +1,11 @@
-import { LayoutDashboard, Bot, Database, Users, Settings, Search, FileSignature, Building2, Cpu, FileSpreadsheet, FileUp } from 'lucide-react';
+import { LayoutDashboard, Database, Users, Settings, Search, FileSignature, Building2, FileSpreadsheet, FileUp, BrainCircuit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
   { id: 'import', label: 'Importación OCR', icon: FileUp },
-  { id: 'rag', label: 'Biblioteca RAG', icon: Database },
-  { id: 'copilot', label: 'Documencio (IA)', icon: Cpu },
+  { id: 'rag', label: 'Documencio (IA)', icon: BrainCircuit, badge: 'RAG' },
   { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'settings', label: 'Configuración', icon: Settings },
@@ -23,11 +22,11 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
     if (item.id === 'entities') return false;
 
     if (role === 'admin') {
-      return item.id !== 'copilot';
+      return true; // Admin ve todo excepto Entidades
     }
     
     if (role === 'user') {
-      return item.id !== 'copilot' && item.id !== 'users';
+      return item.id !== 'users'; // User no ve gestión de usuarios
     }
     
     return false;
@@ -92,7 +91,15 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
               )}
             >
               <Icon className={cn("h-5 w-5 shrink-0 transition-colors", isActive ? "text-white" : "text-slate-500")} />
-              {item.label}
+              <span className="flex-1 text-left">{item.label}</span>
+              {item.badge && (
+                <span className={cn(
+                  "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md",
+                  isActive ? "bg-white/20 text-white" : "bg-white/10 text-slate-400"
+                )}>
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}
