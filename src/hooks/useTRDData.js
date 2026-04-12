@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import API_BASE_URL from '../config/api';
 
 export function useTRDData(userId = null) {
   const [dependencias, setDependencias] = useState([]);
   const [series, setSeries] = useState([]);
   const [subseries, setSubseries] = useState([]);
   const [trdRecords, setTrdRecords] = useState([]);
+  const [imports, setImports] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
@@ -17,17 +19,19 @@ export function useTRDData(userId = null) {
     
     setIsLoading(true);
     try {
-      const [d, s, ss, trd] = await Promise.all([
+      const [d, s, ss, trd, impData] = await Promise.all([
         supabase.from('dependencias').select('*').order('codigo'),
         supabase.from('series').select('*').order('codigo'),
         supabase.from('subseries').select('*').order('codigo'),
-        supabase.from('trd_records').select('*')
+        supabase.from('trd_records').select('*'),
+        fetch(`${API_BASE_URL}/imports`).then(r => r.json())
       ]);
 
       if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
       if (s.data) setSeries(s.data.map(mapSerieFromDB));
       if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
       if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
+      if (Array.isArray(impData)) setImports(impData);
       
       setIsSynced(true);
     } catch (err) {
@@ -148,7 +152,8 @@ export function useTRDData(userId = null) {
     addDependencia, updateDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
-    addTrdRecord, refreshData
+    addTrdRecord, refreshData,
+    imports, setImports
   };
 }
 
@@ -166,7 +171,7 @@ function mapDependenciaFromDB(d) {
     direccion: d.direccion,
     telefono: d.telefono,
     dependeDe: d.depende_de,
-    entityId: d.entity_id // Match backend
+    entidadId: d.entidad_id // Match backend
   };
 }
 
@@ -182,7 +187,7 @@ function mapDependenciaToDB(d) {
     direccion: d.direccion,
     telefono: d.telefono,
     depende_de: (d.dependeDe === "ninguna" || !d.dependeDe) ? null : d.dependeDe,
-    entity_id: d.entityId || d.entidadId || null // Match backend
+    entidad_id: d.entidadId || d.entityId || null // Match backend
   };
 }
 
@@ -192,7 +197,7 @@ function mapSerieFromDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     dependenciaId: s.dependencia_id,
-    entityId: s.entity_id,
+    entidadId: s.entidad_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -203,7 +208,7 @@ function mapSerieToDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     dependencia_id: s.dependenciaId,
-    entity_id: s.entityId || s.entidadId || null,
+    entidad_id: s.entidadId || s.entityId || null,
     tipo_documental: s.tipoDocumental
   };
 }
@@ -215,7 +220,7 @@ function mapSubserieFromDB(s) {
     codigo: s.codigo,
     serieId: s.serie_id,
     dependenciaId: s.dependencia_id,
-    entityId: s.entity_id,
+    entidadId: s.entidad_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -227,7 +232,7 @@ function mapSubserieToDB(s) {
     codigo: s.codigo,
     serie_id: s.serieId,
     dependencia_id: s.dependenciaId || null,
-    entity_id: s.entityId || s.entidadId || null,
+    entidad_id: s.entidadId || s.entityId || null,
     tipo_documental: s.tipoDocumental
   };
 }
@@ -238,7 +243,7 @@ function mapTRDFromDB(r) {
     dependenciaId: r.dependencia_id,
     serieId: r.serie_id,
     subserieId: r.subserie_id,
-    entityId: r.entity_id,
+    entidadId: r.entidad_id,
     estadoConservacion: r.estado_conservacion,
     retencionGestion: r.retenci_gestion,
     retencionCentral: r.retenci_central,
@@ -259,7 +264,8 @@ function mapTRDFromDB(r) {
     val_Legal: r.val_legal,
     val_Histórico: r.val_historico,
     rep_microfilmacion: r.rep_microfilmacion,
-    rep_digitalizacion: r.rep_digitalizacion
+    rep_digitalizacion: r.rep_digitalizacion,
+    createdAt: r.created_at
   };
 }
 
@@ -269,7 +275,7 @@ function mapTRDToDB(r) {
     dependencia_id: r.dependenciaId,
     serie_id: r.serieId,
     subserie_id: (r.subserieId === "ninguna" || r.subserieId === "no aplica" || !r.subserieId) ? null : r.subserieId,
-    entity_id: r.entityId || r.entidadId || null,
+    entidad_id: r.entidadId || r.entityId || null,
     estado_conservacion: r.estadoConservacion,
     retenci_gestion: r.retencionGestion ? parseInt(r.retencionGestion) : null,
     retenci_central: r.retencionCentral ? parseInt(r.retencionCentral) : null,

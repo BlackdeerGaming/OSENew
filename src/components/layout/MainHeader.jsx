@@ -1,5 +1,5 @@
 import React from "react";
-import { LogOut, User, Download, CheckCircle2 } from "lucide-react";
+import { LogOut, User, Download, CheckCircle2, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -38,8 +38,8 @@ export default function MainHeader({ onLogout, mainView, trdProps, currentUser, 
               onClick={onExportPDF}
               className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-500 transition-all shadow-sm uppercase tracking-tighter"
             >
-              <Download className="h-4 w-4" />
-              GENERAR PDF
+              <Printer className="h-4 w-4" />
+              VISTA PREVIA PDF
             </button>
             <div className="w-px h-6 bg-border mx-1" />
           </div>

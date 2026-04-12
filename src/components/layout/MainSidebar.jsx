@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
-  { id: 'import', label: 'Importación OCR', icon: FileUp },
+  { id: 'import', label: 'Importación TRD', icon: FileUp },
   { id: 'rag', label: 'Documencio (IA)', icon: BrainCircuit, badge: 'RAG' },
   { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },

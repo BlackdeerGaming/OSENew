@@ -8,7 +8,7 @@ import SubserieForm from './components/forms/SubserieForm';
 import TRDForm from './components/forms/TRDForm';
 import StructuredDataView from './components/data/StructuredDataView';
 import TRDGenerator from './components/trd/TRDGenerator';
-import { Save, Bot, ArrowLeft, Printer } from 'lucide-react';
+import { Save, Bot, ArrowLeft, Printer, Download } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
@@ -28,6 +28,7 @@ import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import StatusModal from './components/ui/StatusModal';
+import { handleExportPDFGeneral } from './utils/exportUtils';
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -249,7 +250,8 @@ function App() {
     addSubserie, deleteSubserie,
     addTrdRecord,
     isLoading: trdLoading, isSynced,
-    refreshData
+    refreshData,
+    imports, setImports
   } = useTRDData(currentUser?.id);
 
   // UI State
@@ -270,14 +272,46 @@ function App() {
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(true);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
+  
+  // Chat State (Moved up to avoid ReferenceError in effects)
+  const [messages, setMessages] = useState([]);
+  const [isTyping, setIsTyping] = React.useState(false); // Using React.useState just in case or ensure import
+  const [currentOptions, setCurrentOptions] = useState([]);
+  
+  // Dashboard Stats Logic
+  const [ragCount, setRagCount] = useState(0);
+  const [tokensUsed, setTokensUsed] = useState(() => parseInt(localStorage.getItem('ose_tokens_used')) || 0);
+
+  useEffect(() => {
+    localStorage.setItem('ose_tokens_used', tokensUsed);
+  }, [tokensUsed]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const ragRes = await fetch(`${API_BASE_URL}/rag-documents`);
+        if (ragRes.ok) {
+          const data = await ragRes.json();
+          setRagCount(data.length);
+        }
+      } catch (e) { console.error("Error fetching stats:", e); }
+    };
+    if (currentUser) fetchData();
+  }, [currentUser]);
+
+  // Track tokens on chat messages
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.sender === 'agent') {
+         setTokensUsed(prev => prev + (lastMsg.text?.length || 0) / 4);
+      }
+    }
+  }, [messages]);
 
   // Selective Export TRD Filter
   const [selectedDependencia, setSelectedDependencia] = useState("TODAS");
   
-  // Chat State
-  const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [currentOptions, setCurrentOptions] = useState([]);
 
   // Calculate current flow array
   const currentFlow = activeModule === 'dependencias' ? DEPS_FLOW
@@ -669,11 +703,31 @@ function App() {
     );
   }
 
-  const fakeStats = {
-    totalDocs: trdRecords.length > 0 ? trdRecords.length * 12 : 145,
-    expiredDocs: trdRecords.length > 0 ? Math.floor(trdRecords.length * 2.5) : 24,
-    riskLevel: trdRecords.length > 0 ? 'Medio' : 'Bajo',
-    aiQueries: 128
+  // Real Metrics Calculation
+  const trdList = trdRecords || [];
+  const totalCreatedDocs = trdList.length + (ragCount || 0);
+  
+  const expiredDocsCount = trdList.filter(r => {
+    if (!r.createdAt) return false;
+    const yearGestion = parseInt(r.retencionGestion || 0);
+    const yearCentral = parseInt(r.retencionCentral || 0);
+    const totalRetention = yearGestion + yearCentral;
+    const expiryDate = new Date(r.createdAt);
+    expiryDate.setFullYear(expiryDate.getFullYear() + totalRetention);
+    return expiryDate < new Date();
+  }).length;
+
+  // Contamos como "no aprobadas" cualquier sesión de importación que no haya llegado a 'success'
+  // esto incluye: 'analyzing', 'reviewing', 'extracted', 'error'
+  const pendingSessions = (imports || []).filter(i => i.status !== 'success');
+  const pendingTRDsCount = pendingSessions.length;
+
+  const realStats = {
+    totalDocs: totalCreatedDocs,
+    expiredDocs: expiredDocsCount,
+    unapprovedTRDs: pendingTRDsCount,
+    tokensUsed: Math.floor(tokensUsed),
+    trend: "+5% vs mes anterior" // Hardcoded trend for now
   };
 
   const renderLegacyTRDLayout = () => (
@@ -739,7 +793,14 @@ function App() {
               </div>
             )}
             <div style={{ display: activeModule === 'import' ? 'block' : 'none', height: '100%' }}>
-              <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} currentEntity={currentEntity} logoBase64={entidadLogoBase64} />
+              <TRDImportView 
+                onImportComplete={executeAgentActions} 
+                currentUser={currentUser} 
+                currentEntity={currentEntity} 
+                logoBase64={entidadLogoBase64} 
+                imports={imports}
+                setImports={setImports}
+              />
             </div>
           </div>
 
@@ -779,11 +840,11 @@ function App() {
 
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => window.print()}
+              onClick={() => handleExportPDFGeneral('trd-final-report-area', 'Reporte_Oficial_TRD')}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
             >
-              <Printer className="h-4 w-4" />
-              DESCARGAR PDF OFICIAL
+              <Download className="h-4 w-4" />
+              DESCARGAR PDF
             </button>
           </div>
         </div>
@@ -840,9 +901,18 @@ function App() {
             />
 
             <div className="flex-1 overflow-y-auto relative flex">
-              {mainView === 'dashboard' && <DashboardView stats={fakeStats} searchQuery={globalSearchQuery} currentUser={currentUser} />}
+              {mainView === 'dashboard' && <DashboardView stats={realStats} searchQuery={globalSearchQuery} currentUser={currentUser} seriesCount={(series || []).length} />}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
-              {mainView === 'import' && <TRDImportView onImportComplete={executeAgentActions} currentUser={currentUser} />}
+              {mainView === 'import' && (
+                <TRDImportView 
+                  onImportComplete={executeAgentActions} 
+                  currentUser={currentUser} 
+                  currentEntity={currentEntity} 
+                  logoBase64={entidadLogoBase64} 
+                  imports={imports}
+                  setImports={setImports}
+                />
+              )}
               {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} />}
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}

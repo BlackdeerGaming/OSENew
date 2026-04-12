@@ -1,7 +1,7 @@
 import os
 import re
 import base64
-from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter
+from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -282,6 +282,18 @@ async def upload_pdf(file: UploadFile = File(...)):
     content = await file.read()
     print(f"📊 Tamaño recibido: {len(content) / (1024*1024):.2f} MB")
 
+    # 1. Guardar el archivo original en Supabase Storage
+    file_url = None
+    try:
+        bucket = "rag-uploads"
+        # Limpiar nombre del archivo
+        clean_filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
+        supabase_client.storage.from_(bucket).upload(clean_filename, content, {"content-type": "application/pdf"})
+        file_url = supabase_client.storage.from_(bucket).get_public_url(clean_filename)
+        print(f"☁️  PDF subido a Storage: {file_url}")
+    except Exception as e:
+        print(f"⚠️  Error subiendo PDF a Storage, se continuará con el RAG pero no habrá visor original: {e}")
+
     documents = []
     text_count = 0
 
@@ -296,7 +308,12 @@ async def upload_pdf(file: UploadFile = File(...)):
                 if len(cleaned) > 30:
                     documents.append(Document(
                         page_content=cleaned,
-                        metadata={"page": page_num, "source": file.filename, "type": "text"}
+                        metadata={
+                            "page": page_num, 
+                            "source": file.filename, 
+                            "type": "text",
+                            **({"file_url": file_url} if file_url else {})
+                        }
                     ))
                     text_count += 1
         fitz_doc.close()
@@ -403,6 +420,7 @@ async def chat(request: ChatRequest):
             source_docs = [
                 Document(page_content=row["content"], metadata=row["metadata"])
                 for row in rpc_res.data
+                if row.get("metadata", {}).get("status") in (None, "success")
             ]
         else:
             print("⚠️ Supabase devolvió ZERO resultados.")
@@ -894,16 +912,11 @@ TEXTO/VISIÓN:
 {text}
 """
 
-@router.post("/analyze-trd")
-async def analyze_trd(file: UploadFile = File(...)):
-    if not supabase_client:
-        raise HTTPException(status_code=503, detail="Supabase no configurado.")
-    
-    print(f"🔍 Analizando TRD: {file.filename}")
-    content = await file.read()
+
+async def process_ocr_task(doc_id: str, content: bytes, filename: str):
+    print(f"⚙️ Iniciando Background Task OCR para: {filename}")
     extracted_text = ""
     ocr_engaged = False
-
     
     try:
         fitz_doc = fitz.open(stream=content)
@@ -913,11 +926,13 @@ async def analyze_trd(file: UploadFile = File(...)):
         fitz_doc.close()
     except Exception as e:
         print(f"❌ Error leyendo archivo con Fitz: {e}")
-        raise HTTPException(status_code=400, detail=f"Error leyendo el archivo: {str(e)}")
+        supabase_client.table("rag_documents").update({
+            "metadata": {"status": "error", "message": f"Error leyendo el archivo: {str(e)}"}
+        }).eq("id", doc_id).execute()
+        return
 
     if len(extracted_text.strip()) < 50:
         print("⚠️ Texto insuficiente extraído.")
-        # No levantamos error aún, dejemos que Vision intente salvarlo
     
     try:
         # Usar el LLM para analizar la estructura
@@ -947,37 +962,11 @@ async def analyze_trd(file: UploadFile = File(...)):
         content_ai = response.content.strip()
         print(f"🤖 IA Response received ({len(content_ai)} chars)")
 
-        # --- PERSISTENCIA EN RAG_DOCUMENTS ---
-        try:
-            # Guardamos el documento en la tabla RAG para que sea consultable luego
-            doc_metadata = {
-                "source": file.filename,
-                "type": "trd_upload",
-                "is_trd_internal": True,
-                "extracted_at": str(datetime.now()),
-                "pages": len(fitz_doc) if 'fitz_doc' in locals() else 0
-            }
-            
-            # Si el motor de embeddings está listo, los generamos
-            embedding_vector = None
-            if embeddings:
-                try:
-                    embedding_vector = embeddings.embed_query(extracted_text)
-                except Exception as emb_err:
-                    print(f"⚠️ No se pudo generar embedding: {emb_err}")
+        # --- SE RETIRÓ PERSISTENCIA TEMPRANA EN RAG (Problem 3) ---
+        # Ahora el texto extraído se guarda silenciosamente en la sesión
+        # y solo se indexará tras aprobación del usuario.
 
-            rag_payload = {
-                "content": extracted_text,
-                "metadata": doc_metadata,
-                "embedding": embedding_vector
-            }
-            
-            supabase_client.table("rag_documents").insert(rag_payload).execute()
-            print(f"✅ Documento '{file.filename}' guardado en RAG.")
-        except Exception as rag_err:
-            print(f"⚠️ Error guardando en RAG: {rag_err}")
-        
-        # Extraer JSON de la respuesta
+        # Extraer JSON
         json_match = re.search(r'(\{.*\})', content_ai, re.DOTALL)
         parsed_data = {}
         if json_match:
@@ -997,45 +986,80 @@ async def analyze_trd(file: UploadFile = File(...)):
 
         parsed_data["ocr_engaged"] = ocr_engaged
         
-        # --- PERSISTENCIA IMPORT SESSION EN RAG_DOCUMENTS ---
+        # --- UPDATE IMPORT SESSION ---
         try:
-            # Subimos el archivo raw si es posible a TRD Uploads (silencioso si falla)
-            file_url = ""
-            if supabase_client:
-                try:
-                    bucket = "trd-uploads"
-                    filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"
-                    supabase_client.storage.from_(bucket).upload(filename_clean, content)
-                    file_url = supabase_client.storage.from_(bucket).get_public_url(filename_clean)
-                except Exception:
-                    pass # Posible falta de bucket, ignoramos para no bloquear el flujo
-            
-            doc_metadata = {
-                "source": file.filename,
-                "type": "trd_import_session",
-                "is_trd_internal": True,
-                "status": "reviewing",
-                "file_url": file_url,
-                "extracted_at": str(datetime.now()),
-                "pages": len(fitz_doc) if 'fitz_doc' in locals() else 0,
-                "actions": parsed_data.get("actions", []),
-                "message": parsed_data.get("message", ""),
-                "ocr_engaged": ocr_engaged
-            }
-            
-            rag_payload = {
-                "content": "Import Session Snapshot",
-                "metadata": doc_metadata
-            }
-            
-            inserted = supabase_client.table("rag_documents").insert(rag_payload).execute()
-            if inserted.data and len(inserted.data) > 0:
-                parsed_data["import_id"] = inserted.data[0].get("id")
-            
-            print(f"✅ Importación '{file.filename}' guardada en estado pending session.")
-        except Exception as rag_err:
-            print(f"⚠️ Error guardando import session: {rag_err}")
+            # Obtener metadata actual para no pisarla
+            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            if row.data:
+                curr_meta = row.data[0]["metadata"]
+                curr_meta.update({
+                    "status": "reviewing",
+                    "actions": parsed_data.get("actions", []),
+                    "message": parsed_data.get("message", ""),
+                    "ocr_engaged": ocr_engaged,
+                    "pages": pages_to_process
+                })
+                supabase_client.table("rag_documents").update({
+                    "content": extracted_text,
+                    "metadata": curr_meta
+                }).eq("id", doc_id).execute()
+                print("✅ Session updated a reviewing.")
+        except Exception as upd_err:
+            print(f"❌ Error updateting session: {upd_err}")
 
+    except Exception as e:
+        print(f"❌ Error en process_ocr_task: {e}")
+        try:
+            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            if row.data:
+                curr_meta = row.data[0]["metadata"]
+                curr_meta["status"] = "error"
+                curr_meta["message"] = str(e)
+                supabase_client.table("rag_documents").update({"metadata": curr_meta}).eq("id", doc_id).execute()
+        except:
+            pass
+
+
+@router.post("/analyze-trd")
+async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase no configurado.")
+    
+    print(f"🔍 Recibiendo TRD para analizar: {file.filename}")
+    content = await file.read()
+    
+    # Subir a Supabase Storage y crear sesión inicial
+    file_url = ""
+    try:
+        bucket = "trd-uploads"
+        filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"
+        supabase_client.storage.from_(bucket).upload(filename_clean, content)
+        file_url = supabase_client.storage.from_(bucket).get_public_url(filename_clean)
+    except Exception as e:
+        print(f"⚠️ Error subiendo a storage: {e}")
+        
+    doc_metadata = {
+        "source": file.filename,
+        "type": "trd_import_session",
+        "is_trd_internal": True,
+        "status": "analyzing",
+        "file_url": file_url,
+        "extracted_at": str(datetime.now()),
+        "actions": []
+    }
+    
+    try:
+        rag_payload = {"content": "Import Session Snapshot", "metadata": doc_metadata}
+        inserted = supabase_client.table("rag_documents").insert(rag_payload).execute()
+        if inserted.data and len(inserted.data) > 0:
+            doc_id = inserted.data[0].get("id")
+            # Lanzamos BackgroundTask
+            background_tasks.add_task(process_ocr_task, doc_id, content, file.filename)
+            return {"import_id": doc_id, "status": "analyzing"}
+        else:
+            raise HTTPException(status_code=500, detail="No se pudo crear la sesión RAG")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
         return parsed_data
         
     except Exception as e:
@@ -1072,12 +1096,32 @@ async def update_import_status(import_id: str, status_data: dict):
     if len(import_id) < 32 and "." in import_id:
         return {"status": "ignored", "reason": "invalid_id_format"}
 
-    res = supabase_client.table("rag_documents").select("metadata").eq("id", import_id).execute()
+    res = supabase_client.table("rag_documents").select("metadata, content").eq("id", import_id).execute()
     if not res.data:
         raise HTTPException(404)
+        
     meta = res.data[0]["metadata"]
-    meta["status"] = status_data.get("status", meta["status"])
-    supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", import_id).execute()
+    content = res.data[0].get("content") or ""
+    new_status = status_data.get("status", meta.get("status"))
+    meta["status"] = new_status
+    
+    update_payload = {"metadata": meta}
+    
+    # Si fue aprobado (success), entonces lo convertimos en documento activo de RAG
+    if new_status == "success":
+        meta["type"] = "trd_upload" # Cambia de temp_trd_session a doc real
+        if "extracted_at" not in meta:
+             meta["extracted_at"] = str(datetime.now())
+        
+        # Vectorizamos retrospectivamente
+        try:
+             if embeddings and content and content != "Import Session Snapshot":
+                  embedding_vector = embeddings.embed_query(content)
+                  update_payload["embedding"] = embedding_vector
+        except Exception as e:
+             print(f"⚠️ Error embedding approved TRD: {e}")
+             
+    supabase_client.table("rag_documents").update(update_payload).eq("id", import_id).execute()
     return {"status": "updated"}
 
 @router.delete("/imports/{import_id}")
@@ -1111,6 +1155,11 @@ async def get_rag_documents():
             source = meta.get("source", "")
             if not source:
                 continue  # skip rows without a source
+            
+            # Filter: Solo mostrar documentos aprobados o que no sean sesiones (Problem 3)
+            if meta.get("status") and meta.get("status") != "success":
+                continue
+
             if source not in seen_sources:
                 seen_sources[source] = {
                     "id": row["id"],

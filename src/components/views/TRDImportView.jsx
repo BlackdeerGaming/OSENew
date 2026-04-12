@@ -1,14 +1,12 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, Printer, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, X, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import API_BASE_URL from '../../config/api';
-import TRDReportDANE from '../trd/TRDGenerator';
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
+import TRDExportPreview from '../trd/TRDGenerator';
+import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
-const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64 }) => {
-  const [imports, setImports] = useState([]);
+const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   // Para la previsualización modal
@@ -19,16 +17,43 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     fetchImports();
   }, []);
 
+  // Polling for analyzing tasks
+  useEffect(() => {
+    const hasAnalyzing = imports.some(imp => imp.status === 'analyzing');
+    if (!hasAnalyzing) return;
+    
+    const interval = setInterval(() => {
+      fetchImports();
+    }, 4000);
+    
+    return () => clearInterval(interval);
+  }, [imports]);
+
   const fetchImports = async () => {
     try {
-      setIsLoading(true);
       const res = await fetch(`${API_BASE_URL}/imports`);
       if (res.ok) {
         const data = await res.json();
-        setImports(data);
+        setImports(prev => {
+          // Mantener en frontend solo aquellos que aún se están subiendo localmente 
+          // (no tienen reflejo backend todavía)
+          const uploading = prev.filter(p => p.isUploading);
+          
+          // Agregamos los que vienen del backend o actualizamos
+          const merged = [...uploading];
+          for (const d of data) {
+            const idx = merged.findIndex(m => m.id === d.id);
+            if (idx >= 0) {
+               merged[idx] = d;
+            } else {
+               merged.push(d);
+            }
+          }
+          return merged;
+        });
       }
-    } catch (err) {
-      console.error("Error cargando previsualizaciones:", err);
+    } catch (error) {
+      console.error("Error fetching imports:", error);
     } finally {
       setIsLoading(false);
     }
@@ -69,15 +94,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               return {
                  ...imp,
                  id: data.import_id || imp.id,
-                 status: 'reviewing',
-                 actions: data.actions || [],
-                 message: data.message,
-                 ocr_engaged: data.ocr_engaged || false,
+                 status: data.status || 'analyzing',
                  isUploading: false
               };
            }
            return imp;
         }));
+        // Al terminar de enviar todos, reforzamos el refresco
+        fetchImports();
 
       } catch (err) {
         setImports(prev => prev.map(imp => imp.id === item.id ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
@@ -172,51 +196,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       }));
   }, [currentPreviewImport, selectedIndices]);
 
-  const handleExportPDF = async () => {
-    const element = document.getElementById("trd-final-report-area");
-    if (!element) return;
-    
-    // Cambiamos a cursor de espera temporalmente
-    document.body.style.cursor = 'wait';
-    
-    try {
-      const canvas = await html2canvas(element, { 
-        scale: 3, 
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-      const dataUrl = canvas.toDataURL("image/png", 1.0);
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-      let heightLeft = pdfHeight;
-      let position = 0;
-
-      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position -= pageHeight;
-        pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-      }
-
-      pdf.save(`Previsualizacion_DANE_${Date.now()}.pdf`);
-    } catch (error) {
-      console.error("Error al exportar:", error);
-      alert("Hubo un error al generar el PDF.");
-    } finally {
-      document.body.style.cursor = 'default';
-    }
+  const handleExportPDF = () => {
+    handleExportPDFGeneral('trd-final-report-area', `Reporte_TRD_${currentPreviewImport?.filename || 'Generado'}`);
   };
 
   return (
     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-32">
+
+
       {/* Header Section */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 px-2">
         <div className="flex flex-col gap-2">
@@ -364,10 +351,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                    <button 
                      id="pdf-download-btn"
                      onClick={handleExportPDF}
-                     className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-700 transition-all shadow-sm shrink-0"
+                     className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black hover:bg-emerald-500 transition-all shadow-emerald-600/20 shadow-lg active:scale-95 shrink-0 uppercase"
                    >
-                     <Printer className="h-4 w-4" />
-                     DESCARGAR DANE
+                     <Download className="h-4 w-4" />
+                     DESCARGAR PDF
                    </button>
                    <button 
                      onClick={handleCommit}
@@ -425,7 +412,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                      </div>
 
                      <div id="trd-report-print-area" className="mx-auto w-full bg-white shadow-sm ring-1 ring-slate-200">
-                        <TRDReportDANE rows={previewRows} currentUser={currentUser} currentEntity={currentEntity} logoBase64={logoBase64} />
+                        <TRDExportPreview rows={previewRows} currentUser={currentUser} currentEntity={currentEntity} logoBase64={logoBase64} />
                      </div>
                   </div>
                

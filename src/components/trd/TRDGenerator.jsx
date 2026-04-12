@@ -39,7 +39,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
              <FileText className="h-5 w-5" style={{ color: '#e11d48' }} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-tight">Reporte Oficial TRD (Formato DANE)</h2>
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-tight">Reporte Oficial TRD (Formato PDF)</h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Previsualización del Documento Archivístico</p>
           </div>
         </div>
@@ -53,12 +53,16 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
       </div>
 
       {/* DANE FORMAT CONTAINER - THE CAPTURE TARGET */}
-      <div className="flex justify-center p-4 md:p-8 no-export print:block print:p-0 print:m-0 print:w-full print:flex-none">
+      <div 
+        id="trd-capture-frame" 
+        className="flex justify-center bg-white no-export print:block print:p-0 print:m-0 print:w-full print:flex-none"
+        style={{ padding: '40px' }}
+      >
         <div 
           id="trd-final-report-area" 
           className={cn(
              "bg-white flex flex-col font-sans h-fit",
-             "shadow-2xl w-full max-w-[215mm] p-[10mm] border mb-10",
+             "shadow-2xl w-full max-w-[215mm] p-[10mm] border pb-8",
              "print:shadow-none print:border-0 print:m-0 print:p-[4mm] print:w-full print:max-w-none print:text-[9.5px]"
           )}
           style={{ borderColor: HEX_BORDER_LIGHT }}
@@ -68,9 +72,9 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
             <div className="flex" style={{ borderBottom: `1.5px solid ${HEX_BORDER}` }}>
               <div className="w-[15%] flex flex-col items-center justify-center p-2 border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
                 {(logoBase64 || currentEntity?.logoUrl) ? (
-                   <img src={logoBase64 || currentEntity.logoUrl} alt="Logo Institucional" className="h-10 object-contain" crossOrigin="anonymous" />
+                   <img src={logoBase64 || currentEntity.logoUrl} alt="Logo Institucional" className="h-10 object-contain p-1" crossOrigin="anonymous" />
                 ) : (
-                   <span className="text-xl font-black tracking-tighter leading-none" style={{ color: '#e11d48' }}>DANE</span>
+                   <span className="text-xl font-black tracking-tighter leading-none" style={{ color: '#e11d48' }}>TRD</span>
                 )}
                 <span className="text-[5px] font-bold text-slate-900 mt-1 uppercase whitespace-nowrap">Información para todos</span>
               </div>
@@ -108,8 +112,8 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
             </div>
 
             {/* TABLE HEADERS */}
-            <div className="flex text-[8px] font-black text-center border-b-[1.5px] bg-white" style={{ borderColor: HEX_BORDER }}>
-              <div className="w-16 print:w-[10%] shrink-0 flex flex-col border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+            <div className="flex text-[8px] font-black text-center border-b-[1.5px] bg-white border-t-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="w-16 print:w-[10%] shrink-0 flex flex-col border-r-[1.5px] border-l-[1.5px]" style={{ borderColor: HEX_BORDER }}>
                 <div className="h-10 flex items-center justify-center">CÓDIGO</div>
                 <div className="h-8 grid grid-cols-3 border-t-[1.5px]" style={{ borderColor: HEX_BORDER }}>
                   <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>D</div>
@@ -143,7 +147,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                   <div className="flex items-center justify-center">E</div>
                 </div>
               </div>
-              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase">Procedimiento</div>
+              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>Procedimiento</div>
             </div>
 
             {/* DATA ROWS */}
@@ -155,8 +159,8 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                 const sub = parts[2] || "";
 
                 return (
-                  <div key={row.id || idx} className="flex text-[9px] min-h-[60px] items-stretch border-b-[1.5px] last:border-b-0" style={{ borderColor: HEX_BORDER }}>
-                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-3 text-center font-bold border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+                  <div key={row.id || idx} className="flex text-[9px] min-h-[60px] items-stretch border-b-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-3 text-center font-bold border-r-[1.5px] border-l-[1.5px]" style={{ borderColor: HEX_BORDER }}>
                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{d}</div>
                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{s}</div>
                       <div className="flex items-center justify-center">{sub}</div>
@@ -191,7 +195,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                        <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{row.disposicion === 'Selección' ? <Check className="h-3 w-3" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.disposicion === 'Eliminación' ? <Check className="h-3 w-3" /> : ''}</div>
                     </div>
-                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px]">
+                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px] border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
                        {row.procedimiento || "No especificado."}
                     </div>
                   </div>
@@ -228,5 +232,4 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
       </div>
     </div>
   );
-}
-
+};

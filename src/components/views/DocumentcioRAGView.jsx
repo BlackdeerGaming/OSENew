@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
 import {
   MessageSquare, Send, FileText, Loader2, Database, Search,
   Trash2, Calendar, HardDrive, Info, Clock, Download, UploadCloud,
@@ -189,13 +190,19 @@ function UploadModal({ onClose, onUploaded, existingFilenames }) {
   const [step, setStep] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleFile = (e) => {
-    const f = e.target.files[0];
+  const onDrop = useCallback((acceptedFiles) => {
+    const f = acceptedFiles[0];
     if (!f) return;
     setFile(f);
     setStatus('idle');
     setErrorMsg('');
-  };
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'application/pdf': ['.pdf'] },
+    maxFiles: 1
+  });
 
   const handleUpload = async () => {
     if (!file) return;
@@ -282,23 +289,29 @@ function UploadModal({ onClose, onUploaded, existingFilenames }) {
 
         {/* Body */}
         <div className="p-6 space-y-4">
-          <label className={`block border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+          <div {...getRootProps()} className={`block border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all outline-none ${
+            isDragActive ? 'border-primary bg-primary/10 scale-[1.02]' : 
             file ? 'border-primary/50 bg-primary/5' : 'border-slate-200 hover:border-primary/40 hover:bg-slate-50'
           }`}>
-            <input type="file" accept=".pdf" className="hidden" onChange={handleFile} />
-            <UploadCloud className={`h-8 w-8 mx-auto mb-3 ${file ? 'text-primary' : 'text-slate-300'}`} />
+            <input {...getInputProps()} />
+            <UploadCloud className={`h-8 w-8 mx-auto mb-3 transition-colors ${
+              isDragActive ? 'text-primary' : 
+              file ? 'text-primary' : 'text-slate-300'
+            }`} />
             {file ? (
               <>
                 <p className="font-bold text-slate-900 text-sm truncate">{file.name}</p>
-                <p className="text-[11px] text-slate-500 mt-1">{(file.size / 1024).toFixed(1)} KB · Click para cambiar</p>
+                <p className="text-[11px] text-slate-500 mt-1">{(file.size / 1024).toFixed(1)} KB · Click o arrastra para cambiar</p>
               </>
             ) : (
               <>
-                <p className="font-bold text-slate-700 text-sm">Selecciona un PDF</p>
+                <p className={`font-bold text-sm ${isDragActive ? 'text-primary' : 'text-slate-700'}`}>
+                  {isDragActive ? 'Suelta el PDF aquí' : 'Selecciona o arrastra un PDF'}
+                </p>
                 <p className="text-[11px] text-slate-400 mt-1">El documento se indexará en la Biblioteca RAG</p>
               </>
             )}
-          </label>
+          </div>
 
           {/* Progress */}
           {status === 'uploading' && (
@@ -353,53 +366,8 @@ function UploadModal({ onClose, onUploaded, existingFilenames }) {
 // ─── DOCUMENT VIEWER ───────────────────────────────────────────────────────────
 
 function DocumentViewer({ doc, onClose }) {
-  const [pages, setPages] = useState([]);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const contentRef = useRef(null);
-
-  useEffect(() => {
-    const fetchContent = async () => {
-      setIsLoading(true);
-      setError('');
-      try {
-        const res = await fetch(`${API_BASE_URL}/rag-documents/${doc.id}/content`);
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          throw new Error(d.detail || 'No se pudo cargar el contenido.');
-        }
-        const data = await res.json();
-        setPages(data.pages || []);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchContent();
-  }, [doc.id]);
-
-  useEffect(() => {
-    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentPage]);
-
-  const highlight = (text, term) => {
-    if (!term.trim()) return text;
-    const parts = text.split(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-    return parts.map((part, i) =>
-      part.toLowerCase() === term.toLowerCase()
-        ? `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${part}</mark>`
-        : part
-    ).join('');
-  };
-
-  const currentText = pages[currentPage]?.text || '';
-  const wordCount = currentText.split(/\s+/).filter(Boolean).length;
-  const matchCount = searchTerm
-    ? (currentText.match(new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')) || []).length
-    : 0;
+  const fileUrl = doc.metadata?.file_url;
+  const title = doc.metadata?.label || doc.filename || 'Documento';
 
   return (
     <>
@@ -407,129 +375,59 @@ function DocumentViewer({ doc, onClose }) {
       <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-4xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-[#0a1128] to-[#111d40] flex items-start justify-between shrink-0">
-          <div className="flex items-start gap-3 min-w-0">
+        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-[#0a1128] to-[#111d40] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 bg-white/10 rounded-xl shrink-0">
               <BookOpen className="h-5 w-5 text-blue-300" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-white text-sm truncate">{doc.metadata?.label || doc.filename}</h3>
+              <h3 className="font-bold text-white text-sm truncate">{title}</h3>
               <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider font-bold">
-                Visor de contenido indexado · {pages.length} página{pages.length !== 1 ? 's' : ''}
+                Visor de documento original
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0 ml-2">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex flex-center gap-2">
+            {fileUrl && (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0 flex items-center gap-2 text-xs font-bold"
+                title="Descargar o Abrir Original"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Descargar</span>
+              </a>
+            )}
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Toolbar */}
-        {!isLoading && pages.length > 0 && (
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center gap-3 shrink-0">
-            {/* Page nav */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-30 transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-xs font-bold text-slate-600 min-w-[70px] text-center">
-                Pág. {currentPage + 1} / {pages.length}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(pages.length - 1, p + 1))}
-                disabled={currentPage === pages.length - 1}
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-30 transition-colors"
-              >
-                <ChevRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="w-px h-5 bg-slate-200" />
-
-            {/* Search */}
-            <div className="flex-1 relative">
-              <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar en este documento..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-            {searchTerm && (
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${matchCount > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-rose-100 text-rose-600'}`}>
-                {matchCount} coincidencia{matchCount !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-        )}
-
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-y-auto p-6 bg-white">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <p className="text-sm font-medium">Cargando contenido del documento...</p>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3">
-              <AlertCircle className="h-8 w-8 text-rose-400" />
-              <p className="text-sm text-rose-600 font-medium text-center">{error}</p>
-            </div>
-          ) : pages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
-              <FileText className="h-8 w-8" />
-              <p className="text-sm font-medium">No se encontró contenido para este documento.</p>
-            </div>
+        <div className="flex-1 bg-slate-100 relative">
+          {fileUrl ? (
+            <iframe
+              src={`${fileUrl}#toolbar=0&view=FitH`}
+              className="w-full h-full border-none"
+              title={`Visor PDF - ${title}`}
+            />
           ) : (
-            <div className="max-w-none">
-              {/* Page indicator chip */}
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-wider mb-4">
-                <FileText className="h-3 w-3" />
-                Página {pages[currentPage]?.page || currentPage + 1}
-                <span className="text-slate-300 mx-0.5">·</span>
-                {wordCount} palabras
-              </div>
-
-              {/* Text content */}
-              <div
-                className="prose prose-sm max-w-none text-slate-700 leading-relaxed font-mono text-xs whitespace-pre-wrap bg-slate-50 rounded-2xl p-5 border border-slate-100"
-                dangerouslySetInnerHTML={{
-                  __html: highlight(currentText, searchTerm)
-                }}
-              />
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 p-8 text-center">
+              <FileText className="h-12 w-12 text-slate-300" />
+              <p className="text-sm font-medium text-slate-500">
+                El archivo original no está disponible.
+              </p>
+              <p className="text-xs text-slate-400 max-w-sm">
+                Este documento fue indexado antes de que se habilitara el almacenamiento de archivos originales, o es un documento netamente de base de datos.
+              </p>
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        {!isLoading && pages.length > 1 && (
-          <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 shrink-0">
-            {/* Page dots / quick jump */}
-            <div className="flex items-center gap-1.5 justify-center flex-wrap">
-              {pages.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentPage(i)}
-                  className={`transition-all rounded-full font-bold text-[9px] ${
-                    i === currentPage
-                      ? 'w-6 h-5 bg-primary text-white px-1'
-                      : 'w-5 h-5 bg-slate-200 hover:bg-slate-300 text-slate-500'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </>
   );

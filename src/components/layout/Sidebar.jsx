@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { id: "series", label: "Series", icon: FolderOpen },
   { id: "subseries", label: "Subseries", icon: FileText },
   { id: "trdform", label: "Valoración TRD", icon: Database },
-  { id: "import", label: "Importación OCR", icon: FileUp },
   { separator: true },
   { id: "datos", label: "Datos Estructurados", icon: Database },
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
