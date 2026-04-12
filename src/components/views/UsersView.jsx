@@ -23,7 +23,8 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     estado: 'Inactivo',
     perfil: null,
     entidadId: null,
-    entidadIds: []
+    entidadIds: [],
+    iaDisponible: false
   });
 
   const canCreateAdmins = role === 'superadmin';
@@ -149,7 +150,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: null, entidadId: null, entidadIds: []
+      perfil: null, entidadId: null, entidadIds: [], iaDisponible: false
     });
   };
 
@@ -290,13 +291,14 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Entidad</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Perfil</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Estado</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">IA</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-16 text-center text-slate-400">
+                  <td colSpan="6" className="px-6 py-16 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="p-4 bg-slate-100 rounded-full">
                         <UserCircle className="w-10 h-10 opacity-20" />
@@ -333,6 +335,12 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                         )} />
                         <span className="text-xs font-medium text-slate-600">{user.isActivated ? "Activo" : "Pendiente"}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                       {user.iaDisponible 
+                         ? <span className="text-[10px] bg-violet-100 text-violet-600 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Activo</span>
+                         : <span className="text-[10px] text-slate-300 font-bold">—</span>
+                       }
                     </td>
                     <td className="px-6 py-4 text-right">
                        <div className="flex items-center justify-end gap-2">
@@ -508,6 +516,23 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                          onChange={e=>setNewUser({...newUser, estado: e.target.checked ? 'Activo' : 'Inactivo'})} 
                        />
                        <span className="text-sm font-semibold text-slate-500 font-bold">Estado Inicial (Admin)</span>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer mt-2">
+                       <div className={cn(
+                          "h-6 w-6 rounded flex items-center justify-center transition-all",
+                          newUser.iaDisponible ? "bg-violet-500" : "bg-slate-200"
+                       )}>
+                          <Check className="h-4 w-4 text-white" />
+                       </div>
+                       <input 
+                         type="checkbox" 
+                         className="hidden" 
+                         checked={!!newUser.iaDisponible} 
+                         onChange={e=>setNewUser({...newUser, iaDisponible: e.target.checked})} 
+                       />
+                       <span className="text-sm font-semibold text-slate-500">IA Disponible?</span>
+                       <span className="ml-1 text-[10px] bg-violet-100 text-violet-600 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">IA</span>
                     </label>
                  </div>
                )}

@@ -150,6 +150,7 @@ class UserCreate(BaseModel):
     entidadIds: list[str] | None = None
     activationToken: str | None = None
     tokenExpiry: int | None = None
+    iaDisponible: bool | None = False
 
 class UserActivate(BaseModel):
     token: str
@@ -169,6 +170,7 @@ class UserUpdate(BaseModel):
     entidadId: str | None = None
     entidadIds: list[str] | None = None
     isActivated: bool | None = None
+    iaDisponible: bool | None = None
 
 class EntityCreate(BaseModel):
     razonSocial: str
@@ -760,7 +762,8 @@ async def get_users():
             "username": u["username"], "perfil": u["perfil"], "estado": u["estado"],
             "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
             "entidadIds": rels.get(u["id"], []),
-            "activationToken": u.get("activation_token"), "tokenExpiry": u.get("token_expiry")
+            "activationToken": u.get("activation_token"), "tokenExpiry": u.get("token_expiry"),
+            "iaDisponible": u.get("ia_disponible", False)
         })
     return mapped
 
@@ -770,7 +773,7 @@ async def create_user(user: UserCreate):
     data = {
         "nombre": user.nombre, "apellido": user.apellido, "email": user.email, "username": user.username,
         "perfil": user.perfil, "entidad_id": user.entidadId, "activation_token": user.activationToken,
-        "token_expiry": user.tokenExpiry
+        "token_expiry": user.tokenExpiry, "ia_disponible": user.iaDisponible or False
     }
     res = supabase_client.table("profiles").insert(data).execute()
     new_user = res.data[0]
@@ -792,6 +795,7 @@ async def update_user(user_id: str, user: UserUpdate):
     if user.perfil is not None: data["perfil"] = user.perfil
     if user.entidadId is not None: data["entidad_id"] = user.entidadId
     if user.isActivated is not None: data["is_activated"] = user.isActivated
+    if user.iaDisponible is not None: data["ia_disponible"] = user.iaDisponible
     
     res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
     
