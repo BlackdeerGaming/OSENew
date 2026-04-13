@@ -121,7 +121,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                   <div className="flex items-center justify-center">SUB</div>
                 </div>
               </div>
-              <div className="flex-1 print:flex-none print:w-[25%] flex items-center justify-center p-1 uppercase border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="flex-1 print:flex-none print:w-[25%] flex items-center justify-center p-1 uppercase" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
                 Serie, Subserie y Tipos Documentales
               </div>
               <div className="w-14 print:w-[8%] shrink-0 flex flex-col border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
@@ -147,7 +147,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                   <div className="flex items-center justify-center">E</div>
                 </div>
               </div>
-              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>Procedimiento</div>
+              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>Procedimiento</div>
             </div>
 
             {/* DATA ROWS */}
@@ -165,7 +165,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{s}</div>
                       <div className="flex items-center justify-center">{sub}</div>
                     </div>
-                    <div className="flex-1 print:flex-none print:w-[25%] p-3 flex flex-col gap-1 border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+                    <div className="flex-1 print:flex-none print:w-[25%] p-3 flex flex-col gap-1" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
                        {sub ? (
                          <>
                            <span className="font-black uppercase text-[10px] text-slate-900 leading-tight">{row.subserie}</span>
@@ -195,7 +195,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                        <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{row.disposicion === 'Selección' ? <Check className="h-3 w-3" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.disposicion === 'Eliminación' ? <Check className="h-3 w-3" /> : ''}</div>
                     </div>
-                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px] border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px]" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
                        {row.procedimiento || "No especificado."}
                     </div>
                   </div>
