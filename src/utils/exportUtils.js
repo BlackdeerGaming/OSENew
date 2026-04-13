@@ -1,127 +1,147 @@
 /**
- * ESTRATEGIA: Print Portal via iframe silencioso.
+ * PRINT PORTAL con ZOOM DINÁMICO
  *
- * En lugar de capturar con html2canvas (que falla con OKLCH de Tailwind v4),
- * clonamos el reporte en un iframe oculto con CSS de impresión controlado.
- * El navegador renderiza todo nativamente → sin errores de color.
- * El centrado se logra con CSS puro: @page + flexbox en body.
+ * Estrategia:
+ * 1. Clonar el contenido en un iframe con ancho real de carta (816px)
+ * 2. Medir la altura total del contenido renderizado
+ * 3. Calcular zoom = alturaDisponible / alturaContenido
+ * 4. Aplicar CSS zoom (afecta layout, a diferencia de transform:scale)
+ * 5. Imprimir → todo cabe en una sola página centrada
  *
- * @param {string} elementId  - ID del elemento a imprimir.
- * @param {string} filename   - Nombre sugerido del archivo (solo referencia para el título).
+ * Sin html2canvas → sin errores OKLCH.
+ * El centrado y escalado ocurren vía CSS, no vía JavaScript math.
  */
 export const handleExportPDFGeneral = (elementId, filename = 'Reporte_TRD') => {
   const reportElement = document.getElementById(elementId);
   if (!reportElement) {
-    console.error(`[PDF Export] Elemento "${elementId}" no encontrado.`);
+    console.error('[PDF Export] Elemento "' + elementId + '" no encontrado.');
     return;
   }
 
-  const safeTitle = filename.replace(/[^a-z0-9_\-]/gi, '_');
+  const safeTitle = (filename || 'Reporte_TRD').replace(/[^a-z0-9_\-]/gi, '_');
 
-  // ── 1. Recolectar TODOS los estilos del documento actual ──────────────
-  // Incluimos tanto <link> como <style> para garantizar que Tailwind
-  // y cualquier CSS inyectado dinámicamente queden en el iframe.
-  const collectedStyles = [
+  // ── 1. Recolectar CSS del documento actual ─────────────────────────────
+  const styleSheets = [
     ...Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-      .map(l => `<link rel="stylesheet" href="${l.href}">`),
+      .map(function (l) { return '<link rel="stylesheet" href="' + l.href + '">'; }),
     ...Array.from(document.querySelectorAll('style'))
-      .map(s => `<style>${s.textContent}</style>`)
+      .map(function (s) { return '<style>' + s.textContent + '</style>'; })
   ].join('\n');
 
-  // ── 2. Clonar el contenido del reporte ────────────────────────────────
-  const clone = reportElement.cloneNode(true);
-  // Remover elementos que no deben aparecer en la impresión
-  clone.querySelectorAll('.no-export, [class*="no-print"]').forEach(el => el.remove());
+  // ── 2. Clonar contenido del reporte ───────────────────────────────────
+  var clone = reportElement.cloneNode(true);
+  clone.querySelectorAll('.no-export').forEach(function (el) { el.remove(); });
 
-  // ── 3. Construir el documento de impresión ────────────────────────────
-  const printHTML = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>${safeTitle}</title>
-  ${collectedStyles}
-  <style>
-    /* ─ Página tamaño carta con margen de 12mm en los 4 bordes ─ */
-    @page {
-      size: letter portrait;
-      margin: 12mm;
-    }
+  // ── 3. Dimensiones de la hoja carta (mm y px a 96 DPI) ────────────────
+  var MARGIN_MM    = 10;
+  var PAGE_W_MM    = 215.9;
+  var PAGE_H_MM    = 279.4;
+  var AVAIL_W_MM   = PAGE_W_MM - MARGIN_MM * 2;  // 195.9 mm
+  var AVAIL_H_MM   = PAGE_H_MM - MARGIN_MM * 2;  // 259.4 mm
+  var MM2PX        = 96 / 25.4;
+  var AVAIL_W_PX   = Math.round(AVAIL_W_MM * MM2PX); // ~741 px
+  var AVAIL_H_PX   = Math.round(AVAIL_H_MM * MM2PX); // ~981 px
+  var LETTER_W_PX  = Math.round(PAGE_W_MM  * MM2PX); // ~816 px
 
-    /* ─ Reset base ─ */
-    *, *::before, *::after { box-sizing: border-box; }
+  // Datos embebidos en el script interno del iframe
+  var AVAIL_W_MM_STR = AVAIL_W_MM.toFixed(1);
+  var AVAIL_H_MM_STR = AVAIL_H_MM.toFixed(1);
+  var AVAIL_W_PX_STR = String(AVAIL_W_PX);
+  var AVAIL_H_PX_STR = String(AVAIL_H_PX);
 
-    html, body {
-      margin: 0 !important;
-      padding: 0 !important;
-      width: 100%;
-      background: #ffffff !important;
-    }
+  // ── 4. Construir HTML de impresión ────────────────────────────────────
+  var contentHTML = clone.outerHTML;
 
-    /* ─ CENTRADO: El contenido se centra horizontalmente en la página ─ */
-    body {
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-    }
+  var printStyles = [
+    '@page {',
+    '  size: letter portrait;',
+    '  margin: ' + MARGIN_MM + 'mm;',
+    '}',
+    '*, *::before, *::after { box-sizing: border-box; }',
+    'html, body {',
+    '  margin: 0 !important;',
+    '  padding: 0 !important;',
+    '  background: #ffffff !important;',
+    '  width: ' + AVAIL_W_MM_STR + 'mm;',
+    '}',
+    'body {',
+    '  display: flex;',
+    '  justify-content: center;',
+    '  align-items: flex-start;',
+    '}',
+    '#ose-root {',
+    '  width: ' + AVAIL_W_MM_STR + 'mm;',
+    '  transform-origin: top center;', // fallback si zoom no está soportado
+    '}',
+    '#ose-root [class*="shadow"] { box-shadow: none !important; }',
+    '#ose-root .sticky          { position: static !important; }',
+    '#ose-root .no-export       { display: none !important; }',
+  ].join('\n');
 
-    /* ─ Wrapper del reporte: ocupa el 100% del área de impresión ─ */
-    #ose-print-root {
-      width: 100%;
-      max-width: 191.9mm; /* letter (215.9mm) - 2 * 12mm margen */
-    }
+  var inlineScript = [
+    'window.addEventListener("load", function() {',
+    '  var root = document.getElementById("ose-root");',
+    '  if (!root) return;',
+    '',
+    '  var contentH = root.scrollHeight;',
+    '  var contentW = root.scrollWidth;',
+    '  var availH   = ' + AVAIL_H_PX_STR + ';',
+    '  var availW   = ' + AVAIL_W_PX_STR + ';',
+    '',
+    '  // Calcular zoom para que el contenido completo entre en una página',
+    '  var zoomH = availH / contentH;',
+    '  var zoomW = availW / contentW;',
+    '  var zoom  = Math.min(zoomH, zoomW, 1); // nunca agrandar',
+    '',
+    '  if (zoom < 1) {',
+    '    // CSS zoom afecta el layout (a diferencia de transform:scale)',
+    '    // Por lo tanto el contenedor encoge y no hay overflow de página',
+    '    root.style.zoom = String(zoom);',
+    '  }',
+    '',
+    '  setTimeout(function() { window.print(); }, 400);',
+    '});',
+  ].join('\n');
 
-    /* ─ Limpiar decoraciones de UI que no son parte del documento ─ */
-    #ose-print-root [class*="shadow"] { box-shadow: none !important; }
-    #ose-print-root .sticky         { position: static !important; }
-    #ose-print-root [class*="no-export"] { display: none !important; }
+  var printHTML = '<!DOCTYPE html>\n'
+    + '<html lang="es">\n'
+    + '<head>\n'
+    + '  <meta charset="UTF-8">\n'
+    + '  <title>' + safeTitle + '</title>\n'
+    + styleSheets + '\n'
+    + '  <style>\n' + printStyles + '\n  </style>\n'
+    + '</head>\n'
+    + '<body>\n'
+    + '  <div id="ose-root">' + contentHTML + '</div>\n'
+    + '  <script>\n' + inlineScript + '\n  <\/script>\n'
+    + '</body>\n'
+    + '</html>';
 
-    /* ─ Forzar bordes negros puros (evitar colores problemáticos) ─ */
-    #ose-print-root [style*="border"] { border-color: #000 !important; }
-  </style>
-</head>
-<body>
-  <div id="ose-print-root">
-    ${clone.outerHTML}
-  </div>
-  <script>
-    // Esperar a que todos los recursos carguen antes de imprimir
-    window.addEventListener('load', function () {
-      setTimeout(function () {
-        window.print();
-      }, 500);
-    });
-  </script>
-</body>
-</html>`;
-
-  // ── 4. Crear iframe completamente oculto ──────────────────────────────
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('title', 'Ventana de impresión TRD');
-  iframe.style.cssText = `
-    position: fixed;
-    top: -9999px;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    border: none;
-    opacity: 0;
-    pointer-events: none;
-  `;
+  // ── 5. Iframe con ancho real de carta para medición correcta ──────────
+  var iframe = document.createElement('iframe');
+  iframe.setAttribute('title', 'Print Portal TRD');
+  // Debe tener el ancho real de la hoja para que scrollHeight sea preciso
+  iframe.style.position   = 'fixed';
+  iframe.style.top        = '0';
+  iframe.style.left       = '-' + (LETTER_W_PX + 30) + 'px'; // Fuera de pantalla
+  iframe.style.width      = LETTER_W_PX + 'px';
+  iframe.style.height     = '2400px';  // Alto generoso para contenido largo
+  iframe.style.border     = 'none';
+  iframe.style.opacity    = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex     = '-999';
   document.body.appendChild(iframe);
 
-  // ── 5. Escribir el documento en el iframe ─────────────────────────────
-  const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-  iframeDoc.open();
-  iframeDoc.write(printHTML);
-  iframeDoc.close();
+  // ── 6. Escribir documento en iframe ───────────────────────────────────
+  var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+  iDoc.open();
+  iDoc.write(printHTML);
+  iDoc.close();
 
-  // ── 6. Limpiar el iframe después de un tiempo prudente ────────────────
-  const removeIframe = () => {
+  // ── 7. Limpieza automática ─────────────────────────────────────────────
+  setTimeout(function () {
     if (document.body.contains(iframe)) {
       document.body.removeChild(iframe);
-      console.log('[PDF Export] iframe de impresión eliminado.');
     }
-  };
-  // Timeout de seguridad: eliminarlo a los 30s sin importar qué
-  setTimeout(removeIframe, 30_000);
+  }, 60000); // 60s de seguridad
 };
