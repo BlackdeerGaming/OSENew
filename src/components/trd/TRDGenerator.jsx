@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 const HEX_BORDER = "#000000"; // Negro Puro Institucional
 const HEX_BORDER_LIGHT = "#334155"; // Slate 700 para líneas de apoyo
 const HEX_BG_HEADER = "#ffffff"; // Blanco puro como la referencia
+const B = `1px solid ${"#000000"}`; // Borde delgado uniforme
 
 export default function TRDGenerator({ rows = [], selectedIds = new Set(), onToggleRow, onToggleAll, currentUser, currentEntity, logoBase64 }) {
   if (rows.length === 0) {
@@ -68,9 +69,9 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
           style={{ borderColor: HEX_BORDER_LIGHT }}
         >
            {/* OFICIAL HEADER */}
-          <div className="flex flex-col overflow-hidden print:rounded-none" style={{ border: `1.5px solid ${HEX_BORDER}` }}>
-            <div className="flex" style={{ borderBottom: `1.5px solid ${HEX_BORDER}` }}>
-              <div className="w-[15%] flex flex-col items-center justify-center p-2 border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+          <div className="flex flex-col overflow-hidden print:rounded-none" style={{ border: B }}>
+            <div className="flex" style={{ borderBottom: B }}>
+              <div className="w-[15%] flex flex-col items-center justify-center p-2" style={{ borderRight: B }}>
                 {(logoBase64 || currentEntity?.logoUrl) ? (
                    <img src={logoBase64 || currentEntity.logoUrl} alt="Logo Institucional" className="h-10 object-contain p-1" crossOrigin="anonymous" />
                 ) : (
@@ -78,18 +79,18 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                 )}
                 <span className="text-[5px] font-bold text-slate-900 mt-1 uppercase whitespace-nowrap">Información para todos</span>
               </div>
-              <div className="w-[60%] flex items-center justify-center p-4 border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="w-[60%] flex items-center justify-center p-4" style={{ borderRight: B }}>
                 <h1 className="text-lg font-black uppercase text-center tracking-[0.2em] text-slate-900">Tabla de Retención Documental</h1>
               </div>
               <div className="w-[25%] flex flex-col text-[8px] font-bold">
-                <div className="p-1 px-2 flex justify-between uppercase border-b-[1.5px]" style={{ borderColor: HEX_BORDER }}><span className="font-black">Código:</span> <span>GID-030-PDT-001-F-001</span></div>
-                <div className="p-1 px-2 flex justify-between uppercase border-b-[1.5px]" style={{ borderColor: HEX_BORDER }}><span className="font-black">Versión:</span> <span>08</span></div>
+                <div className="p-1 px-2 flex justify-between uppercase" style={{ borderBottom: B }}><span className="font-black">Código:</span> <span>GID-030-PDT-001-F-001</span></div>
+                <div className="p-1 px-2 flex justify-between uppercase" style={{ borderBottom: B }}><span className="font-black">Versión:</span> <span>08</span></div>
                 <div className="p-1 px-2 flex justify-between uppercase"><span className="font-black">Fecha:</span> <span>{new Date().toLocaleDateString('es-CO')}</span></div>
               </div>
             </div>
 
             {/* METADATA BAR */}
-            <div className="flex text-[8px] p-2 border-b-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+            <div className="flex text-[8px] p-2" style={{ borderBottom: B }}>
               <div className="flex flex-col gap-1 w-full uppercase">
                 <div className="flex gap-2">
                   <span className="font-black w-32 shrink-0">Entidad Productora:</span>
@@ -112,42 +113,42 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
             </div>
 
             {/* TABLE HEADERS */}
-            <div className="flex text-[8px] font-black text-center border-b-[1.5px] bg-white border-t-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-              <div className="w-16 print:w-[10%] shrink-0 flex flex-col border-r-[1.5px] border-l-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+            <div className="flex text-[8px] font-black text-center bg-white" style={{ borderBottom: B, borderTop: B }}>
+              <div className="w-16 print:w-[10%] shrink-0 flex flex-col" style={{ borderRight: B, borderLeft: B }}>
                 <div className="h-10 flex items-center justify-center">CÓDIGO</div>
-                <div className="h-8 grid grid-cols-3 border-t-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>D</div>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>S</div>
+                <div className="h-8 grid grid-cols-3" style={{ borderTop: B }}>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>D</div>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>S</div>
                   <div className="flex items-center justify-center">SUB</div>
                 </div>
               </div>
-              <div className="flex-1 print:flex-none print:w-[25%] flex items-center justify-center p-1 uppercase" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
+              <div className="flex-1 print:flex-none print:w-[25%] flex items-center justify-center p-1 uppercase" style={{ border: B }}>
                 Serie, Subserie y Tipos Documentales
               </div>
-              <div className="w-14 print:w-[8%] shrink-0 flex flex-col border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="w-14 print:w-[8%] shrink-0 flex flex-col" style={{ borderRight: B }}>
                 <div className="h-10 flex items-center justify-center leading-[8px] p-0.5 uppercase">Soporte o Formato</div>
-                <div className="h-8 grid grid-cols-2 border-t-[1.5px] uppercase" style={{ borderColor: HEX_BORDER }}>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>SF</div>
+                <div className="h-8 grid grid-cols-2 uppercase" style={{ borderTop: B }}>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>SF</div>
                   <div className="flex items-center justify-center">SE</div>
                 </div>
               </div>
-              <div className="w-16 print:w-[8%] shrink-0 flex flex-col border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="w-16 print:w-[8%] shrink-0 flex flex-col" style={{ borderRight: B }}>
                 <div className="h-10 flex items-center justify-center leading-[8px] p-1 uppercase">Tiempo de Retención (Años)</div>
-                <div className="h-8 grid grid-cols-2 border-t-[1.5px] uppercase font-black" style={{ borderColor: HEX_BORDER }}>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>A/G</div>
+                <div className="h-8 grid grid-cols-2 uppercase font-black" style={{ borderTop: B }}>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>A/G</div>
                   <div className="flex items-center justify-center">A/C</div>
                 </div>
               </div>
-              <div className="w-24 print:w-[12%] shrink-0 flex flex-col border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
+              <div className="w-24 print:w-[12%] shrink-0 flex flex-col" style={{ borderRight: B }}>
                 <div className="h-10 flex items-center justify-center uppercase">Disposición Final</div>
-                <div className="h-8 grid grid-cols-4 border-t-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>CT</div>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>M</div>
-                  <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>S</div>
+                <div className="h-8 grid grid-cols-4" style={{ borderTop: B }}>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>CT</div>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>M</div>
+                  <div className="flex items-center justify-center" style={{ borderRight: B }}>S</div>
                   <div className="flex items-center justify-center">E</div>
                 </div>
               </div>
-              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>Procedimiento</div>
+              <div className="flex-1 print:flex-none print:w-[37%] flex items-center justify-center p-1 uppercase" style={{ border: B }}>Procedimiento</div>
             </div>
 
             {/* DATA ROWS */}
@@ -159,17 +160,17 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                 const sub = parts[2] || "";
 
                 return (
-                  <div key={row.id || idx} className="flex text-[9px] min-h-[60px] items-stretch border-b-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-3 text-center font-bold border-r-[1.5px] border-l-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                      <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{d}</div>
-                      <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{s}</div>
+                  <div key={row.id || idx} className="flex text-[9px] min-h-[60px] items-stretch" style={{ borderBottom: B }}>
+                    <div className="w-16 print:w-[10%] shrink-0 grid grid-cols-3 text-center font-bold" style={{ borderRight: B, borderLeft: B }}>
+                      <div className="flex items-center justify-center" style={{ borderRight: B }}>{d}</div>
+                      <div className="flex items-center justify-center" style={{ borderRight: B }}>{s}</div>
                       <div className="flex items-center justify-center">{sub}</div>
                     </div>
-                    <div className="flex-1 print:flex-none print:w-[25%] p-3 flex flex-col gap-1" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
+                    <div className="flex-1 print:flex-none print:w-[25%] p-3 flex flex-col gap-1" style={{ border: B }}>
                        {sub ? (
                          <>
                            <span className="font-black uppercase text-[10px] text-slate-900 leading-tight">{row.subserie}</span>
-                           <div className="flex flex-col gap-0.5 mt-1 border-l-[1.5px] pl-2" style={{ borderColor: HEX_BORDER }}>
+                           <div className="flex flex-col gap-0.5 mt-1 pl-2" style={{ borderLeft: B }}>
                              {row.tipoDocumental && row.tipoDocumental.split(',').map((type, tIdx) => (
                                <span key={tIdx} className="text-[8px] text-slate-700 font-bold italic uppercase tracking-tight">
                                   {type.trim()}
@@ -181,21 +182,21 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), onTog
                          <span className="font-black uppercase text-[11px] text-slate-900 tracking-wide">{row.serie}</span>
                        )}
                     </div>
-                    <div className="w-14 print:w-[8%] shrink-0 grid grid-cols-2 text-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{row.soporte === 'fisico' || !row.soporte ? <Check className="h-3 w-3" /> : ''}</div>
+                    <div className="w-14 print:w-[8%] shrink-0 grid grid-cols-2 text-center" style={{ borderRight: B }}>
+                       <div className="flex items-center justify-center" style={{ borderRight: B }}>{row.soporte === 'fisico' || !row.soporte ? <Check className="h-3 w-3" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.soporte === 'electronico' ? <Check className="h-3 w-3" /> : ''}</div>
                     </div>
-                    <div className="w-16 print:w-[8%] shrink-0 grid grid-cols-2 text-center font-black border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{row.retencionGestion}</div>
+                    <div className="w-16 print:w-[8%] shrink-0 grid grid-cols-2 text-center font-black" style={{ borderRight: B }}>
+                       <div className="flex items-center justify-center" style={{ borderRight: B }}>{row.retencionGestion}</div>
                        <div className="flex items-center justify-center">{row.retencionCentral}</div>
                     </div>
-                    <div className="w-24 print:w-[12%] shrink-0 grid grid-cols-4 text-center font-black border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>
-                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{(row.disposicion === 'Conservación total' || row.disposicion === 'CT') ? <Check className="h-3 w-3" /> : ''}</div>
-                       <div className="flex items-center justify-center text-[7px] border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{(row.reproduccion === 'Digitalización' || row.reproduccion === 'Microfilmación') ? (row.reproduccion.charAt(0)) : ''}</div>
-                       <div className="flex items-center justify-center border-r-[1.5px]" style={{ borderColor: HEX_BORDER }}>{row.disposicion === 'Selección' ? <Check className="h-3 w-3" /> : ''}</div>
+                    <div className="w-24 print:w-[12%] shrink-0 grid grid-cols-4 text-center font-black" style={{ borderRight: B }}>
+                       <div className="flex items-center justify-center" style={{ borderRight: B }}>{(row.disposicion === 'Conservación total' || row.disposicion === 'CT') ? <Check className="h-3 w-3" /> : ''}</div>
+                       <div className="flex items-center justify-center text-[7px]" style={{ borderRight: B }}>{(row.reproduccion === 'Digitalización' || row.reproduccion === 'Microfilmación') ? (row.reproduccion.charAt(0)) : ''}</div>
+                       <div className="flex items-center justify-center" style={{ borderRight: B }}>{row.disposicion === 'Selección' ? <Check className="h-3 w-3" /> : ''}</div>
                        <div className="flex items-center justify-center">{row.disposicion === 'Eliminación' ? <Check className="h-3 w-3" /> : ''}</div>
                     </div>
-                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px]" style={{ borderRight: `1.5px solid ${HEX_BORDER}`, borderLeft: `1.5px solid ${HEX_BORDER}`, borderTop: `1.5px solid ${HEX_BORDER}`, borderBottom: `1.5px solid ${HEX_BORDER}` }}>
+                    <div className="flex-1 print:flex-none print:w-[37%] p-3 text-justify leading-[14px] text-slate-900 font-medium whitespace-pre-wrap text-[9px]" style={{ border: B }}>
                        {row.procedimiento || "No especificado."}
                     </div>
                   </div>
