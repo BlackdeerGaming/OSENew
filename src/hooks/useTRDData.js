@@ -21,7 +21,7 @@ export function useTRDData(currentUser = null, entityId = null) {
     try {
       const trdScope = entityId ? { column: 'entidad_id', value: entityId } : null;
 
-      const [d, s, ss, trd, impData] = await Promise.all([
+      const [d, s, ss, trd] = await Promise.all([
         supabase.from('dependencias').select('*')
           .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
           .order('codigo'),
@@ -33,16 +33,13 @@ export function useTRDData(currentUser = null, entityId = null) {
           .order('codigo'),
         supabase.from('trd_records').select('*')
           .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null),
-        fetch(`${API_BASE_URL}/imports${entityId ? `?entidad_id=${entityId}` : ''}`, {
-          headers: { "Authorization": `Bearer ${currentUser.token}` }
-        }).then(r => r.ok ? r.json() : [])
       ]);
 
       if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
       if (s.data) setSeries(s.data.map(mapSerieFromDB));
       if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
       if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
-      if (Array.isArray(impData)) setImports(impData);
+      // Note: imports are loaded independently by TRDImportView, not here
       
       setIsSynced(true);
     } catch (err) {
