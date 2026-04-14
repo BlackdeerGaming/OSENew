@@ -1,21 +1,22 @@
 import os
 import re
 import base64
-from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends
+from dotenv import load_dotenv
+
+# ─── CRITICAL: Load env vars FIRST before any other imports that read os.getenv ─
+load_dotenv()
+
+from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.permissions import get_current_user, JWT_SECRET, JWT_ALGORITHM
 import jwt
 from pydantic import BaseModel
 import uvicorn
-from dotenv import load_dotenv
 import fitz  # PyMuPDF
 import time
 import httpx
 import asyncio
 from datetime import datetime
-
-# Cargar variables de entorno
-load_dotenv()
 
 # LangChain imports
 from langchain_core.documents import Document
@@ -1134,8 +1135,13 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
 # ─── CRUD TRD Imports ───────────────────────────────────────────────────────
 
 @router.get("/imports")
-async def get_imports(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
+async def get_imports(request: Request, entidad_id: str | None = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
+    
+    # Diagnóstico: registrar qué usuario está solicitando imports
+    auth_header = request.headers.get("Authorization", "NO_AUTH_HEADER")
+    print(f"📋 GET /imports | role={user.get('role')} | entity_id={user.get('entity_id')} | token_start={auth_header[:30]}")
+    
     # Restricción: solo filtrar si no es superadmin o si el superadmin pide una entidad específica
     query = supabase_client.table("rag_documents") \
         .select("id, metadata, created_at") \

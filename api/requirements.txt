@@ -10,3 +10,4 @@ langchain-openai
 pydantic
 supabase
 httpx
+PyJWT
