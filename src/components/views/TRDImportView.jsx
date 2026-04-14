@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, X, FileText, Image as ImageIcon, Download, BrainCircuit } from 'lucide-react';
+import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, X, FileText, Image as ImageIcon, Download, BrainCircuit, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import API_BASE_URL from '../../config/api';
 import TRDExportPreview from '../trd/TRDGenerator';
@@ -402,6 +402,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                            {imp.ocr_engaged && (
                               <span className="flex items-center gap-1 text-[10px] uppercase font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md border border-indigo-100">
                                  <ImageIcon className="h-3 w-3" /> OCR IA
+                              </span>
+                           )}
+                           {currentUser?.role === 'superadmin' && imp.entidad_nombre && (
+                              <span className="flex items-center gap-1 text-[10px] uppercase font-black bg-slate-900 text-white px-2 py-1 rounded-md">
+                                 <Building2 className="h-3 w-3" /> {imp.entidad_nombre}
                               </span>
                            )}
                         </div>

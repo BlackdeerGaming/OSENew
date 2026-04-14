@@ -1091,6 +1091,16 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     # Entidad de la sesión
     entidad_final = user.get("entity_id") if user.get("role") == "admin" else entidad_id
 
+    # Intentar traer el nombre de la entidad para el log y metadata
+    entidad_nombre = "Global"
+    if entidad_final:
+        try:
+            ent_res = supabase_client.table("entities").select("razon_social").eq("id", entidad_final).execute()
+            if ent_res.data:
+                entidad_nombre = ent_res.data[0].get("razon_social", "Entidad Desconocida")
+        except:
+            pass
+
     doc_metadata = {
         "source": file.filename,
         "type": "trd_import_session",
@@ -1098,6 +1108,7 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
         "status": "analyzing",
         "file_url": file_url,
         "entidad_id": entidad_final,
+        "entidad_nombre": entidad_nombre,
         "extracted_at": str(datetime.now()),
         "actions": []
     }
@@ -1125,19 +1136,18 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
 @router.get("/imports")
 async def get_imports(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
-    
-    # Restricción: solo traer sesiones de la entidad del usuario
-    filter_data = {"type": "trd_import_session"}
-    if user.get("role") == "admin":
-        filter_data["entidad_id"] = user.get("entity_id")
-    elif entidad_id:
-        filter_data["entidad_id"] = entidad_id
-        
-    res = supabase_client.table("rag_documents") \
+    # Restricción: solo filtrar si no es superadmin o si el superadmin pide una entidad específica
+    query = supabase_client.table("rag_documents") \
         .select("id, metadata, created_at") \
-        .contains("metadata", filter_data) \
-        .order("created_at", desc=True) \
-        .execute()
+        .eq("metadata->>type", "trd_import_session")
+
+    if user.get("role") == "admin":
+        query = query.eq("metadata->>entidad_id", user.get("entity_id"))
+    elif user.get("role") != "superadmin" and entidad_id:
+        query = query.eq("metadata->>entidad_id", entidad_id)
+    # Si es superadmin y no hay entidad_id, no filtramos por entidad_id (ve todo)
+
+    res = query.order("created_at", desc=True).execute()
     imports = []
     for row in res.data:
         meta = row.get("metadata", {})
@@ -1149,7 +1159,8 @@ async def get_imports(entidad_id: str | None = None, user: dict = Depends(get_cu
             "file_url": meta.get("file_url", ""),
             "actions": meta.get("actions", []),
             "message": meta.get("message", ""),
-            "ocr_engaged": meta.get("ocr_engaged", False)
+            "ocr_engaged": meta.get("ocr_engaged", False),
+            "entidad_nombre": meta.get("entidad_nombre", "Global")
         })
     return imports
 
