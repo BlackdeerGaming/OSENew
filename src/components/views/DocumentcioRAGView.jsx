@@ -15,7 +15,7 @@ function ChatPanel() {
     {
       id: 1,
       role: 'assistant',
-      content: '¡Hola! Soy Documencio, tu asistente de gestión documental. Puedo consultarte sobre los documentos cargados en la Biblioteca RAG, incluyendo TRDs importadas y creadas en el sistema. ¿En qué te puedo ayudar hoy?'
+      content: '¡Hola! Soy tu Asistente de Biblioteca, especialista en gestión documental. Puedo consultarte sobre los documentos cargados en la Biblioteca RAG, incluyendo TRDs importadas y creadas en el sistema. ¿En qué te puedo ayudar hoy?'
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -74,7 +74,7 @@ function ChatPanel() {
           <BrainCircuit className="w-5 h-5 text-blue-400" />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-white">Documencio IA</h2>
+          <h2 className="text-sm font-bold text-white">IA Biblioteca</h2>
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Asistente Documental · RAG Activo</p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -174,7 +174,7 @@ function ChatPanel() {
           </button>
         </div>
         <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">
-          Documencio consulta la Biblioteca RAG y las TRDs del sistema para responder.
+          Este asistente consulta la Biblioteca RAG y las TRDs del sistema para responder.
         </p>
       </div>
     </div>
@@ -507,7 +507,7 @@ function EditModal({ doc, onClose, onSaved }) {
           <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div>
               <p className="text-sm font-bold text-slate-700">Documento Interno (TRD)</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Los documentos internos NO aparecen en tarjetas, pero sí son consultables por Documencio IA.</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Los documentos internos NO aparecen en tarjetas, pero sí son consultables por la IA de la Biblioteca.</p>
             </div>
             <button
               onClick={() => setIsInternal(v => !v)}
@@ -839,8 +839,24 @@ function RAGLibraryPanel({ currentUser }) {
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
 
 export default function DocumentcioRAGView({ currentUser }) {
+  const iaAvailable = currentUser?.iaDisponible ?? true;
+
   return (
-    <div className="flex-1 flex overflow-hidden h-full">
+    <div className="flex-1 flex overflow-hidden h-full relative">
+      {/* IA Restriction Overlay */}
+      {!iaAvailable && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+           <div className="relative bg-white p-8 rounded-3xl shadow-2xl max-w-sm flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
+             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center">
+                <BrainCircuit className="w-8 h-8" />
+             </div>
+             <h3 className="text-xl font-black text-slate-900 leading-tight">Acceso a Biblioteca IA restringido</h3>
+             <p className="text-slate-500 text-sm font-medium">Si quieres este servicio, mejora tu plan o habla con tu administrador.</p>
+           </div>
+        </div>
+      )}
+
       {/* LEFT: Chat Panel (45%) */}
       <div className="w-[45%] shrink-0 flex flex-col h-full border-r border-slate-200">
         <ChatPanel />

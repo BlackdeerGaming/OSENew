@@ -145,6 +145,14 @@ export function useTRDData(userId = null) {
     return newRecord;
   };
 
+  const deleteTrdRecord = async (id) => {
+    setTrdRecords(prev => prev.filter(x => x.id !== id));
+    if (supabase) {
+      const { error } = await supabase.from('trd_records').delete().eq('id', id);
+      if (error) throw error;
+    }
+  };
+
   return {
     dependencias, series, subseries, trdRecords,
     isLoading, isSynced,
@@ -152,7 +160,7 @@ export function useTRDData(userId = null) {
     addDependencia, updateDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
-    addTrdRecord, refreshData,
+    addTrdRecord, deleteTrdRecord, refreshData,
     imports, setImports
   };
 }

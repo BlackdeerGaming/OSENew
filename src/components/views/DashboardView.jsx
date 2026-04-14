@@ -3,7 +3,7 @@ import { FileText, AlertTriangle, Activity, BrainCircuit, MessageSquare, Send, C
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
-export default function DashboardView({ stats, searchQuery, currentUser, seriesCount }) {
+export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [] }) {
   const role = currentUser?.role || 'user';
   const [messages, setMessages] = React.useState([
     {
@@ -54,13 +54,37 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   const showMetrics = role === 'superadmin' || role === 'admin';
   const showAnalysis = role === 'superadmin' || role === 'admin';
   const showActions = role === 'superadmin' || role === 'admin';
+  const iaAvailable = currentUser?.iaDisponible ?? true;
+
+  const handleExportCSV = () => {
+    if (activityLogs.length === 0) return;
+    const headers = ["ID Acción", "Usuario", "Actividad", "Fecha y Hora"];
+    const csvContent = [
+      headers.join(","),
+      ...activityLogs.map(log => [
+        log.id.replace('act_', ''),
+        `"${log.user || 'Sistema'}"`,
+        `"${log.message}"`,
+        `"${new Date(log.timestamp).toLocaleString()}"`
+      ].join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `RegistroActividad_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Lógica de Recomendaciones Reales
   const recommendations = React.useMemo(() => {
     const recs = [];
     if (!stats) return [{ title: "Cargando", desc: "Preparando recomendaciones...", type: "neutral" }];
     
-    if (stats.expiredDocs > 0) recs.push({ title: "Eliminación", desc: "Generar acta de eliminación para documentos vencidos", type: "success" });
+    if (stats.expiredDocs > 0) recs.push({ title: "Eliminación", desc: "Revisar documentos vencidos para eliminación", type: "success" });
     if (stats.unapprovedTRDs > 0) recs.push({ title: "Aprobación", desc: `Revisar y aprobar ${stats.unapprovedTRDs} TRD pendientes`, type: "warning" });
     if (stats.totalDocs > 100) recs.push({ title: "Transferencia", desc: "Programar transferencia documental al Archivo Central", type: "info" });
     
@@ -90,19 +114,19 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             trend="down"
             alert={stats.expiredDocs > 0}
           />
-          <StatsCard 
-            title="Tokens usados" 
-            value={stats.tokensUsed} 
-            subtitle="Consumo del plan IA"
-            icon={BrainCircuit} 
-          />
+          {iaAvailable && (
+            <StatsCard 
+              title="Tokens usados" 
+              value={stats.tokensUsed} 
+              subtitle="Consumo del plan IA"
+              icon={BrainCircuit} 
+            />
+          )}
         </div>
       )}
 
       <div className="flex flex-col gap-6 flex-1 min-h-0">
         
-
-
         {/* Column: Analytics & Data */}
         <div className="flex flex-col gap-6 h-full col-span-1">
           
@@ -120,29 +144,29 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
           {showActions && (
             <div className="flex items-center gap-3 overflow-x-auto pb-2 animate-in fade-in slide-in-from-left-4 duration-500">
               <button 
-                onClick={() => setShowActProposal(true)}
+                onClick={() => {
+                   // Solamente refrescar (en SPA el estado ya es reactivo, pero simulamos acción)
+                   console.log("♻️ Actualizando registro de actividad...");
+                }}
                 className="shrink-0 flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
               >
-                <FileText className="w-4 h-4" /> Generar acta de eliminación
+                <Activity className="w-4 h-4" /> Actualizar
               </button>
-              <button className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm hover:bg-slate-50 transition-colors">
+              <button 
+                onClick={handleExportCSV}
+                className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm hover:bg-slate-50 transition-colors"
+              >
                 <Download className="w-4 h-4" /> Exportar Excel
-              </button>
-              <button className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm hover:bg-slate-50 transition-colors">
-                <Eye className="w-4 h-4" /> Ver detalle
-              </button>
-              <button className="shrink-0 flex items-center gap-2 bg-destructive/10 text-destructive border border-destructive/20 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm hover:bg-destructive hover:text-white transition-all ml-auto">
-                <Trash2 className="w-4 h-4" /> Marcar para eliminación
               </button>
             </div>
           )}
 
-          {/* Data Table */}
+          {/* Registro de Actividad (Antes Documentos Identificados) */}
           <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden flex flex-col flex-1 animate-in zoom-in-95 duration-700">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
-               <h3 className="font-bold text-foreground">Documentos identificados</h3>
+               <h3 className="font-bold text-foreground">Registro de actividad</h3>
                <div className="flex items-center gap-2">
-                 <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">0 registros</span>
+                 <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">{activityLogs.length} registros</span>
                  {role === 'user' && (
                     <span className="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded-md font-bold uppercase tracking-wider">Modo Consulta</span>
                  )}
@@ -152,21 +176,37 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-medium">
                   <tr>
-                    <th className="px-5 py-3">ID</th>
-                    <th className="px-5 py-3">Serie</th>
-                    <th className="px-5 py-3">Fecha</th>
-                    <th className="px-5 py-3">Estado</th>
+                    <th className="px-5 py-3">ID Acción</th>
+                    <th className="px-5 py-3">Usuario</th>
+                    <th className="px-5 py-3">Actividad</th>
+                    <th className="px-5 py-3">Fecha y Hora</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td colSpan="4" className="px-5 py-12 text-center text-slate-400">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 opacity-20" />
-                        <p>No hay documentos identificados actualmente.</p>
-                      </div>
-                    </td>
-                  </tr>
+                  {activityLogs.length > 0 ? (
+                    activityLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-border/50 hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-3 font-mono text-[10px] text-slate-400 capitalize">{log.id.replace('act_', '')}</td>
+                        <td className="px-5 py-3 font-bold text-slate-900">{log.user || 'Sistema'}</td>
+                        <td className="px-5 py-3 font-medium text-slate-700">{log.message}</td>
+                        <td className="px-5 py-3 text-slate-500 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-3 h-3" />
+                            {new Date(log.timestamp).toLocaleString()}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" className="px-5 py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Activity className="w-8 h-8 opacity-20" />
+                          <p>No hay registros de actividad actualmente.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

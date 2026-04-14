@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import AgentChat from './components/chat/AgentChat';
@@ -8,7 +8,7 @@ import SubserieForm from './components/forms/SubserieForm';
 import TRDForm from './components/forms/TRDForm';
 import StructuredDataView from './components/data/StructuredDataView';
 import TRDGenerator from './components/trd/TRDGenerator';
-import { Save, Bot, ArrowLeft, Printer, Download } from 'lucide-react';
+import { Save, Bot, ArrowLeft, Printer, Download, BrainCircuit, Activity } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
@@ -282,6 +282,28 @@ function App() {
   const [ragCount, setRagCount] = useState(0);
   const [tokensUsed, setTokensUsed] = useState(() => parseInt(localStorage.getItem('ose_tokens_used')) || 0);
 
+  // Registro de Actividad (Feed)
+  const [activityLogs, setActivityLogs] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ose_activity_logs')) || [];
+    } catch (e) { return []; }
+  });
+
+  const addActivityLog = useCallback((action) => {
+    setActivityLogs(prev => {
+      const userName = currentUser?.nombre || currentUser?.username || 'Sistema';
+      const newLog = {
+        id: "act_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        user: userName,
+        message: `${userName} ${action.toLowerCase()}`,
+        timestamp: new Date().toISOString()
+      };
+      const updated = [newLog, ...prev].slice(0, 50); // Máximo 50 registros
+      localStorage.setItem('ose_activity_logs', JSON.stringify(updated));
+      return updated;
+    });
+  }, [currentUser]);
+
   useEffect(() => {
     localStorage.setItem('ose_tokens_used', tokensUsed);
   }, [tokensUsed]);
@@ -354,9 +376,17 @@ function App() {
       if (entity === 'dependency') entity = 'dependencias';
       if (entity === 'serie') entity = 'series';
       if (entity === 'subserie') entity = 'subseries';
+      if (entity === 'trd_records') entity = 'TRD';
 
       try {
+        const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
+        const name = action.payload?.nombre || action.payload?.name || "Registro";
+
         if (action.type === 'CREATE') {
+          // ... (keep previous logic)
+          // Add logging here if needed, but we can log at the end of loop or per action
+          addActivityLog(`Creación ${entityLabel} - ${name}`);
+          
           const newId = Date.now().toString() + "_" + Math.floor(Math.random()*10000);
           if (action.id) idMap[action.id] = newId;
 
@@ -365,19 +395,21 @@ function App() {
           // Auto-create missing dependencies if they don't exist by name
           let depId = rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre;
           const foundDep = dependencias.find(x => x.id === depId || x.nombre?.toLowerCase() === depId?.toLowerCase());
-          if (!foundDep && depId && !idMap[depId] && entity === 'trd_records') {
+          if (!foundDep && depId && !idMap[depId] && entity === 'TRD') {
               const strId = Date.now().toString() + "_dep";
               idMap[depId] = strId;
               await addDependencia({ id: strId, entityId: userEntities[0]?.id, nombre: depId, sigla: "GEN", codigo: (Math.floor(Math.random() * 900) + 100).toString() });
+              addActivityLog(`Creación Dependencia - ${depId} (Auto)`);
           }
 
           let serId = rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre;
           const foundSer = series.find(x => x.id === serId || x.nombre?.toLowerCase() === serId?.toLowerCase());
-          if (!foundSer && serId && !idMap[serId] && entity === 'trd_records') {
+          if (!foundSer && serId && !idMap[serId] && entity === 'TRD') {
               const strId = Date.now().toString() + "_ser";
               idMap[serId] = strId;
               let actualDepId = idMap[depId] || foundDep?.id;
               await addSerie({ id: strId, entityId: userEntities[0]?.id, dependenciaId: actualDepId, nombre: serId, codigo: (Math.floor(Math.random() * 90) + 10).toString(), tipoDocumental: rawPayload.tipoDocumental || "Documentos" });
+              addActivityLog(`Creación Serie - ${serId} (Auto)`);
           }
 
           const resolveId = (providedId, collection) => {
@@ -414,10 +446,11 @@ function App() {
           if (entity === 'dependencias') await addDependencia(newRecord);
           else if (entity === 'series') await addSerie(newRecord);
           else if (entity === 'subseries') await addSubserie(newRecord);
-          else if (entity === 'trd_records' || entity === 'valoracion') await addTrdRecord(newRecord);
+          else if (entity === 'TRD' || entity === 'valoracion') await addTrdRecord(newRecord);
           actionsProcessed++;
         } 
         else if (action.type === 'UPDATE') {
+          addActivityLog(`Edición ${entityLabel} - ${name}`);
           const entityId = idMap[action.id] || action.id;
           const pool = entity === 'dependencias' ? dependencias : (entity === 'series' ? series : (entity === 'subseries' ? subseries : trdRecords));
           const existing = pool.find(x => x.id === entityId);
@@ -426,11 +459,12 @@ function App() {
              if (entity === 'dependencias') await addDependencia(updated);
              else if (entity === 'series') await addSerie(updated);
              else if (entity === 'subseries') await addSubserie(updated);
-             else if (entity === 'trd_records') await addTrdRecord(updated);
+             else if (entity === 'TRD') await addTrdRecord(updated);
              actionsProcessed++;
           }
         }
         else if (action.type === 'DELETE') {
+          addActivityLog(`Borrado ${entityLabel} - ${name}`);
           if (entity === 'dependencias') await deleteDependencia(action.id);
           else if (entity === 'series') await deleteSerie(action.id);
           else if (entity === 'subseries') await deleteSubserie(action.id);
@@ -515,6 +549,17 @@ function App() {
       else if (activeModule === 'subseries') await addSubserie(record);
       else if (activeModule === 'trdform') await addTrdRecord(record);
 
+      const entityMap = {
+        'dependencias': 'Dependencia',
+        'series': 'Serie',
+        'subseries': 'Subserie',
+        'trdform': 'TRD'
+      };
+      const entityLabel = entityMap[activeModule] || 'Registro';
+      const actionLabel = isUpdate ? 'Edición' : 'Creación';
+      
+      addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id}`);
+      
       setActiveFormData({});
       setFlowStep(0);
       setModalStatus({ isOpen: true, type: 'success', message: 'El registro se ha guardado y sincronizado exitosamente en la nube.' });
@@ -534,13 +579,48 @@ function App() {
   const handleDelete = async (moduleType, recordId) => {
     setModalStatus({ isOpen: true, type: 'loading', message: 'Eliminando registro de la nube...' });
     try {
-      if (moduleType === 'dependencias') {
+      // Logic for TRD/RAG synchronization
+      let syncRagDocName = null;
+      if (moduleType === 'trdform') {
+        const trdToDel = trdRecords.find(t => t.id === recordId);
+        await deleteTrdRecord(recordId);
+        addActivityLog(`Borrado TRD - ${trdToDel?.nombre || recordId}`);
+      } else if (moduleType === 'dependencias') {
+        const dep = dependencias.find(d => d.id === recordId);
         await deleteDependencia(recordId);
+        addActivityLog(`Borrado Dependencia - ${dep?.nombre || recordId}`);
       } else if (moduleType === 'series') {
+        const ser = series.find(s => s.id === recordId);
         await deleteSerie(recordId);
+        addActivityLog(`Borrado Serie - ${ser?.nombre || recordId}`);
       } else if (moduleType === 'subseries') {
+        const sub = subseries.find(s => s.id === recordId);
         await deleteSubserie(recordId);
+        addActivityLog(`Borrado Subserie - ${sub?.nombre || recordId}`);
       }
+
+      // Sync with RAG if applicable
+      if (syncRagDocName) {
+        try {
+          const ragRes = await fetch(`${API_BASE_URL}/rag-documents`);
+          if (ragRes.ok) {
+            const ragDocs = await ragRes.json();
+            const matchingDoc = ragDocs.find(d => 
+              d.filename?.toLowerCase().includes(syncRagDocName.toLowerCase()) || 
+              d.metadata?.label?.toLowerCase() === syncRagDocName.toLowerCase()
+            );
+            if (matchingDoc) {
+              console.log("🗑️ Sincronizando: Borrando documento RAG asociado:", matchingDoc.metadata?.label || matchingDoc.filename);
+              await fetch(`${API_BASE_URL}/rag-documents/${matchingDoc.id}`, { method: 'DELETE' });
+              // Refresh RAG count
+              setRagCount(prev => Math.max(0, prev - 1));
+            }
+          }
+        } catch (e) {
+          console.warn("⚠️ Error en sincronización RAG:", e);
+        }
+      }
+
       if (activeFormData.id === recordId) {
         setActiveFormData({});
       }
@@ -602,10 +682,28 @@ function App() {
     else setSelectedTrdIds(new Set());
   };
 
-  const handleLogin = (user) => {
+  const handleLogin = (user, rememberMe) => {
     setCurrentUser(user);
+    if (rememberMe) {
+      localStorage.setItem('ose_user', JSON.stringify(user));
+    }
     setAuthView('dashboard');
   };
+
+  // Restore session from localStorage if present
+  useEffect(() => {
+    const savedUser = localStorage.getItem('ose_user');
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        setAuthView('dashboard');
+        console.log("♻️ Sesión recuperada de localStorage");
+      } catch (e) {
+        localStorage.removeItem('ose_user');
+      }
+    }
+  }, []);
 
   // Determine which entities the current user can see/select
   const userEntities = React.useMemo(() => {
@@ -739,11 +837,12 @@ function App() {
         isAgentOpen={isAgentOpen}
         onToggleAgent={() => setIsAgentOpen(v => !v)}
         currentUser={currentUser}
+        hasTrdData={trdRecords.length > 0}
       />
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
       {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && (
-        <section className="w-[350px] shrink-0 border-r border-border h-full shadow-lg z-10 bg-card transition-all duration-300">
+        <section className="w-[350px] shrink-0 border-r border-border h-full shadow-lg z-10 bg-card transition-all duration-300 relative">
           <AgentChat 
             messages={messages} 
             onSendMessage={handleUserMessage} 
@@ -752,6 +851,17 @@ function App() {
             currentUser={currentUser}
             onClearChat={() => setMessages([])}
           />
+          {/* Bloqueo IA Orianna */}
+          {!(currentUser?.iaDisponible ?? true) && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center p-6 text-center">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+              <div className="relative bg-white p-6 rounded-2xl shadow-xl max-w-[280px] flex flex-col items-center gap-3 animate-in zoom-in-95 duration-200">
+                <BrainCircuit className="w-10 h-10 text-primary" />
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Orianna IA Restringida</h3>
+                <p className="text-slate-500 text-xs font-medium">Si quieres este servicio, mejora tu plan o habla con tu administrador.</p>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -840,7 +950,14 @@ function App() {
 
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => handleExportPDFGeneral('trd-final-report-area', 'Reporte_Oficial_TRD')}
+              onClick={() => {
+                const depName = selectedDependencia === "TODAS" ? "EmpresaGlobal" : selectedDependencia.replace(/\s+/g, '');
+                const randomId = Math.floor(10000000 + Math.random() * 90000000); // 8 cifras
+                const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
+                const customFilename = `${depName}_${randomId}_${dateStr}`;
+                
+                handleExportPDFGeneral('trd-final-report-area', customFilename);
+              }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
             >
               <Download className="h-4 w-4" />
@@ -878,6 +995,7 @@ function App() {
             onSearchQueryChange={setGlobalSearchQuery}
             currentUser={currentUser}
             currentEntity={userEntities.length > 0 && currentUser?.role !== 'superadmin' ? userEntities[0] : null}
+            hasTrdData={(trdRecords || []).length > 0 || (dependencias || []).length > 0 || (series || []).length > 0}
           />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
@@ -887,6 +1005,7 @@ function App() {
                  setCurrentUser(null); 
                  setSelectedDependencia("TODAS");
                  setSelectedTrdIds(new Set());
+                 localStorage.removeItem('ose_user');
                }}
                mainView={mainView}
                onExportPDF={handleExportTRD}
@@ -898,10 +1017,11 @@ function App() {
                  onSelectDependencia: setSelectedDependencia
                }}
                currentUser={currentUser}
+               onNavigate={(v) => { setMainView(v); setActiveModule(v); }}
             />
 
             <div className="flex-1 overflow-y-auto relative flex">
-              {mainView === 'dashboard' && <DashboardView stats={realStats} searchQuery={globalSearchQuery} currentUser={currentUser} seriesCount={(series || []).length} />}
+              {mainView === 'dashboard' && <DashboardView stats={realStats} searchQuery={globalSearchQuery} currentUser={currentUser} seriesCount={(series || []).length} activityLogs={activityLogs} />}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
               {mainView === 'import' && (
                 <TRDImportView 
@@ -911,6 +1031,7 @@ function App() {
                   logoBase64={entidadLogoBase64} 
                   imports={imports}
                   setImports={setImports}
+                  addActivityLog={addActivityLog}
                 />
               )}
               {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} />}

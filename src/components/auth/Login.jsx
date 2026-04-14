@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, LayoutDashboard, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, LayoutDashboard, AlertCircle, Loader2, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
 export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword }) {
-  const [formData, setFormData] = useState({ identifier: '', password: '' });
+  const [formData, setFormData] = useState({ identifier: '', password: '', rememberMe: false });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -16,13 +17,13 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ identifier: formData.identifier, password: formData.password })
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        onLogin(data);
+        onLogin(data, formData.rememberMe);
       } else {
         setError(data.detail || 'Error al iniciar sesión.');
       }
@@ -88,15 +89,31 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
               />
             </div>
-            <div className="flex justify-end pt-1">
-              <button 
-                type="button" 
-                onClick={onNavigateToForgotPassword}
-                className="text-[11px] font-bold text-primary hover:text-primary/80 transition-colors drop-shadow-sm"
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={cn(
+                "h-4 w-4 rounded border transition-all flex items-center justify-center",
+                formData.rememberMe ? "bg-primary border-primary" : "border-slate-300 bg-slate-50 group-hover:border-primary/50"
+              )}>
+                {formData.rememberMe && <Check className="h-3 w-3 text-white" />}
+              </div>
+              <input 
+                type="checkbox" 
+                className="hidden" 
+                checked={!!formData.rememberMe}
+                onChange={(e) => setFormData({...formData, rememberMe: e.target.checked})}
+              />
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Recuérdame</span>
+            </label>
+            <button 
+              type="button" 
+              onClick={onNavigateToForgotPassword}
+              className="text-[11px] font-bold text-primary hover:text-primary/80 transition-colors drop-shadow-sm"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
           </div>
 
           <button 

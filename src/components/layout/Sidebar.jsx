@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
 ];
 
-export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser }) {
+export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser, hasTrdData }) {
   const role = currentUser?.role || 'user';
 
   const filteredItems = NAV_ITEMS.filter(item => {
@@ -53,21 +53,27 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
           }
 
           const isActive = activeModule === item.id;
+          const isDisabled = item.id === 'trd' && !hasTrdData;
           const Icon = item.icon;
 
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => !isDisabled && onNavigate(item.id)}
+              disabled={isDisabled}
+              title={isDisabled ? "Debes tener datos estructurados para ver la TRD" : ""}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200",
                 isActive 
                   ? "bg-primary text-primary-foreground shadow-sm" 
+                  : isDisabled
+                  ? "opacity-40 grayscale cursor-not-allowed"
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
               {item.label}
+              {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase">Bloqueado</span>}
             </button>
           );
         })}

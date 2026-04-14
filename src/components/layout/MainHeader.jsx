@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export default function MainHeader({ onLogout, mainView, trdProps, currentUser, onExportPDF }) {
+export default function MainHeader({ onLogout, mainView, trdProps, currentUser, onExportPDF, onNavigate }) {
   // Extract TRD props safely
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
@@ -46,7 +46,10 @@ export default function MainHeader({ onLogout, mainView, trdProps, currentUser, 
         )}
 
         {/* Global SaaS Buttons */}
-        <button className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground transition-colors shadow-sm">
+        <button 
+          onClick={() => onNavigate('settings')}
+          className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground transition-colors shadow-sm"
+        >
           <User className="h-4 w-4" />
           Cuenta
         </button>

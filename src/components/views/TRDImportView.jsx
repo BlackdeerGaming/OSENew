@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, X, FileText, Image as ImageIcon, Download } from 'lucide-react';
+import { FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, ArrowRight, Eye, X, FileText, Image as ImageIcon, Download, BrainCircuit } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import API_BASE_URL from '../../config/api';
 import TRDExportPreview from '../trd/TRDGenerator';
 import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
-const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports }) => {
+const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   // Para la previsualización modal
@@ -59,55 +59,94 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles) => {
-    // Add multiple files to local state as "uploading"
-    const newImports = acceptedFiles.map(f => ({
-       id: "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000), // temporary string-based ID
-       filename: f.name,
+  const [duplicateFile, setDuplicateFile] = useState(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+
+  const processFile = async (file) => {
+    const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    const newImp = {
+       id: tempId,
+       filename: file.name,
        status: 'analyzing',
        file_url: null,
        actions: [],
        error: null,
        ocr_engaged: false,
        isUploading: true,
-       rawFile: f
-    }));
+       rawFile: file
+    };
     
-    setImports(prev => [...newImports, ...prev]);
+    setImports(prev => [newImp, ...prev]);
 
-    // Process each file
-    for (const item of newImports) {
-      const formData = new FormData();
-      formData.append('file', item.rawFile);
+    const formData = new FormData();
+    formData.append('file', file);
 
+    try {
+      const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Error de lectura/procesamiento');
+      const data = await response.json();
+      
+      setImports(prev => prev.map(imp => {
+         if (imp.id === tempId) {
+            return {
+               ...imp,
+               id: data.import_id || imp.id,
+               status: data.status || 'analyzing',
+               isUploading: false
+            };
+         }
+         return imp;
+      }));
+      fetchImports();
+    } catch (err) {
+      setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
+    }
+  };
+
+  const onDrop = useCallback(async (acceptedFiles) => {
+    for (const file of acceptedFiles) {
+      const isDuplicate = imports.find(imp => imp.filename === file.name);
+      if (isDuplicate) {
+        setDuplicateFile(file);
+        setShowDuplicateModal(true);
+        // We pause processing here for THIS file. 
+        // In a real app we might want to continue with others, 
+        // but the prompt implies a single blocking question.
+        continue; 
+      }
+      await processFile(file);
+    }
+  }, [imports]);
+
+  const handleReplaceDuplicate = async () => {
+    if (!duplicateFile) return;
+    
+    // Find previous import and delete it
+    const existing = imports.find(imp => imp.filename === duplicateFile.name);
+    if (existing) {
+      // Logic to delete existing:
+      setImports(prev => prev.filter(imp => imp.filename !== duplicateFile.name));
       try {
-        const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) throw new Error('Error de lectura/procesamiento');
-        const data = await response.json();
-        
-        setImports(prev => prev.map(imp => {
-           if (imp.id === item.id) {
-              return {
-                 ...imp,
-                 id: data.import_id || imp.id,
-                 status: data.status || 'analyzing',
-                 isUploading: false
-              };
-           }
-           return imp;
-        }));
-        // Al terminar de enviar todos, reforzamos el refresco
-        fetchImports();
-
-      } catch (err) {
-        setImports(prev => prev.map(imp => imp.id === item.id ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
+        await fetch(`${API_BASE_URL}/imports/${existing.id}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error("Error deleting old import:", e);
       }
     }
-  }, []);
+
+    const fileToProcess = duplicateFile;
+    setDuplicateFile(null);
+    setShowDuplicateModal(false);
+    await processFile(fileToProcess);
+  };
+
+  const handleCancelDuplicate = () => {
+    setDuplicateFile(null);
+    setShowDuplicateModal(false);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -161,6 +200,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       if (onImportComplete) {
         await onImportComplete(actionsToRun);
       }
+
+      // REGISTRO DE ACTIVIDAD: Importación Exitosa
+      if (addActivityLog) {
+        addActivityLog(`Importación TRD - ${currentPreviewImport.filename}`);
+      }
       
       // Update en backend a que la sesión está finalizada
       await fetch(`${API_BASE_URL}/imports/${currentPreviewImport.id}`, {
@@ -200,12 +244,64 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     handleExportPDFGeneral('trd-final-report-area', `Reporte_TRD_${currentPreviewImport?.filename || 'Generado'}`);
   };
 
+  const iaAvailable = currentUser?.iaDisponible ?? true;
+
   return (
-    <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-32">
+    <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-32 relative">
+      {/* IA Restriction Overlay */}
+      {!iaAvailable && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md rounded-3xl" />
+           <div className="relative bg-white p-8 rounded-3xl shadow-2xl max-w-sm flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
+             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center">
+                <BrainCircuit className="w-8 h-8" />
+             </div>
+             <h3 className="text-xl font-black text-slate-900 leading-tight">Módulo de Importación IA Restringido</h3>
+             <p className="text-slate-500 text-sm font-medium">Si quieres este servicio, mejora tu plan o habla con tu administrador.</p>
+           </div>
+        </div>
+      )}
 
-
-      {/* Header Section */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 px-2">
+      {/* MODAL DE DUPLICADOS */}
+      <AnimatePresence>
+        {showDuplicateModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-lg">
+            <motion.div 
+               initial={{ opacity: 0, scale: 0.9 }} 
+               animate={{ opacity: 1, scale: 1 }} 
+               exit={{ opacity: 0, scale: 0.9 }}
+               className="bg-white max-w-md w-full rounded-3xl shadow-2xl p-8 text-center space-y-6"
+            >
+               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                  <AlertCircle className="h-8 w-8" />
+               </div>
+               <div>
+                  <h3 className="text-xl font-black text-slate-900 leading-tight">¿Deseas reemplazar este archivo?</h3>
+                  <p className="text-sm text-slate-500 mt-2 font-medium">
+                    El archivo <span className="font-bold text-slate-800">"{duplicateFile?.name}"</span> ya fue procesado o está en cola. 
+                    Si aceptas, se eliminará la versión previa y se iniciará un nuevo análisis.
+                  </p>
+               </div>
+               <div className="flex flex-col gap-3 pt-4">
+                  <button 
+                    onClick={handleReplaceDuplicate}
+                    className="w-full bg-[#00bfa5] text-white py-3.5 rounded-2xl font-black text-sm shadow-xl shadow-[#00bfa5]/20 hover:bg-[#00a693] transition-all active:scale-95 uppercase tracking-widest"
+                  >
+                    ACEPTAR Y REEMPLAZAR
+                  </button>
+                  <button 
+                    onClick={handleCancelDuplicate}
+                    className="w-full bg-slate-100 text-slate-400 py-3 rounded-2xl font-bold text-xs hover:bg-slate-200 hover:text-slate-600 transition-all"
+                  >
+                    CANCELAR
+                  </button>
+               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Header section */}
+      <section className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Importación Inteligente Masiva</h1>
           <p className="text-slate-500 max-w-2xl">
@@ -294,13 +390,39 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                            )}
                         </div>
 
-                        {imp.status === 'reviewing' && (
-                           <div className="mt-4 text-xs font-medium text-slate-500 flex items-center gap-2">
-                              Extraídos: <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded shadow-sm border">{imp.actions?.length || 0}</span>
-                              <span className="ml-auto text-[10px] text-primary group-hover:underline">Click para Revisar</span>
+                        {imp.error ? (
+                           <div className="mt-3 flex flex-col gap-2">
+                              <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-100 rounded-xl">
+                                 <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                                 <p className="text-[11px] text-rose-700 font-bold leading-tight">
+                                    {imp.error.includes("OCR") ? "Fallo en el OCR - No se pudo leer el contenido" : 
+                                     imp.error.includes("procesar") ? "Error al procesar el archivo" : 
+                                     "Documento no legible o formato inválido"}
+                                 </p>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                 <button 
+                                   onClick={(e) => { e.stopPropagation(); processFile(imp.rawFile); }}
+                                   className="flex-1 py-2 bg-rose-600 text-white text-[10px] font-black rounded-lg hover:bg-rose-500 transition-all uppercase"
+                                 >
+                                    Reintentar
+                                 </button>
+                                 <button 
+                                   onClick={(e) => handleDeleteImport(imp.id, e)}
+                                   className="px-3 py-2 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-lg hover:bg-slate-200 transition-all uppercase"
+                                 >
+                                    Cancelar
+                                 </button>
+                              </div>
                            </div>
+                        ) : (
+                           imp.status === 'reviewing' && (
+                              <div className="mt-4 text-xs font-medium text-slate-500 flex items-center gap-2">
+                                 Extraídos: <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded shadow-sm border">{imp.actions?.length || 0}</span>
+                                 <span className="ml-auto text-[10px] text-primary group-hover:underline">Click para Revisar</span>
+                              </div>
+                           )
                         )}
-                        {imp.error && <p className="text-xs text-rose-600 mt-3 font-medium">{imp.error}</p>}
                      </motion.div>
                   ))}
                  </div>

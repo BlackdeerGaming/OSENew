@@ -33,6 +33,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   const handleEdit = (user) => {
     setNewUser({
       ...user,
+      // Map isActivated/pending to Activo/Inactivo internal status for the toggle
+      estado: user.isActivated ? 'Activo' : 'Inactivo',
+      iaDisponible: !!user.iaDisponible,
       entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : [])
     });
     setEditingUserId(user.id);
