@@ -4,8 +4,8 @@ import jwt
 
 # Assuming JWT secret and algorithm are set in env
 import os
-JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret')
-JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'super_secret_key_ose_2026_segura_123456')
+JWT_SECRET = os.getenv('JWT_SECRET', 'super_secret_key_ose_2026_segura_123456')
+JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
 security = HTTPBearer()
 
