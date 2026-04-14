@@ -10,7 +10,7 @@ import API_BASE_URL from '@/config/api';
 
 // ─── CHAT PANEL ────────────────────────────────────────────────────────────────
 
-function ChatPanel() {
+function ChatPanel({ currentEntityId }) {
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -37,8 +37,11 @@ function ChatPanel() {
     try {
       const res = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
+        body: JSON.stringify({ query, entidadId: currentEntityId })
       });
       if (!res.ok) throw new Error('Error del servidor');
       const data = await res.json();
@@ -183,7 +186,7 @@ function ChatPanel() {
 
 // ─── UPLOAD MODAL ──────────────────────────────────────────────────────────────
 
-function UploadModal({ onClose, onUploaded, existingFilenames }) {
+function UploadModal({ onClose, onUploaded, existingFilenames, currentEntityId, currentUser }) {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | uploading | success | error | duplicate
   const [progress, setProgress] = useState(0);
@@ -226,12 +229,16 @@ function UploadModal({ onClose, onUploaded, existingFilenames }) {
 
       const formData = new FormData();
       formData.append('file', file);
+      if (currentEntityId) {
+        formData.append('entidad_id', currentEntityId);
+      }
 
       setProgress(60);
       setStep('Indexando en RAG...');
 
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
+        headers: { "Authorization": `Bearer ${currentUser?.token}` },
         body: formData
       });
 
@@ -435,7 +442,7 @@ function DocumentViewer({ doc, onClose }) {
 
 // ─── EDIT MODAL ────────────────────────────────────────────────────────────────
 
-function EditModal({ doc, onClose, onSaved }) {
+function EditModal({ doc, onClose, onSaved, currentUser }) {
   const [label, setLabel] = useState(doc.metadata?.label || doc.filename || '');
   const [description, setDescription] = useState(doc.metadata?.description || '');
   const [isInternal, setIsInternal] = useState(!!doc.metadata?.is_trd_internal);
@@ -448,7 +455,10 @@ function EditModal({ doc, onClose, onSaved }) {
     try {
       const res = await fetch(`${API_BASE_URL}/rag-documents/${doc.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
         body: JSON.stringify({ label, description, is_trd_internal: isInternal })
       });
       if (!res.ok) {
@@ -546,7 +556,7 @@ function EditModal({ doc, onClose, onSaved }) {
 
 // ─── RAG LIBRARY PANEL (CRUD) ──────────────────────────────────────────────────
 
-function RAGLibraryPanel({ currentUser }) {
+function RAGLibraryPanel({ currentUser, currentEntityId }) {
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -563,7 +573,9 @@ function RAGLibraryPanel({ currentUser }) {
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/rag-documents`);
+      const res = await fetch(`${API_BASE_URL}/rag-documents?entidad_id=${currentEntityId}`, {
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
       const data = await res.json();
       setDocuments(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -632,6 +644,16 @@ function RAGLibraryPanel({ currentUser }) {
           )}
         </div>
       </div>
+
+      {showUploadModal && (
+        <UploadModal 
+          onClose={() => setShowUploadModal(false)} 
+          onUploaded={fetchDocuments}
+          existingFilenames={existingFilenames}
+          currentEntityId={currentEntityId}
+          currentUser={currentUser}
+        />
+      )}
 
       {/* Toolbar: Search + Filters */}
       <div className="px-4 py-3 border-b border-slate-100 space-y-2.5 shrink-0 bg-slate-50/60">
@@ -815,6 +837,7 @@ function RAGLibraryPanel({ currentUser }) {
           onClose={() => setShowUploadModal(false)}
           onUploaded={fetchDocuments}
           existingFilenames={existingFilenames}
+          currentUser={currentUser}
         />
       )}
       {editDoc && (
@@ -822,6 +845,7 @@ function RAGLibraryPanel({ currentUser }) {
           doc={editDoc}
           onClose={() => setEditDoc(null)}
           onSaved={fetchDocuments}
+          currentUser={currentUser}
         />
       )}
       {viewDoc && (
@@ -842,7 +866,7 @@ export default function DocumentcioRAGView({ currentUser }) {
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   return (
-    <div className="flex-1 flex overflow-hidden h-full relative">
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-white">
       {/* IA Restriction Overlay */}
       {!iaAvailable && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">

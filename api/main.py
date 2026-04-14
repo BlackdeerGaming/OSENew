@@ -1,8 +1,10 @@
 import os
 import re
 import base64
-from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from api.permissions import get_current_user, JWT_SECRET, JWT_ALGORITHM
+import jwt
 from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
@@ -115,6 +117,12 @@ CONTEXTO DEL DOCUMENTO:
 
 class ChatRequest(BaseModel):
     query: str
+    entidadId: str | None = None
+
+class ActivityLogRequest(BaseModel):
+    message: str
+    entidad_id: str | None = None
+    user_name: str | None = None
 
 class GenerateDepsRequest(BaseModel):
     prompt: str
@@ -249,7 +257,7 @@ async def debug_vars():
     }
 
 @router.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
     """
     Sube un PDF, extrae texto, genera embeddings y los guarda en Supabase pgvector.
     Vision AI desactivada para evitar timeout de Vercel (10s límite).
@@ -296,6 +304,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     except Exception as e:
         print(f"⚠️  Error subiendo PDF a Storage, se continuará con el RAG pero no habrá visor original: {e}")
 
+    # Determinar entidad para el documento
+    entidad_final = user.get("entity_id") if user.get("role") == "admin" else entidad_id
+
     documents = []
     text_count = 0
 
@@ -314,6 +325,7 @@ async def upload_pdf(file: UploadFile = File(...)):
                             "page": page_num, 
                             "source": file.filename, 
                             "type": "text",
+                            "entidad_id": entidad_final,
                             **({"file_url": file_url} if file_url else {})
                         }
                     ))
@@ -385,7 +397,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     if not supabase_client:
         raise HTTPException(status_code=503, detail="Supabase no está configurado.")
 
@@ -409,11 +421,15 @@ async def chat(request: ChatRequest):
         
         print(f"✅ Embedding listo (Dim: {len(query_vector)})")
 
+        # Determinar entidad para filtro
+        entidad_actual = user.get("entity_id") if user.get("role") == "admin" else (request.entidadId or "")
+
         # 2. Búsqueda RPC
         print("📡 Consultando Supabase...")
         rpc_res = supabase_client.rpc("match_rag_documents", {
             "query_embedding": query_vector,
-            "match_count": 5
+            "match_count": 5,
+            "filter": {"entidad_id": entidad_actual} if entidad_actual else {}
         }).execute()
 
         source_docs = []
@@ -732,20 +748,50 @@ async def login(req: LoginRequest):
     entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
     entidad_ids = [e["entity_id"] for e in entities_res.data]
     
+    # Generar Token JWT
+    payload = {
+        "user_id": str(user_data["id"]),
+        "role": user_data["perfil"],
+        "entity_id": str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else None))
+    }
+    
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    # REGISTRO DE ACTIVIDAD: Inicio de sesión
+    try:
+        save_activity_log(
+            { "message": "Inicio de sesión", "user_name": user_data["nombre"] }, 
+            user={"user_id": user_data["id"], "entity_id": user_data.get("entidad_id"), "role": user_data["perfil"]}
+        )
+    except Exception as e:
+        print(f"⚠️ Error registrando inicio de sesión: {e}")
+
     return {
         "id": user_data["id"],
         "nombre": user_data["nombre"],
         "email": user_data["email"],
         "role": user_data["perfil"],
         "entidadId": user_data.get("entidad_id"),
-        "entidadIds": entidad_ids
+        "entidadIds": entidad_ids,
+        "token": token
     }
 
 # --- CRUD USUARIOS ---
 @router.get("/users")
-async def get_users():
+async def get_users(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
-    res = supabase_client.table("profiles").select("*").execute()
+    
+    query = supabase_client.table("profiles").select("*")
+    
+    # Restricción multi-entidad: El administrador solo ve usuarios de su entidad.
+    # El superadministrador puede filtrar o ver todos.
+    if user.get("role") == "admin":
+        entidad_actual = user.get("entity_id")
+        query = query.eq("entidad_id", entidad_actual)
+    elif entidad_id:
+        query = query.eq("entidad_id", entidad_id)
+        
+    res = query.execute()
     # Obtener todas las relaciones de entidades
     rel_res = supabase_client.table("profile_entities").select("*").execute()
     rels = {}
@@ -1025,7 +1071,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
 
 @router.post("/analyze-trd")
-async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
     if not supabase_client:
         raise HTTPException(status_code=503, detail="Supabase no configurado.")
     
@@ -1042,12 +1088,16 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     except Exception as e:
         print(f"⚠️ Error subiendo a storage: {e}")
         
+    # Entidad de la sesión
+    entidad_final = user.get("entity_id") if user.get("role") == "admin" else entidad_id
+
     doc_metadata = {
         "source": file.filename,
         "type": "trd_import_session",
         "is_trd_internal": True,
         "status": "analyzing",
         "file_url": file_url,
+        "entidad_id": entidad_final,
         "extracted_at": str(datetime.now()),
         "actions": []
     }
@@ -1073,10 +1123,21 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
 # ─── CRUD TRD Imports ───────────────────────────────────────────────────────
 
 @router.get("/imports")
-async def get_imports():
+async def get_imports(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
-    # Consultamos registros generados por el flujo persistente de importación
-    res = supabase_client.table("rag_documents").select("id, metadata, created_at").contains("metadata", {"type": "trd_import_session"}).order("created_at", desc=True).execute()
+    
+    # Restricción: solo traer sesiones de la entidad del usuario
+    filter_data = {"type": "trd_import_session"}
+    if user.get("role") == "admin":
+        filter_data["entidad_id"] = user.get("entity_id")
+    elif entidad_id:
+        filter_data["entidad_id"] = entidad_id
+        
+    res = supabase_client.table("rag_documents") \
+        .select("id, metadata, created_at") \
+        .contains("metadata", filter_data) \
+        .order("created_at", desc=True) \
+        .execute()
     imports = []
     for row in res.data:
         meta = row.get("metadata", {})
@@ -1091,6 +1152,86 @@ async def get_imports():
             "ocr_engaged": meta.get("ocr_engaged", False)
         })
     return imports
+
+# ─── ACTIVITY LOGS ──────────────────────────────────────────────────────────
+
+@router.post("/activity-logs")
+async def save_activity_log(log_data: dict, user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(status_code=503)
+    
+    entidad_id = user.get("entity_id")
+    # For sub-admins/admins, we force their entity. For superadmins, they might provide one or use "global".
+    if not entidad_id and user.get("role") == "superadmin":
+        entidad_id = log_data.get("entidad_id")
+        
+    log_entry = {
+        "user_id": user.get("user_id"),
+        "user_name": log_data.get("user_name") or "Usuario",
+        "entidad_id": entidad_id,
+        "message": log_data.get("message"),
+        "created_at": str(datetime.now())
+    }
+    
+    try:
+        res = supabase_client.table("activity_logs").insert(log_entry).execute()
+        
+        # PRUINING LOGIC: Solo mantener los últimos 100 registros por entidad
+        if entidad_id:
+            # DELETE with OFFSET is more efficient to keep the 'top N'
+            # Note: Supabase's direct DELETE with subqueries might be limited, 
+            # so we'll do a simple 'get old IDs then delete' for safety if performance isn't critical.
+            # But let's try the direct SQL-like approach first if possible or a safe alternative.
+            try:
+                # Obtenemos los IDs que exceden el límite de 100
+                old_logs = supabase_client.table("activity_logs").select("id").eq("entidad_id", entidad_id).order("created_at", desc=True).offset(100).execute()
+                if old_logs.data:
+                    ids_to_delete = [l["id"] for l in old_logs.data]
+                    supabase_client.table("activity_logs").delete().in_("id", ids_to_delete).execute()
+                    print(f"🗑️ Purgados {len(ids_to_delete)} logs antiguos para entidad {entidad_id}")
+            except Exception as prune_err:
+                print(f"⚠️ Error purgando logs antiguos: {prune_err}")
+
+        return {"status": "success", "id": res.data[0]["id"] if res.data else None}
+    except Exception as e:
+        print(f"❌ Error guardando log: {e}")
+        # No bloqueamos el flujo principal por un error de log, pero avisamos
+        return {"status": "error", "message": str(e)}
+
+@router.get("/activity-logs")
+async def get_activity_logs(user: dict = Depends(get_current_user)):
+    if not supabase_client: return []
+    
+    # Realizamos un JOIN con la tabla profiles para traer el nombre real del usuario por su ID
+    query = supabase_client.table("activity_logs").select("*, profiles:user_id (nombre)").order("created_at", desc=True).limit(100)
+    
+    # Filtro: El administrador solo ve logs de su entidad. 
+    if user.get("role") == "admin":
+        entidad_actual = user.get("entity_id")
+        query = query.eq("entidad_id", entidad_actual)
+        
+    try:
+        res = query.execute()
+        # Mapear para el frontend
+        logs = []
+        for row in res.data:
+            # Prioridad: 1. Nombre del perfil (Join), 2. user_name guardado, 3. "Usuario"
+            raw_profile = row.get("profiles")
+            display_name = "Usuario"
+            if isinstance(raw_profile, dict) and raw_profile.get("nombre"):
+                display_name = raw_profile["nombre"]
+            elif row.get("user_name"):
+                display_name = row["user_name"]
+
+            logs.append({
+                "id": f"act_{row['id']}",
+                "user": display_name,
+                "message": row["message"],
+                "timestamp": row["created_at"]
+            })
+        return logs
+    except Exception as e:
+        print(f"⚠️ Error cargando logs: {e}")
+        return []
 
 @router.put("/imports/{import_id}")
 async def update_import_status(import_id: str, status_data: dict):

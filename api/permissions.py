@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 
@@ -9,7 +9,7 @@ JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
 security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = security):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -19,12 +19,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = security):
         raise HTTPException(status_code=401, detail='Invalid authentication token')
 
 def require_entity_admin(user: dict, entity_id: str):
-    if user.get('role') not in ('entity_admin', 'super_admin'):
+    if user.get('role') not in ('admin', 'superadmin'):
         raise HTTPException(status_code=403, detail='Insufficient role')
-    if user.get('role') == 'entity_admin' and str(user.get('entity_id')) != str(entity_id):
+    if user.get('role') == 'admin' and str(user.get('entity_id')) != str(entity_id):
         raise HTTPException(status_code=403, detail='Cannot access other entity data')
-    # super_admin passes automatically
+    # superadmin passes automatically
 
 def require_super_admin(user: dict):
-    if user.get('role') != 'super_admin':
+    if user.get('role') != 'superadmin':
         raise HTTPException(status_code=403, detail='Super admin required')

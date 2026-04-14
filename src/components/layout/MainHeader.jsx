@@ -1,10 +1,11 @@
 import React from "react";
 import { LogOut, User, Download, CheckCircle2, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 
-export default function MainHeader({ onLogout, mainView, trdProps, currentUser, onExportPDF, onNavigate }) {
+export default function MainHeader({ 
+  onLogout, mainView, trdProps, currentUser, onExportPDF, onNavigate,
+  selectedEntityId, userEntities, onSelectEntity 
+}) {
   // Extract TRD props safely
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
@@ -18,6 +19,23 @@ export default function MainHeader({ onLogout, mainView, trdProps, currentUser, 
       </div>
 
       <div className="flex items-center gap-4 flex-wrap justify-end">
+        {/* Selector de Entidad (Solo si hay múltiples opciones o es superadmin) */}
+        {userEntities?.length > 1 && (
+          <div className="flex items-center gap-2 mr-2">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Contexto:</span>
+            <select
+              title="Cambiar entidad de trabajo"
+              value={selectedEntityId}
+              onChange={(e) => onSelectEntity(e.target.value)}
+              className="text-xs font-bold bg-secondary/50 text-foreground border border-input rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+            >
+              {userEntities.map(ent => (
+                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Botón de exportar y filtro selectivo para la Tabla Final */}
         {mainView === 'trd' && (
           <div className="flex items-center gap-3 mr-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 shadow-sm">

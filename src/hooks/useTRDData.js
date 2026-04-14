@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import API_BASE_URL from '../config/api';
 
-export function useTRDData(userId = null) {
+export function useTRDData(currentUser = null, entityId = null) {
   const [dependencias, setDependencias] = useState([]);
   const [series, setSeries] = useState([]);
   const [subseries, setSubseries] = useState([]);
@@ -19,12 +19,23 @@ export function useTRDData(userId = null) {
     
     setIsLoading(true);
     try {
+      const trdScope = entityId ? { column: 'entidad_id', value: entityId } : null;
+
       const [d, s, ss, trd, impData] = await Promise.all([
-        supabase.from('dependencias').select('*').order('codigo'),
-        supabase.from('series').select('*').order('codigo'),
-        supabase.from('subseries').select('*').order('codigo'),
-        supabase.from('trd_records').select('*'),
-        fetch(`${API_BASE_URL}/imports`).then(r => r.json())
+        supabase.from('dependencias').select('*')
+          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
+          .order('codigo'),
+        supabase.from('series').select('*')
+          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
+          .order('codigo'),
+        supabase.from('subseries').select('*')
+          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
+          .order('codigo'),
+        supabase.from('trd_records').select('*')
+          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null),
+        fetch(`${API_BASE_URL}/imports${entityId ? `?entidad_id=${entityId}` : ''}`, {
+          headers: currentUser?.token ? { "Authorization": `Bearer ${currentUser.token}` } : {}
+        }).then(r => r.json())
       ]);
 
       if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
@@ -41,16 +52,16 @@ export function useTRDData(userId = null) {
     }
   };
 
-  // Load all data from Supabase when userId changes (especially on login)
+  // Load all data from Supabase when userId or entityId changes
   useEffect(() => {
     loadData();
-  }, [userId]);
+  }, [currentUser, entityId]);
 
   const refreshData = () => loadData();
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
     
     // Optimistic Update
     setDependencias(prev => {
@@ -69,9 +80,9 @@ export function useTRDData(userId = null) {
   };
 
   const updateDependencia = async (id, data) => {
-     setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data } : x));
+     setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data, entidadId: entityId } : x));
      if (supabase) {
-       const { error } = await supabase.from('dependencias').update(mapDependenciaToDB(data)).eq('id', id);
+       const { error } = await supabase.from('dependencias').update(mapDependenciaToDB({ ...data, entidadId: entityId })).eq('id', id);
        if (error) throw error;
      }
   };
@@ -86,7 +97,7 @@ export function useTRDData(userId = null) {
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
     setSeries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
@@ -109,7 +120,7 @@ export function useTRDData(userId = null) {
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
     setSubseries(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
@@ -132,7 +143,7 @@ export function useTRDData(userId = null) {
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
     setTrdRecords(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
       return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];

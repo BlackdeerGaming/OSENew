@@ -3,7 +3,7 @@ import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, 
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
-export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [] }) {
+export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [], selectedEntityId }) {
   const role = currentUser?.role || 'user';
   const [showModal, setShowModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -153,7 +153,10 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: null, entidadId: null, entidadIds: [], iaDisponible: false
+      perfil: role === 'admin' ? 'user' : null, 
+      entidadId: role === 'admin' ? currentUser?.entidadId : null, 
+      entidadIds: role === 'admin' ? [currentUser?.entidadId].filter(Boolean) : [], 
+      iaDisponible: false
     });
   };
 
@@ -175,7 +178,13 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   // Los superadministradores ven todo. 
   // Los administradores solo ven los usuarios de su propia entidad.
   const filteredUsers = users.filter(u => {
-    if (currentUser?.role === 'superadmin') return true;
+    if (currentUser?.role === 'superadmin') {
+      // Si el superadmin ha seleccionado una entidad específica en el cabezote global, filtramos por ella.
+      if (selectedEntityId) {
+        return u.entidadId === selectedEntityId;
+      }
+      return true; // Si no hay entidad seleccionada, ve todo (Contexto Global)
+    }
     if (currentUser?.role === 'admin') {
       return u.entidadId === currentUser.entidadId;
     }
@@ -505,21 +514,23 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                        <p className="text-xs text-muted-foreground italic">Nota: Ya no es necesario asignar una contraseña manual. El sistema generará un enlace de activación seguro para el nuevo usuario.</p>
                     </div>
 
-                    <label className="flex items-center gap-3 cursor-pointer mt-4">
-                       <div className={cn(
-                          "h-6 w-6 rounded flex items-center justify-center transition-all",
-                          newUser.estado === 'Activo' ? "bg-[#00bfa5]" : "bg-slate-200"
-                       )}>
-                          <Check className="h-4 w-4 text-white" />
-                       </div>
-                       <input 
-                         type="checkbox" 
-                         className="hidden" 
-                         checked={newUser.estado === 'Activo'} 
-                         onChange={e=>setNewUser({...newUser, estado: e.target.checked ? 'Activo' : 'Inactivo'})} 
-                       />
-                       <span className="text-sm font-semibold text-slate-500 font-bold">Estado Inicial (Admin)</span>
-                    </label>
+                    {role === 'superadmin' && (
+                      <label className="flex items-center gap-3 cursor-pointer mt-4">
+                         <div className={cn(
+                            "h-6 w-6 rounded flex items-center justify-center transition-all",
+                            newUser.estado === 'Activo' ? "bg-[#00bfa5]" : "bg-slate-200"
+                         )}>
+                            <Check className="h-4 w-4 text-white" />
+                         </div>
+                         <input 
+                           type="checkbox" 
+                           className="hidden" 
+                           checked={newUser.estado === 'Activo'} 
+                           onChange={e=>setNewUser({...newUser, estado: e.target.checked ? 'Activo' : 'Inactivo'})} 
+                         />
+                         <span className="text-sm font-semibold text-slate-500 font-bold">Estado Inicial (Admin)</span>
+                      </label>
+                    )}
 
                     <label className="flex items-center gap-3 cursor-pointer mt-2">
                        <div className={cn(
@@ -541,88 +552,108 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                )}
 
                {activeTab === 'perfil' && (
-                 <div className="space-y-4">
-                    <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
-                       <div className={cn(
-                          "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                          newUser.perfil === 'admin' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
-                       )}>
-                          <Check className="h-4 w-4 text-white" />
-                       </div>
-                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'admin'})} />
-                       <span className="text-slate-400 font-semibold">Administrador</span>
-                    </label>
-                    
-                    <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
-                       <div className={cn(
-                          "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                          newUser.perfil === 'user' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
-                       )}>
-                          <Check className="h-4 w-4 text-white" />
-                       </div>
-                       <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'user'})} />
-                       <span className="text-[#00c8a5] font-semibold">Consulta</span>
-                    </label>
-                 </div>
-               )}
+                  <div className="space-y-4">
+                     {role === 'superadmin' && (
+                       <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
+                          <div className={cn(
+                             "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
+                             newUser.perfil === 'admin' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                          )}>
+                             <Check className="h-4 w-4 text-white" />
+                          </div>
+                          <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'admin'})} />
+                          <span className="text-slate-400 font-semibold">Administrador</span>
+                       </label>
+                     )}
+                     
+                     <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
+                        <div className={cn(
+                           "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
+                           newUser.perfil === 'user' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                        )}>
+                           <Check className="h-4 w-4 text-white" />
+                        </div>
+                        <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'user'})} />
+                        <span className={cn(newUser.perfil === 'user' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>
+                          Consulta {role === 'admin' && "(Único perfil disponible)"}
+                        </span>
+                     </label>
+                  </div>
+                )}
 
                {activeTab === 'entidades' && (
-                 <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-[#1e293b]">Lista de Empresas</h2>
-                      <p className="text-sm text-slate-500 mt-1">Puedes seleccionar más de una entidad.</p>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                       {entities.length === 0 ? (
-                         <p className="text-sm text-slate-400 italic">No hay entidades creadas aún.</p>
-                       ) : (
-                         entities.map(ent => {
-                           const isChecked = (newUser.entidadIds || []).includes(ent.id);
-                           const toggleEntity = () => {
-                             const current = newUser.entidadIds || [];
-                             const next = isChecked
-                               ? current.filter(id => id !== ent.id)
-                               : [...current, ent.id];
-                             // Keep entidadId (primary) as the first selected entity
-                             setNewUser({
-                               ...newUser,
-                               entidadIds: next,
-                               entidadId: next[0] || null
-                             });
-                           };
-                           return (
-                             <label
-                               key={ent.id}
-                               onClick={toggleEntity}
-                               className={cn(
-                                 "flex items-center gap-4 cursor-pointer p-4 rounded-xl border-2 transition-all",
-                                 isChecked
-                                   ? "bg-[#e8f5f3] border-[#00bfa5]"
-                                   : "bg-[#f8fafc] border-slate-100 hover:bg-slate-50"
-                               )}
-                             >
-                                <div className={cn(
-                                   "h-6 w-6 rounded flex items-center justify-center border-2 transition-all flex-shrink-0",
-                                   isChecked ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
-                                )}>
-                                   <Check className="h-4 w-4 text-white" />
-                                </div>
-                                <div>
-                                  <span className="text-sm font-semibold text-slate-700 block">{ent.razonSocial}</span>
-                                  {ent.nit && <span className="text-xs text-slate-400">NIT: {ent.nit}</span>}
-                                </div>
-                             </label>
-                           );
-                         })
-                       )}
-                    </div>
-                    {(newUser.entidadIds || []).length > 0 && (
-                      <p className="text-xs text-[#00bfa5] font-semibold">
-                        ✓ {newUser.entidadIds.length} entidad{newUser.entidadIds.length > 1 ? 'es' : ''} seleccionada{newUser.entidadIds.length > 1 ? 's' : ''}
-                      </p>
-                    )}
-                 </div>
-               )}
+                  <div className="space-y-6">
+                     <div>
+                       <h2 className="text-xl font-bold text-[#1e293b]">
+                         {role === 'superadmin' ? "Lista de Empresas" : "Entidad Asignada"}
+                       </h2>
+                       <p className="text-sm text-slate-500 mt-1">
+                         {role === 'superadmin' ? "Puedes seleccionar más de una entidad." : "Como administrador, solo puedes crear usuarios para tu propia entidad."}
+                       </p>
+                     </div>
+                     <div className="flex flex-col gap-3">
+                        {role === 'superadmin' ? (
+                          entities.length === 0 ? (
+                            <p className="text-sm text-slate-400 italic">No hay entidades creadas aún.</p>
+                          ) : (
+                            entities.map(ent => {
+                              const isChecked = (newUser.entidadIds || []).includes(ent.id);
+                              const toggleEntity = () => {
+                                const current = newUser.entidadIds || [];
+                                const next = isChecked
+                                  ? current.filter(id => id !== ent.id)
+                                  : [...current, ent.id];
+                                setNewUser({
+                                  ...newUser,
+                                  entidadIds: next,
+                                  entidadId: next[0] || null
+                                });
+                              };
+                              return (
+                                <label
+                                  key={ent.id}
+                                  onClick={toggleEntity}
+                                  className={cn(
+                                    "flex items-center gap-4 cursor-pointer p-4 rounded-xl border-2 transition-all",
+                                    isChecked
+                                      ? "bg-[#e8f5f3] border-[#00bfa5]"
+                                      : "bg-[#f8fafc] border-slate-100 hover:bg-slate-50"
+                                  )}
+                                >
+                                   <div className={cn(
+                                      "h-6 w-6 rounded flex items-center justify-center border-2 transition-all flex-shrink-0",
+                                      isChecked ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
+                                   )}>
+                                      <Check className="h-4 w-4 text-white" />
+                                   </div>
+                                   <div>
+                                     <span className="text-sm font-semibold text-slate-700 block">{ent.razonSocial}</span>
+                                     {ent.nit && <span className="text-xs text-slate-400">NIT: {ent.nit}</span>}
+                                   </div>
+                                </label>
+                              );
+                            })
+                          )
+                        ) : (
+                           // CASE ADMIN: Only show current entity
+                           <div className="flex items-center gap-4 p-4 rounded-xl border-2 bg-[#e8f5f3] border-[#00bfa5]">
+                              <div className="h-6 w-6 rounded flex items-center justify-center bg-[#00bfa5] border-[#00bfa5] text-white">
+                                 <Check className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <span className="text-sm font-bold text-slate-800 block">{currentUser?.entidadNombre || "Tu Entidad"}</span>
+                                <span className="text-xs text-slate-500 uppercase font-bold tracking-tighter">Asignación Automática</span>
+                              </div>
+                           </div>
+                        )}
+                     </div>
+                     {role === 'superadmin' && (newUser.entidadIds || []).length > 0 && (
+                       <p className="text-xs text-[#00bfa5] font-semibold">
+                         ✓ {newUser.entidadIds.length} entidad{newUser.entidadIds.length > 1 ? 'es' : ''} seleccionada{newUser.entidadIds.length > 1 ? 's' : ''}
+                       </p>
+                     )}
+                  </div>
+                )}
             </div>
 
             <div className="p-6 border-t border-slate-100 bg-[#f8fafc] flex items-center justify-end gap-4">

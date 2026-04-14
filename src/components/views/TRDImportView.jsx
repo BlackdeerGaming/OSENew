@@ -31,7 +31,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
   const fetchImports = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/imports`);
+      const entId = currentEntity?.id || '';
+      const res = await fetch(`${API_BASE_URL}/imports${entId ? `?entidad_id=${entId}` : ''}`, {
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setImports(prev => {
@@ -80,10 +83,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
     const formData = new FormData();
     formData.append('file', file);
+    if (currentEntity?.id) {
+       formData.append('entidad_id', currentEntity.id);
+    }
 
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
         method: 'POST',
+        headers: { "Authorization": `Bearer ${currentUser?.token}` },
         body: formData,
       });
 
@@ -131,7 +138,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       // Logic to delete existing:
       setImports(prev => prev.filter(imp => imp.filename !== duplicateFile.name));
       try {
-        await fetch(`${API_BASE_URL}/imports/${existing.id}`, { method: 'DELETE' });
+        await fetch(`${API_BASE_URL}/imports/${existing.id}`, { 
+          method: 'DELETE',
+          headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        });
       } catch (e) {
         console.error("Error deleting old import:", e);
       }
@@ -161,7 +171,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     setImports(prev => prev.filter(imp => imp.id !== id));
     // If it's a temp ID it won't exist in backend, otherwise delete explicitly
     try {
-      await fetch(`${API_BASE_URL}/imports/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/imports/${id}`, { 
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
     } catch {}
   };
 
@@ -209,7 +222,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       // Update en backend a que la sesión está finalizada
       await fetch(`${API_BASE_URL}/imports/${currentPreviewImport.id}`, {
          method: 'PUT',
-         headers: { 'Content-Type': 'application/json' },
+         headers: { 
+           'Content-Type': 'application/json',
+           'Authorization': `Bearer ${currentUser?.token}`
+         },
          body: JSON.stringify({ status: 'success' })
       });
       

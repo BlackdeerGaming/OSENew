@@ -83,6 +83,7 @@ function App() {
   const [resetToken, setResetToken] = useState(null);
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
   const [entidadLogoBase64, setEntidadLogoBase64] = useState(null);
+  const [selectedEntityId, setSelectedEntityId] = useState(null);
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
@@ -162,11 +163,15 @@ function App() {
     }
 
     // Cargar usuarios y entidades iniciales desde el backend
+    // Cargar usuarios y entidades iniciales si no hay usuario logueado (público o cache)
+    // Pero si el API está protegido, esto fallará. En ese caso, mejor cargarlos después del login o permitir GET público si es necesario.
+    // OPTION: Move this inside a conditional if currentUser is present.
     const fetchData = async () => {
       try {
+        const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
         const [usersRes, entitiesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/users`),
-          fetch(`${API_BASE_URL}/entities`)
+          fetch(`${API_BASE_URL}/users`, { headers }),
+          fetch(`${API_BASE_URL}/entities`, { headers })
         ]);
 
         if (usersRes.ok) {
@@ -181,8 +186,8 @@ function App() {
         console.error("Error fetching initial data:", err);
       }
     };
-    fetchData();
-  }, []);
+    if (currentUser) fetchData();
+  }, [currentUser]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {
@@ -252,7 +257,7 @@ function App() {
     isLoading: trdLoading, isSynced,
     refreshData,
     imports, setImports
-  } = useTRDData(currentUser?.id);
+  } = useTRDData(currentUser, selectedEntityId);
 
   // UI State
   const handleUpdateUserProfile = (updatedData) => {
@@ -282,27 +287,52 @@ function App() {
   const [ragCount, setRagCount] = useState(0);
   const [tokensUsed, setTokensUsed] = useState(() => parseInt(localStorage.getItem('ose_tokens_used')) || 0);
 
-  // Registro de Actividad (Feed)
-  const [activityLogs, setActivityLogs] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ose_activity_logs')) || [];
-    } catch (e) { return []; }
-  });
+  // Registro de Actividad (Backend)
+  const [activityLogs, setActivityLogs] = useState([]);
 
-  const addActivityLog = useCallback((action) => {
-    setActivityLogs(prev => {
-      const userName = currentUser?.nombre || currentUser?.username || 'Sistema';
-      const newLog = {
-        id: "act_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-        user: userName,
-        message: `${userName} ${action.toLowerCase()}`,
-        timestamp: new Date().toISOString()
-      };
-      const updated = [newLog, ...prev].slice(0, 50); // Máximo 50 registros
-      localStorage.setItem('ose_activity_logs', JSON.stringify(updated));
-      return updated;
-    });
+  const addActivityLog = useCallback(async (message) => {
+    if (!currentUser?.token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/activity-logs`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${currentUser.token}`
+        },
+        body: JSON.stringify({ 
+          message, 
+          user_name: currentUser?.nombre || "Usuario" 
+        })
+      });
+      if (response.ok) {
+        // Refrescar lista local
+        refreshActivityLogs();
+      }
+    } catch (e) {
+      console.error("Error saving log:", e);
+    }
   }, [currentUser]);
+
+  const refreshActivityLogs = useCallback(async () => {
+    if (!currentUser?.token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/activity-logs`, {
+        headers: { "Authorization": `Bearer ${currentUser.token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setActivityLogs(data);
+      }
+    } catch (e) {
+      console.error("Error fetching logs:", e);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      refreshActivityLogs();
+    }
+  }, [currentUser, refreshActivityLogs]);
 
   useEffect(() => {
     localStorage.setItem('ose_tokens_used', tokensUsed);
@@ -310,8 +340,11 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!currentUser?.token) return;
       try {
-        const ragRes = await fetch(`${API_BASE_URL}/rag-documents`);
+        const ragRes = await fetch(`${API_BASE_URL}/rag-documents`, {
+          headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
         if (ragRes.ok) {
           const data = await ragRes.json();
           setRagCount(data.length);
@@ -447,6 +480,10 @@ function App() {
           else if (entity === 'series') await addSerie(newRecord);
           else if (entity === 'subseries') await addSubserie(newRecord);
           else if (entity === 'TRD' || entity === 'valoracion') await addTrdRecord(newRecord);
+          
+          // REGISTRO DE ACTIVIDAD: Individual creation
+          addActivityLog(`Creación ${entityLabel} - ${payload.nombre || newId}`);
+          
           actionsProcessed++;
         } 
         else if (action.type === 'UPDATE') {
@@ -495,7 +532,10 @@ function App() {
        
        fetch(`${API_BASE_URL}/agent-action`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentUser?.token}` 
+          },
           body: JSON.stringify({ prompt: text, context, history })
        })
        .then(res => res.json())
@@ -684,6 +724,15 @@ function App() {
 
   const handleLogin = (user, rememberMe) => {
     setCurrentUser(user);
+    // Establecer la entidad inicial basada en el perfil
+    if (user.entidadId) {
+      setSelectedEntityId(user.entidadId);
+    } else if (user.entidadIds?.length > 0) {
+      setSelectedEntityId(user.entidadIds[0]);
+    } else if (entities.length > 0) {
+      setSelectedEntityId(entities[0].id);
+    }
+    
     if (rememberMe) {
       localStorage.setItem('ose_user', JSON.stringify(user));
     }
@@ -697,6 +746,8 @@ function App() {
       try {
         const user = JSON.parse(savedUser);
         setCurrentUser(user);
+        if (user.entidadId) setSelectedEntityId(user.entidadId);
+        else if (user.entidadIds?.length > 0) setSelectedEntityId(user.entidadIds[0]);
         setAuthView('dashboard');
         console.log("♻️ Sesión recuperada de localStorage");
       } catch (e) {
@@ -716,7 +767,7 @@ function App() {
     return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
   }, [currentUser, entities]);
 
-  const currentEntity = userEntities.find(e => e.id === currentUser?.entidadId) || userEntities[0];
+  const currentEntity = entities.find(e => e.id === selectedEntityId) || userEntities[0];
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
@@ -956,6 +1007,9 @@ function App() {
                 const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
                 const customFilename = `${depName}_${randomId}_${dateStr}`;
                 
+                // REGISTRO DE ACTIVIDAD: Descarga TRD
+                addActivityLog(`Descarga TRD - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
+
                 handleExportPDFGeneral('trd-final-report-area', customFilename);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
@@ -1018,6 +1072,9 @@ function App() {
                }}
                currentUser={currentUser}
                onNavigate={(v) => { setMainView(v); setActiveModule(v); }}
+               userEntities={userEntities}
+               selectedEntityId={selectedEntityId}
+               onSelectEntity={setSelectedEntityId}
             />
 
             <div className="flex-1 overflow-y-auto relative flex">
@@ -1034,8 +1091,8 @@ function App() {
                   addActivityLog={addActivityLog}
                 />
               )}
-              {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} />}
-              {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} />}
+              {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
+              {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
               
               {/* TRD Módulo (Layout Anterior embebido) */}
