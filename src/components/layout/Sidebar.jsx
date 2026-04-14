@@ -17,14 +17,14 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
 
   const filteredItems = NAV_ITEMS.filter(item => {
     if (role === 'superadmin' || role === 'admin') return true;
-    // For 'user' role, only show these specific modules
+    // For 'user' or 'Consulta' role, only show these specific modules
     return ['orgchart', 'datos', 'trd'].includes(item.id) || item.separator;
   });
 
   return (
     <aside className="w-60 border-r border-border bg-card flex flex-col h-full shadow-sm shrink-0">
       {/* Dynamic Orianna Toggle Button - Now at the Top */}
-      {role !== 'user' && (
+      {role !== 'user' && role !== 'Consulta' && (
         <div className="p-4 border-b border-border/50 bg-secondary/20">
           <button
             onClick={onToggleAgent}
@@ -80,20 +80,22 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
       </nav>
 
       {/* Orianna Status - Bottom of SideBar */}
-      <div className="p-4 border-t border-border/50 bg-secondary/10">
-        <div className="flex items-center gap-3 px-2">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20">
-            <Bot className="h-4 w-4" />
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-foreground leading-tight">Orianna IA</h3>
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">En línea</span>
+      {role !== 'user' && role !== 'Consulta' && (
+        <div className="p-4 border-t border-border/50 bg-secondary/10">
+          <div className="flex items-center gap-3 px-2">
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-foreground leading-tight">Orianna IA</h3>
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">En línea</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </aside>
   );
 }

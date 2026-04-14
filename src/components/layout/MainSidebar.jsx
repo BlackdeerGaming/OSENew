@@ -28,8 +28,9 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
       return true; // Admin ve todo excepto Entidades
     }
     
-    if (role === 'user') {
-      return item.id !== 'users'; // User no ve gestión de usuarios
+    if (role === 'user' || role === 'Consulta') {
+      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD y Configuración
+      return ['dashboard', 'rag', 'trd', 'settings'].includes(item.id);
     }
     
     return false;

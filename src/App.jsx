@@ -892,7 +892,7 @@ function App() {
       />
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
-      {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && (
+      {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && currentUser?.role !== 'user' && currentUser?.role !== 'Consulta' && (
         <section className="w-[350px] shrink-0 border-r border-border h-full shadow-lg z-10 bg-card transition-all duration-300 relative">
           <AgentChat 
             messages={messages} 
@@ -1078,7 +1078,17 @@ function App() {
             />
 
             <div className="flex-1 overflow-y-auto relative flex">
-              {mainView === 'dashboard' && <DashboardView stats={realStats} searchQuery={globalSearchQuery} currentUser={currentUser} seriesCount={(series || []).length} activityLogs={activityLogs} />}
+              {mainView === 'dashboard' && (
+                <DashboardView 
+                  stats={realStats} 
+                  searchQuery={globalSearchQuery} 
+                  currentUser={currentUser} 
+                  seriesCount={(series || []).length} 
+                  activityLogs={activityLogs} 
+                  trdRecords={trdRecords}
+                  onDownloadPDF={handleExportTRD}
+                />
+              )}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
               {mainView === 'import' && (
                 <TRDImportView 
