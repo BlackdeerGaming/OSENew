@@ -14,8 +14,9 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   const [selectedIndices, setSelectedIndices] = useState(new Set()); // Para el import actual revisado
 
   useEffect(() => {
-    fetchImports();
-  }, []);
+    if (currentUser?.token) fetchImports();
+    else setIsLoading(false);
+  }, [currentUser?.token, currentEntity?.id]);
 
   // Polling for analyzing tasks
   useEffect(() => {
@@ -30,10 +31,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   }, [imports]);
 
   const fetchImports = async () => {
+    if (!currentUser?.token) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/imports${entId ? `?entidad_id=${entId}` : ''}`, {
-        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        headers: { "Authorization": `Bearer ${currentUser.token}` }
       });
       if (res.ok) {
         const data = await res.json();
