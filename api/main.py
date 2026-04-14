@@ -976,10 +976,16 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             extracted_text += f"\n--- PÁGINA {i+1} ---\n" + fitz_doc[i].get_text()
         fitz_doc.close()
     except Exception as e:
-        print(f"❌ Error leyendo archivo con Fitz: {e}")
-        supabase_client.table("rag_documents").update({
-            "metadata": {"status": "error", "message": f"Error leyendo el archivo: {str(e)}"}
-        }).eq("id", doc_id).execute()
+        print(f"*** Error leyendo archivo con Fitz: {type(e).__name__}: {e}")
+        try:
+            row_m = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            curr_meta = row_m.data[0]["metadata"] if row_m.data else {}
+        except:
+            curr_meta = {}
+        curr_meta["status"] = "error"
+        curr_meta["error"] = f"Fitz: {str(e)}"
+        curr_meta["message"] = f"Error leyendo el archivo: {str(e)}"
+        supabase_client.table("rag_documents").update({"metadata": curr_meta}).eq("id", doc_id).execute()
         return
 
     if len(extracted_text.strip()) < 50:
@@ -1009,9 +1015,14 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
         except Exception as vision_err:
             print(f"⚠️ OCR_SKILL falló al procesar imagen: {vision_err}")
 
-        response = llm.invoke(messages_llm)
+        print(f"[LLM] Llamando a modelo: {OPENROUTER_MODEL}...")
+        try:
+            response = await asyncio.to_thread(llm.invoke, messages_llm)
+        except Exception as llm_err:
+            print(f"[LLM ERROR] {type(llm_err).__name__}: {llm_err}")
+            raise
         content_ai = response.content.strip()
-        print(f"🤖 IA Response received ({len(content_ai)} chars)")
+        print(f"[LLM] Respuesta recibida ({len(content_ai)} chars)")
 
         # --- SE RETIRÓ PERSISTENCIA TEMPRANA EN RAG (Problem 3) ---
         # Ahora el texto extraído se guarda silenciosamente en la sesión
@@ -1059,12 +1070,15 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             print(f"❌ Error updateting session: {upd_err}")
 
     except Exception as e:
-        print(f"❌ Error en process_ocr_task: {e}")
+        import traceback
+        print(f"[OCR TASK ERROR] {type(e).__name__}: {e}")
+        print(f"[TRACEBACK] {traceback.format_exc()}")
         try:
             row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
             if row.data:
                 curr_meta = row.data[0]["metadata"]
                 curr_meta["status"] = "error"
+                curr_meta["error"] = f"{type(e).__name__}: {str(e)}"
                 curr_meta["message"] = str(e)
                 supabase_client.table("rag_documents").update({"metadata": curr_meta}).eq("id", doc_id).execute()
         except:
