@@ -12,7 +12,7 @@ export function useTRDData(currentUser = null, entityId = null) {
   const [isSynced, setIsSynced] = useState(false);
 
   const loadData = async () => {
-    if (!supabase) {
+    if (!supabase || !currentUser?.token) {
       setIsLoading(false);
       return;
     }
@@ -34,8 +34,8 @@ export function useTRDData(currentUser = null, entityId = null) {
         supabase.from('trd_records').select('*')
           .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null),
         fetch(`${API_BASE_URL}/imports${entityId ? `?entidad_id=${entityId}` : ''}`, {
-          headers: currentUser?.token ? { "Authorization": `Bearer ${currentUser.token}` } : {}
-        }).then(r => r.json())
+          headers: { "Authorization": `Bearer ${currentUser.token}` }
+        }).then(r => r.ok ? r.json() : [])
       ]);
 
       if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
