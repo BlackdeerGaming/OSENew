@@ -131,6 +131,18 @@ function App() {
       direccion: 'Avenida El Dorado # 60-00'
     }
   ]);
+  const [users, setUsers] = useState([
+    { 
+      id: 'u0', 
+      nombre: 'Super', 
+      apellido: 'Admin', 
+      email: 'superadmin@ose.com', 
+      username: 'superadmin',
+      perfil: 'superadmin', 
+      estado: 'Activo', 
+      isActivated: true,
+      activationToken: null,
+      password: 'admin' 
     }
   ]);
 
