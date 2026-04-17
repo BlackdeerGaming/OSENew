@@ -1209,16 +1209,6 @@ function App() {
     </div>
   );
 
-  // --- LÓGICA DE DERIVACIÓN DE ENTIDADES PARA RBAC ---
-  // Si es SuperAdmin, puede ver TODAS las entidades. Si es Admin, solo las vinculadas.
-  const userEntities = currentUser?.role === 'superadmin' 
-    ? entities 
-    : entities.filter(e => (currentUser?.entidadIds || []).includes(e.id) || e.id === currentUser?.entidadId);
-
-  // Entidad actual seleccionada (para carga de datos y contexto)
-  const currentEntityId = selectedEntityId || currentUser?.entidadId || (userEntities.length > 0 ? userEntities[0].id : 'e0');
-  const currentEntity = userEntities.find(e => e.id === currentEntityId) || userEntities[0] || (entities.find(e => e.id === 'e0'));
-
   // 🔥 EL PORTAL: Si estamos imprimiendo, matamos el resto del DOM 🔥
   if (isPrinting) {
     return (
