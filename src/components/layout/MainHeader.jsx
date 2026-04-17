@@ -10,38 +10,39 @@ export default function MainHeader({
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
   return (
-    <header className="sticky top-0 z-50 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-4 lg:px-6 shadow-sm print:hidden">
-      <div className="flex items-center gap-2 lg:gap-4 py-2">
-        <button 
-          onClick={onMenuToggle}
-          className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Abrir menú"
-        >
-          <Menu className="h-6 w-6" />
-        </button>
-        <div className="flex flex-col">
-          <h1 className="text-sm lg:text-xl font-bold text-foreground tracking-tight leading-tight md:leading-normal truncate max-w-[150px] md:max-w-none">Centro Documental</h1>
-          <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 hidden xs:block truncate max-w-[200px] md:max-w-none">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4 flex-wrap justify-end">
-        {/* Selector de Entidad (Solo si hay múltiples opciones o es superadmin) */}
-        {userEntities?.length > 1 && (
-          <div className="flex items-center gap-2 mr-2">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Contexto:</span>
-            <select
-              title="Cambiar entidad de trabajo"
-              value={selectedEntityId}
-              onChange={(e) => onSelectEntity(e.target.value)}
-              className="text-xs font-bold bg-secondary/50 text-foreground border border-input rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
-            >
-              {userEntities.map(ent => (
-                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
-              ))}
-            </select>
+    <header className="sticky top-0 z-50 flex flex-col w-full border-b border-border bg-background shadow-sm print:hidden">
+      <div className="flex min-h-[4rem] w-full items-center justify-between px-4 lg:px-6 py-2 md:py-0">
+        <div className="flex items-center gap-2 lg:gap-4">
+          <button 
+            onClick={onMenuToggle}
+            className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Abrir menú"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <div className="flex flex-col">
+            <h1 className="text-sm lg:text-xl font-bold text-foreground tracking-tight leading-tight md:leading-normal truncate max-w-[150px] md:max-w-none">Centro Documental</h1>
+            <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 hidden xs:block truncate max-w-[200px] md:max-w-none">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
           </div>
-        )}
+        </div>
+
+        <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
+          {/* Selector de Entidad (Desktop) */}
+          {userEntities?.length > 1 && (
+            <div className="hidden md:flex items-center gap-2 mr-2">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Contexto:</span>
+              <select
+                title="Cambiar entidad de trabajo"
+                value={selectedEntityId}
+                onChange={(e) => onSelectEntity(e.target.value)}
+                className="text-xs font-bold bg-secondary/50 text-foreground border border-input rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+              >
+                {userEntities.map(ent => (
+                  <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
         {/* Botón de exportar y filtro selectivo para la Tabla Final */}
         {mainView === 'trd' && (
@@ -80,12 +81,30 @@ export default function MainHeader({
         </button>
         <button 
           onClick={onLogout}
-          className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm"
+          className="hidden xs:flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm"
+          title="Cerrar sesión"
         >
           <LogOut className="h-4 w-4" />
-          Cerrar sesión
+          <span className="hidden md:inline">Cerrar sesión</span>
         </button>
+        </div>
       </div>
+
+      {/* Selector de Entidad (Mobile Centered) */}
+      {userEntities?.length > 1 && (
+        <div className="flex md:hidden w-full px-4 pb-3 items-center justify-center">
+          <select
+            title="Cambiar entidad de trabajo"
+            value={selectedEntityId}
+            onChange={(e) => onSelectEntity(e.target.value)}
+            className="w-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 rounded-lg px-4 py-2 text-center text-center-last focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-inner"
+          >
+            {userEntities.map(ent => (
+              <option key={ent.id} value={ent.id}>🏢 {ent.razonSocial || ent.sigla}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </header>
   );
 }
