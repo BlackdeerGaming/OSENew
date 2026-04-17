@@ -1297,7 +1297,6 @@ function App() {
     );
   }
 
-  if (authView === 'print-preview') {
 
   return (
     <RAGProvider>
