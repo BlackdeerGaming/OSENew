@@ -296,7 +296,7 @@ function App() {
   }, [activeFormData, activeModule]);
 
   const [flowStep, setFlowStep] = useState(0);
-  const [isAgentOpen, setIsAgentOpen] = useState(true);
+  const [isAgentOpen, setIsAgentOpen] = useState(window.innerWidth >= 1024);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
   
   // Chat State (Moved up to avoid ReferenceError in effects)
