@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Network, Download, ShieldAlert, Maximize, Loader2 } from 'lucide-react';
+import { Network, Download, ShieldAlert, Maximize, Loader2, GitBranch } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { cn } from '@/lib/utils';
 
@@ -15,10 +15,10 @@ const BG          = '#f8fafc';
 // ─── Constantes de layout del canvas ──────────────────────────────────────────
 const NODE_W  = 220;
 const NODE_H  = 86;
-const H_GAP   = 52;   // separación horizontal entre hermanos
-const V_GAP   = 68;   // separación vertical entre niveles
-const PAD     = 48;   // margen exterior del lienzo
-const HD      = 2;    // factor de escala retina
+const H_GAP   = 52;
+const V_GAP   = 68;
+const PAD     = 48;
+const HD      = 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers de canvas
@@ -52,7 +52,7 @@ function fitText(ctx, text, maxW) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Algoritmo de layout (posiciona cada nodo en el espacio)
+// Algoritmo de layout
 // ─────────────────────────────────────────────────────────────────────────────
 function subtreeWidth(nodeId, all) {
   const ch = all.filter(n => n.dependeDe === nodeId);
@@ -74,13 +74,12 @@ function layoutTree(node, all, x, y, positions) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Renderizador Canvas — sin CSS, sin oklch, 100% portable a PDF
+// Renderizador Canvas
 // ─────────────────────────────────────────────────────────────────────────────
 function buildOrgCanvas(rootNode, allNodes) {
   const positions = {};
   layoutTree(rootNode, allNodes, 0, 0, positions);
 
-  // Tamaño real del lienzo
   let maxX = 0, maxY = 0;
   for (const { x, y } of Object.values(positions)) {
     maxX = Math.max(maxX, x + NODE_W);
@@ -95,11 +94,9 @@ function buildOrgCanvas(rootNode, allNodes) {
   ctx.scale(HD, HD);
   ctx.translate(PAD, PAD);
 
-  // Fondo
   ctx.fillStyle = BG;
   ctx.fillRect(-PAD, -PAD, maxX + PAD * 2, maxY + PAD * 2);
 
-  // ── Conectores (dibujados antes que las tarjetas) ──────────────────────────
   ctx.strokeStyle = NAVY_CONN;
   ctx.lineWidth   = 1.5;
 
@@ -107,14 +104,12 @@ function buildOrgCanvas(rootNode, allNodes) {
     const children = allNodes.filter(n => n.dependeDe === node.id);
     if (!children.length) continue;
 
-    const pcx   = x + NODE_W / 2;
-    const pby   = y + NODE_H;
-    const midY  = pby + V_GAP / 2;
+    const pcx  = x + NODE_W / 2;
+    const pby  = y + NODE_H;
+    const midY = pby + V_GAP / 2;
 
-    // Salida vertical del padre
     ctx.beginPath(); ctx.moveTo(pcx, pby); ctx.lineTo(pcx, midY); ctx.stroke();
 
-    // Barra horizontal entre hijos
     if (children.length > 1) {
       const first = positions[children[0].id];
       const last  = positions[children[children.length - 1].id];
@@ -124,7 +119,6 @@ function buildOrgCanvas(rootNode, allNodes) {
       ctx.stroke();
     }
 
-    // Entrada vertical a cada hijo
     for (const child of children) {
       const cp = positions[child.id];
       ctx.beginPath();
@@ -134,9 +128,7 @@ function buildOrgCanvas(rootNode, allNodes) {
     }
   }
 
-  // ── Tarjetas de nodo ───────────────────────────────────────────────────────
   for (const { x, y, node } of Object.values(positions)) {
-    // Sombra ligera
     ctx.save();
     ctx.shadowColor   = 'rgba(45,58,94,0.13)';
     ctx.shadowBlur    = 12;
@@ -146,13 +138,11 @@ function buildOrgCanvas(rootNode, allNodes) {
     ctx.fill();
     ctx.restore();
 
-    // Borde de la tarjeta
     ctx.strokeStyle = NAVY_BORDER;
     ctx.lineWidth   = 1.5;
     roundRect(ctx, x, y, NODE_W, NODE_H, 12);
     ctx.stroke();
 
-    // Nombre (con wrapping automático)
     ctx.fillStyle  = TEXT_DARK;
     ctx.font       = 'bold 13px Arial, sans-serif';
     ctx.textAlign  = 'center';
@@ -161,7 +151,6 @@ function buildOrgCanvas(rootNode, allNodes) {
     const topY     = lines.length === 1 ? y + 26 : y + 18;
     lines.slice(0, 2).forEach((ln, i) => ctx.fillText(ln, x + NODE_W / 2, topY + i * lineH));
 
-    // Badge del código
     ctx.font = 'bold 11px Arial, sans-serif';
     const bw = Math.max(56, ctx.measureText(node.codigo).width + 22);
     const bx = x + NODE_W / 2 - bw / 2;
@@ -173,7 +162,6 @@ function buildOrgCanvas(rootNode, allNodes) {
     ctx.font       = 'bold 11px "Courier New", monospace';
     ctx.fillText(node.codigo, x + NODE_W / 2, by + 14);
 
-    // Sigla (opcional)
     if (node.sigla) {
       ctx.fillStyle = TEXT_MUTED;
       ctx.font      = '10px Arial, sans-serif';
@@ -185,14 +173,13 @@ function buildOrgCanvas(rootNode, allNodes) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Componente visual de pantalla (inline styles — sin oklch tampoco)
+// Componente visual TreeNode (pantalla)
 // ─────────────────────────────────────────────────────────────────────────────
 const TreeNode = ({ node, allNodes }) => {
   const children = allNodes.filter(n => n.dependeDe === node.id);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      {/* Tarjeta */}
       <div style={{
         background: '#fff', border: `2px solid ${NAVY_BORDER}`,
         borderRadius: 12, padding: '14px 16px', minWidth: 210, maxWidth: 270,
@@ -214,7 +201,6 @@ const TreeNode = ({ node, allNodes }) => {
         )}
       </div>
 
-      {/* Hijos */}
       {children.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={{ width: 1, height: 32, background: NAVY_CONN }} />
@@ -240,18 +226,32 @@ const TreeNode = ({ node, allNodes }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vista principal
+// Detectar nodos raíz (sin padre o con padre inválido)
+// ─────────────────────────────────────────────────────────────────────────────
+function getRootNodes(dependencias) {
+  const allIds = new Set(dependencias.map(d => d.id));
+  return dependencias.filter(d => {
+    const padre = d.dependeDe;
+    return !padre || padre === 'ninguna' || !allIds.has(padre);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vista principal — soporta múltiples raíces independientes
 // ─────────────────────────────────────────────────────────────────────────────
 export default function OrgChartView({ dependencias }) {
-  const [selectedRootId, setSelectedRootId] = useState('');
+  const [selectedRootId, setSelectedRootId] = useState('all');
   const [isExporting, setIsExporting]       = useState(false);
 
-  // Drag & scroll
   const [isDragging, setIsDragging] = useState(false);
   const [drag, setDrag]             = useState({ startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
   const scrollRef = React.useRef(null);
 
-  const rootNode = dependencias.find(d => d.id === selectedRootId);
+  const rootNodes = getRootNodes(dependencias);
+
+  const visibleRoots = selectedRootId === 'all'
+    ? rootNodes
+    : rootNodes.filter(r => r.id === selectedRootId);
 
   const onMouseDown = e => {
     setIsDragging(true);
@@ -262,9 +262,9 @@ export default function OrgChartView({ dependencias }) {
       scrollTop:  scrollRef.current.scrollTop,
     });
   };
-  const onMouseUp   = () => setIsDragging(false);
-  const onMouseLeave= () => setIsDragging(false);
-  const onMouseMove = e => {
+  const onMouseUp    = () => setIsDragging(false);
+  const onMouseLeave = () => setIsDragging(false);
+  const onMouseMove  = e => {
     if (!isDragging) return;
     e.preventDefault();
     const x = e.pageX - scrollRef.current.offsetLeft;
@@ -273,33 +273,35 @@ export default function OrgChartView({ dependencias }) {
     scrollRef.current.scrollTop  = drag.scrollTop  - (y - drag.startY) * 1.4;
   };
 
-  // ─── Exportar PDF usando canvas puro (sin captura DOM → sin oklch) ──────────
   const handleExportPDF = async () => {
-    if (!rootNode) return;
     setIsExporting(true);
     try {
-      // Construir canvas con la función que dibuja sin CSS
-      const canvas = buildOrgCanvas(rootNode, dependencias);
+      const pdf  = new jsPDF('landscape', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      let isFirst = true;
 
-      const imgData   = canvas.toDataURL('image/png');
-      const imgW      = canvas.width  / HD;   // dimensiones lógicas
-      const imgH      = canvas.height / HD;
-      const orientation = imgW > imgH ? 'landscape' : 'portrait';
+      for (const root of visibleRoots) {
+        const canvas  = buildOrgCanvas(root, dependencias);
+        const imgData = canvas.toDataURL('image/png');
+        const imgW    = canvas.width  / HD;
+        const imgH    = canvas.height / HD;
+        const aspect  = imgW / imgH;
 
-      const pdf      = new jsPDF(orientation, 'mm', 'a4');
-      const pageW    = pdf.internal.pageSize.getWidth();
-      const pageH    = pdf.internal.pageSize.getHeight();
-      const aspect   = imgW / imgH;
+        if (!isFirst) pdf.addPage('a4', imgW > imgH ? 'landscape' : 'portrait');
+        isFirst = false;
 
-      let fw = pageW - 20;
-      let fh = fw / aspect;
-      if (fh > pageH - 20) { fh = pageH - 20; fw = fh * aspect; }
+        let fw = pageW - 20;
+        let fh = fw / aspect;
+        if (fh > pageH - 20) { fh = pageH - 20; fw = fh * aspect; }
 
-      const mx = (pageW - fw) / 2;
-      const my = (pageH - fh) / 2;
+        pdf.addImage(imgData, 'PNG', (pageW - fw) / 2, (pageH - fh) / 2, fw, fh);
+      }
 
-      pdf.addImage(imgData, 'PNG', mx, my, fw, fh);
-      pdf.save(`Organigrama_${rootNode.nombre.replace(/\s+/g, '_')}.pdf`);
+      const label = selectedRootId === 'all'
+        ? 'Todos_los_Organigramas'
+        : (visibleRoots[0]?.nombre?.replace(/\s+/g, '_') || 'Organigrama');
+      pdf.save(`${label}.pdf`);
     } catch (err) {
       console.error(err);
       alert('Error al exportar: ' + (err.message || err));
@@ -311,7 +313,7 @@ export default function OrgChartView({ dependencias }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{
         background: '#fff', borderBottom: '1px solid #e2e8f0',
         padding: '14px 24px', display: 'flex', alignItems: 'center',
@@ -323,7 +325,11 @@ export default function OrgChartView({ dependencias }) {
           </div>
           <div>
             <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: TEXT_DARK }}>Generador de Organigramas</p>
-            <p style={{ margin: 0, fontSize: 12, color: TEXT_MUTED }}>Mapeo jerárquico automático basado en dependencias</p>
+            <p style={{ margin: 0, fontSize: 12, color: TEXT_MUTED }}>
+              {rootNodes.length > 1
+                ? `${rootNodes.length} estructuras organizacionales independientes`
+                : 'Mapeo jerárquico automático basado en dependencias'}
+            </p>
           </div>
         </div>
 
@@ -332,37 +338,35 @@ export default function OrgChartView({ dependencias }) {
             value={selectedRootId}
             onChange={e => setSelectedRootId(e.target.value)}
             style={{
-              height: 40, minWidth: 280, borderRadius: 8, border: '1px solid #cbd5e1',
+              height: 40, minWidth: 300, borderRadius: 8, border: '1px solid #cbd5e1',
               padding: '0 12px', fontSize: 14, background: '#f8fafc', color: TEXT_DARK, outline: 'none'
             }}
           >
-            <option value="">Selecciona dependencia raíz...</option>
-            {dependencias.map(dep => (
-              <option key={dep.id} value={dep.id}>{dep.codigo} — {dep.nombre}</option>
+            <option value="all">📊 Todos los organigramas ({rootNodes.length})</option>
+            {rootNodes.map(dep => (
+              <option key={dep.id} value={dep.id}>🌳 {dep.codigo} — {dep.nombre}</option>
             ))}
           </select>
 
-          {rootNode && (
-            <button
-              onClick={handleExportPDF}
-              disabled={isExporting}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                background: NAVY, color: '#fff', border: 'none',
-                padding: '10px 18px', borderRadius: 8, fontSize: 14,
-                fontWeight: 600, cursor: isExporting ? 'not-allowed' : 'pointer',
-                opacity: isExporting ? 0.7 : 1
-              }}
-            >
-              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              {isExporting ? 'Generando...' : 'Exportar PDF'}
-            </button>
-          )}
+          <button
+            onClick={handleExportPDF}
+            disabled={isExporting || dependencias.length === 0}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: NAVY, color: '#fff', border: 'none',
+              padding: '10px 18px', borderRadius: 8, fontSize: 14,
+              fontWeight: 600, cursor: (isExporting || dependencias.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (isExporting || dependencias.length === 0) ? 0.6 : 1
+            }}
+          >
+            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {isExporting ? 'Generando...' : 'Exportar PDF'}
+          </button>
         </div>
       </div>
 
-      {/* ── Workspace ──────────────────────────────────────────────────────── */}
-      {rootNode ? (
+      {/* ── Workspace ─────────────────────────────────────────────────────── */}
+      {dependencias.length > 0 ? (
         <div
           ref={scrollRef}
           onMouseDown={onMouseDown}
@@ -384,9 +388,38 @@ export default function OrgChartView({ dependencias }) {
             <Maximize size={12} /> Arrastra para navegar el lienzo
           </div>
 
-          {/* Árbol visual (solo pantalla — el PDF usa canvas) */}
-          <div style={{ display: 'inline-flex', justifyContent: 'center', minWidth: '100%', paddingBottom: 40 }}>
-            <TreeNode node={rootNode} allNodes={dependencias} />
+          {/* Múltiples árboles independientes */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 64, alignItems: 'flex-start', minWidth: '100%' }}>
+            {visibleRoots.map((rootNode, idx) => (
+              <div key={rootNode.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%' }}>
+                {visibleRoots.length > 1 && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    marginBottom: 20, padding: '6px 14px',
+                    background: NAVY, color: '#fff', borderRadius: 8,
+                    fontSize: 12, fontWeight: 700
+                  }}>
+                    <GitBranch size={13} />
+                    {idx + 1}. {rootNode.nombre}
+                    <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: 2 }}>{rootNode.codigo}</span>
+                  </div>
+                )}
+                <div style={{ display: 'inline-flex', justifyContent: 'center', width: '100%', paddingBottom: 8 }}>
+                  <TreeNode node={rootNode} allNodes={dependencias} />
+                </div>
+                {visibleRoots.length > 1 && idx < visibleRoots.length - 1 && (
+                  <div style={{ width: '100%', marginTop: 24, borderTop: `1px dashed ${NAVY_CONN}`, position: 'relative' }}>
+                    <span style={{
+                      position: 'absolute', left: '50%', top: -9, transform: 'translateX(-50%)',
+                      background: BG, padding: '0 12px', fontSize: 10,
+                      color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase'
+                    }}>
+                      — Estructura independiente —
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       ) : (
@@ -395,12 +428,8 @@ export default function OrgChartView({ dependencias }) {
           alignItems: 'center', justifyContent: 'center', color: TEXT_MUTED, padding: 32
         }}>
           <ShieldAlert size={56} style={{ opacity: 0.25, marginBottom: 16 }} />
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>
-            Selecciona una dependencia raíz para generar su mapa jerárquico.
-          </p>
-          <p style={{ margin: '6px 0 0', fontSize: 12 }}>
-            El sistema calcula posiciones y conexiones automáticamente.
-          </p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>No hay dependencias creadas aún.</p>
+          <p style={{ margin: '6px 0 0', fontSize: 12 }}>Crea dependencias en el módulo TRD para generar el organigrama.</p>
         </div>
       )}
     </div>

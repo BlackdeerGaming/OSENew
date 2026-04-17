@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Database, Users, Settings, Search, FileSignature, Building2, FileSpreadsheet, FileUp, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, Database, Users, Settings, Search, FileSignature, Building2, FileSpreadsheet, FileUp, BrainCircuit, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
@@ -10,6 +10,7 @@ const MAIN_NAV = [
   { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'settings', label: 'Configuración', icon: Settings },
+  { id: 'help', label: 'Ayuda y Soporte', icon: HelpCircle },
 ];
 
 export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity }) {
@@ -29,8 +30,8 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
     }
     
     if (role === 'user' || role === 'Consulta') {
-      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD y Configuración
-      return ['dashboard', 'rag', 'trd', 'settings'].includes(item.id);
+      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD, Configuración y Ayuda
+      return ['dashboard', 'rag', 'trd', 'settings', 'help'].includes(item.id);
     }
     
     return false;

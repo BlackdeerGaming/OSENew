@@ -207,11 +207,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   const handleCommit = async () => {
     if (!currentPreviewImport) return;
     const actionsToRun = currentPreviewImport.actions.filter((_, i) => selectedIndices.has(i));
-    if (actionsToRun.length === 0) return alert("Selecciona al menos un registro para importar.");
+    if (actionsToRun.length === 0) {
+      if (addActivityLog) addActivityLog("Error: Intento de importación sin registros seleccionados");
+      return; // Validation fails silently or could use a toast later
+    }
 
     try {
-      // Modificar status temporalmente en UI
-      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+      // Modificar status temporalmente en UI a analizandolo o procesando
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'processing' } : imp));
       setPreviewImportId(null);
       
       // Llamar al action de TRDImportView (propuesta de App.jsx)
@@ -234,10 +237,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
          body: JSON.stringify({ status: 'success' })
       });
       
-      alert("¡Registros sincronizados con éxito a las tablas definitivas!");
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+      setPreviewImportId(null);
     } catch (err) {
-      alert("Hubo un problema sincronizando: " + err.message);
-      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'reviewing' } : imp));
+      console.error("Error syncing TRD:", err);
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'reviewing', error: err.message } : imp));
     }
   };
 

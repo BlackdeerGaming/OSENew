@@ -21,8 +21,8 @@ import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
-
 import TRDImportView from './components/views/TRDImportView';
+import HelpCenterView from './components/views/HelpCenterView';
 import DocumentcioRAGView from './components/views/DocumentcioRAGView';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
@@ -274,6 +274,26 @@ function App() {
 
   const [activeModule, setActiveModule] = useState('dependencias');
   const [activeFormData, setActiveFormData] = useState({});
+  const [formsPersistence, setFormsPersistence] = useState({
+    dependencias: {},
+    series: {},
+    subseries: {},
+    trdform: {}
+  });
+
+  const [printOrientation, setPrintOrientation] = useState('portrait'); // portrait | landscape
+  const [aiQueryResult, setAiQueryResult] = useState(null); // Para mostrar resultados de consultas de Orianna
+
+  // Auto-persist form data
+  useEffect(() => {
+    if (['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule)) {
+       setFormsPersistence(prev => ({
+         ...prev,
+         [activeModule]: activeFormData
+       }));
+    }
+  }, [activeFormData, activeModule]);
+
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(true);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
@@ -385,12 +405,56 @@ function App() {
     }
   }, [messages.length]);
 
+  // Recuperar historial de Orianna al cargar
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!currentUser?.token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/chat-history/orianna`, {
+          headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando historial de Orianna:", e);
+      }
+    };
+    fetchHistory();
+  }, [currentUser]);
+
+  // Persistir historial de Orianna automáticamente
+  useEffect(() => {
+    const saveHistory = async () => {
+      if (!currentUser?.token || messages.length <= 1) return;
+      try {
+        await fetch(`${API_BASE_URL}/chat-history/orianna`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({ messages })
+        });
+      } catch (e) {
+        console.error("Error guardando historial de Orianna:", e);
+      }
+    };
+
+    const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
+    return () => clearTimeout(timer);
+  }, [messages, currentUser]);
+
 
   // Unified simulateAgent
   const simulateAgentResponse = (text, options = null) => {
     setIsTyping(true);
     setTimeout(() => {
-      setMessages(prev => [...prev, { sender: 'agent', text }]);
+      const agentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      setMessages(prev => [...prev, { id: agentId, sender: 'agent', text }]);
       setIsTyping(false);
       if (options) {
         setCurrentOptions(options);
@@ -513,7 +577,11 @@ function App() {
     }
     
     if (actionsProcessed > 0) {
-      setModalStatus({ isOpen: true, type: 'success', message: `Se procesaron y sincronizaron ${actionsProcessed} cambios correctamente.` });
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'success', 
+        message: `¡Sincronización completa! Se han procesado y guardado ${actionsProcessed} registros exitosamente en la nube.` 
+      });
     } else {
       setModalStatus({ isOpen: false, type: 'loading', message: '' });
     }
@@ -521,7 +589,9 @@ function App() {
   };
 
   const handleUserMessage = (text) => {
-    setMessages(prev => [...prev, { sender: 'user', text }]);
+    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const userMsg = { id: requestId, sender: 'user', text: text };
+    setMessages(prev => [...prev, userMsg]);
     setCurrentOptions([]);
     
     if (['dependencias', 'series', 'subseries', 'datos', 'trd', 'orgchart', 'trdform'].includes(activeModule)) {
@@ -540,6 +610,18 @@ function App() {
        })
        .then(res => res.json())
        .then(async data => {
+          // Si es una consulta (QUERY), mostramos el panel de resultados
+          if (data.intent === 'QUERY') {
+            setAiQueryResult({
+              title: "Resultado de Consulta Orianna",
+              content: data.message,
+              data: data.data || []
+            });
+            setActiveModule('ai-result');
+            simulateAgentResponse(data.message || "He preparado la información que solicitaste en el panel central.");
+            return;
+          }
+
           if (data.actions?.length > 0) {
              try {
                await executeAgentActions(data.actions);
@@ -554,7 +636,10 @@ function App() {
           setFlowStep(0);
           setActiveFormData({});
        })
-       .catch(() => simulateAgentResponse("Error de conexión con el motor de IA."));
+       .catch((err) => {
+          console.error("Error en Orianna:", err);
+          simulateAgentResponse("Error de conexión con el motor de IA.");
+       });
        
        return; 
     }
@@ -599,6 +684,9 @@ function App() {
       const actionLabel = isUpdate ? 'Edición' : 'Creación';
       
       addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id}`);
+      
+      // Limpiar persistencia de este módulo al guardar con éxito
+      setFormsPersistence(prev => ({ ...prev, [activeModule]: {} }));
       
       setActiveFormData({});
       setFlowStep(0);
@@ -794,19 +882,32 @@ function App() {
     convertToBase64().then(base64 => setEntidadLogoBase64(base64));
   }, [currentEntity]);
 
-  const handleExportTRD = () => {
+  const handleExportTRD = (dependencyName) => {
+    if (dependencyName && dependencyName !== "TODAS") {
+       setSelectedDependencia(dependencyName);
+       // Limpiar selección de IDs específicos para exportar toda la dependencia
+       setSelectedTrdIds(new Set());
+    }
     setIsPrinting(true);
   };
 
   // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
     setActiveModule(moduleId);
-    const autoData = {};
-    if (userEntities.length > 0) {
-      console.log("📍 Auto-seleccionando entidad:", userEntities[0].nombre || userEntities[0].razonSocial);
-      autoData.entidadId = userEntities[0].id;
+    
+    // Si tenemos data persistida para este módulo (escrita por el usuario antes), la recuperamos
+    const persisted = formsPersistence[moduleId];
+    if (persisted && Object.keys(persisted).length > 0) {
+      console.log(`♻️ Recuperando formulario persistido para ${moduleId}`);
+      setActiveFormData(persisted);
+    } else {
+      const autoData = {};
+      if (userEntities.length > 0) {
+        console.log("📍 Auto-seleccionando entidad:", userEntities[0].nombre || userEntities[0].razonSocial);
+        autoData.entidadId = userEntities[0].id;
+      }
+      setActiveFormData(autoData);
     }
-    setActiveFormData(autoData);
     setFlowStep(0);
   };
 
@@ -926,7 +1027,7 @@ function App() {
               <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'orgchart' && (
-              <OrgChartView dependencias={dependencias} currentUser={currentUser} />
+              <OrgChartView dependencias={dependencias} currentUser={currentUser} onEdit={handleEdit} />
             )}
             {activeModule === 'series' && (
               <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
@@ -952,6 +1053,49 @@ function App() {
                   logoBase64={entidadLogoBase64}
                 />
               </div>
+            )}
+            {activeModule === 'ai-result' && (
+               <div className="h-full flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                        <BrainCircuit className="w-8 h-8 text-primary" />
+                        {aiQueryResult?.title || "Resultado del Asistente"}
+                      </h2>
+                      <p className="text-slate-500 font-medium">Información procesada por Orianna para tu gestión.</p>
+                    </div>
+                    <button 
+                      onClick={() => setActiveModule('dashboard')}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all"
+                    >
+                      CERRAR VISTA
+                    </button>
+                  </div>
+                  
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex-1 overflow-y-auto">
+                    <div className="max-w-3xl mx-auto">
+                      <div className="prose prose-slate prose-lg max-w-none">
+                        <p className="whitespace-pre-wrap text-slate-700 leading-relaxed font-medium">
+                          {aiQueryResult?.content}
+                        </p>
+                      </div>
+                      
+                      {aiQueryResult?.data && aiQueryResult.data.length > 0 && (
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {aiQueryResult.data.map((item, idx) => (
+                            <div key={idx} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/60 block mb-1">
+                                {item.type || 'Item'}
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
+                              {item.description && <p className="text-xs text-slate-500 mt-1">{item.description}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+               </div>
             )}
             <div style={{ display: activeModule === 'import' ? 'block' : 'none', height: '100%' }}>
               <TRDImportView 
@@ -1000,17 +1144,44 @@ function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Selector de Orientación */}
+            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 mr-2">
+              <button 
+                onClick={() => setPrintOrientation('portrait')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
+                  printOrientation === 'portrait' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
+                )}
+              >
+                VERTICAL
+              </button>
+              <button 
+                onClick={() => setPrintOrientation('landscape')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
+                  printOrientation === 'landscape' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
+                )}
+              >
+                HORIZONTAL
+              </button>
+            </div>
+
             <button 
               onClick={() => {
-                const depName = selectedDependencia === "TODAS" ? "EmpresaGlobal" : selectedDependencia.replace(/\s+/g, '');
-                const randomId = Math.floor(10000000 + Math.random() * 90000000); // 8 cifras
-                const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
-                const customFilename = `${depName}_${randomId}_${dateStr}`;
+                const depName = selectedDependencia === "TODAS" ? "ReporteGeneral" : selectedDependencia.replace(/\s+/g, '');
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+                const randomId = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
+                
+                // Formato exacto solicitado: NombreDependencia_FechaNumerica_IDRandom
+                // Nota: Usamos _ en lugar de / para la fecha en el nombre del archivo real por compatibilidad de SO, 
+                // pero capturamos la esencia del requerimiento.
+                const customFilename = `${depName}_${dateStr}_${randomId}`;
                 
                 // REGISTRO DE ACTIVIDAD: Descarga TRD
-                addActivityLog(`Descarga TRD - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
+                addActivityLog(`Descarga TRD (${printOrientation}) - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
 
-                handleExportPDFGeneral('trd-final-report-area', customFilename);
+                handleExportPDFGeneral('trd-final-report-area', customFilename, printOrientation);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
             >
@@ -1104,6 +1275,7 @@ function App() {
               {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
+              {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
               
               {/* TRD Módulo (Layout Anterior embebido) */}
               {mainView === 'trd' && renderLegacyTRDLayout()}

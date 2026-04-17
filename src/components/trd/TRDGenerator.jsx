@@ -75,7 +75,8 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), curre
             width: '100%',
             tableLayout: 'fixed',
             fontFamily: 'inherit',
-            fontSize: '8px'
+            fontSize: '8px',
+            border: BD
           }}>
             {/* ── Definición de anchos de columna ──────────────────────── */}
             <colgroup>

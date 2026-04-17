@@ -74,10 +74,37 @@ export default function DependenciaForm({ data, onChange, activeField, dependenc
         </FormGroup>
 
         <FormGroup label="País" required isActive={activeField === 'pais'}>
-          <select name="pais" value={data.pais || "Colombia"} onChange={handleChange} className={inputClass}>
-            <option value="Colombia">Colombia</option>
-            <option value="Otra">Otra</option>
-          </select>
+          <SearchableSelect 
+            name="pais" 
+            value={data.pais || "Colombia"} 
+            onChange={handleChange} 
+            className={inputClass}
+            placeholder="Seleccione un país..."
+            options={[
+              { value: "Colombia", label: "Colombia" },
+              { value: "Argentina", label: "Argentina" },
+              { value: "Bolivia", label: "Bolivia" },
+              { value: "Brasil", label: "Brasil" },
+              { value: "Chile", label: "Chile" },
+              { value: "Costa Rica", label: "Costa Rica" },
+              { value: "Ecuador", label: "Ecuador" },
+              { value: "El Salvador", label: "El Salvador" },
+              { value: "España", label: "España" },
+              { value: "Estados Unidos", label: "Estados Unidos" },
+              { value: "Guatemala", label: "Guatemala" },
+              { value: "Honduras", label: "Honduras" },
+              { value: "México", label: "México" },
+              { value: "Nicaragua", label: "Nicaragua" },
+              { value: "Panamá", label: "Panamá" },
+              { value: "Paraguay", label: "Paraguay" },
+              { value: "Perú", label: "Perú" },
+              { value: "Puerto Rico", label: "Puerto Rico" },
+              { value: "República Dominicana", label: "República Dominicana" },
+              { value: "Uruguay", label: "Uruguay" },
+              { value: "Venezuela", label: "Venezuela" },
+              { value: "Otro", label: "Otro" }
+            ]}
+          />
         </FormGroup>
 
         <FormGroup label="Departamento" required isActive={activeField === 'departamento'}>

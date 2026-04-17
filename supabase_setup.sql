@@ -124,6 +124,7 @@ BEGIN
     rag_documents.metadata,
     1 - (rag_documents.embedding <=> query_embedding) AS similarity
   FROM rag_documents
+  WHERE (filter = '{}' OR rag_documents.metadata @> filter)
   ORDER BY rag_documents.embedding <=> query_embedding
   LIMIT match_count;
 END;
@@ -173,3 +174,20 @@ CREATE INDEX IF NOT EXISTS idx_dependencias_entity ON dependencias(entity_id);
 CREATE INDEX IF NOT EXISTS idx_series_entity ON series(entity_id);
 CREATE INDEX IF NOT EXISTS idx_subseries_entity ON subseries(entity_id);
 CREATE INDEX IF NOT EXISTS idx_trd_records_entity ON trd_records(entity_id);
+
+-- ============================================================
+-- 6. TABLA DE HISTORIAL DE CHAT (Persistencia Privada)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS chat_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  assistant TEXT NOT NULL, -- 'orianna' o 'documencio'
+  messages JSONB DEFAULT '[]',
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, assistant)
+);
+
+ALTER TABLE chat_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON chat_history FOR ALL USING (true);
+

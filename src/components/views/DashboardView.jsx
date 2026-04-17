@@ -1,9 +1,9 @@
 import React from 'react';
-import { FileText, AlertTriangle, Activity, BrainCircuit, MessageSquare, Send, CheckCircle2, ChevronRight, Download, Eye, Trash2, X, Clock } from 'lucide-react';
+import { FileText, AlertTriangle, Activity, BrainCircuit, ChevronRight, Download, X, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
-export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], onDownloadPDF }) {
+export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF }) {
   const role = currentUser?.role || 'user';
   const [messages, setMessages] = React.useState([
     {
@@ -12,6 +12,50 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
       content: `¡Hola! Soy OSE Copilot. Analicé tus tablas de retención y encontré ${stats?.expiredDocs || 0} documentos vencidos. ¿En qué te ayudo hoy?`
     }
   ]);
+
+  // Recuperar historial de Documencio al cargar
+  React.useEffect(() => {
+    const fetchHistory = async () => {
+      if (!currentUser?.token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+          headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando historial de Documencio:", e);
+      }
+    };
+    fetchHistory();
+  }, [currentUser]);
+
+  // Persistir historial de Documencio automáticamente
+  React.useEffect(() => {
+    const saveHistory = async () => {
+      // No guardar si solo está el mensaje de bienvenida inicial
+      if (!currentUser?.token || messages.length <= 1) return;
+      try {
+        await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({ messages })
+        });
+      } catch (e) {
+        console.error("Error guardando historial de Documencio:", e);
+      }
+    };
+
+    const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
+    return () => clearTimeout(timer);
+  }, [messages, currentUser]);
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
   const [showActProposal, setShowActProposal] = React.useState(false);
@@ -20,31 +64,42 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     const query = text || inputValue;
     if (!query.trim() || isTyping) return;
 
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: query }]);
+    const userMsgId = Date.now() + Math.random().toString(36).substr(2, 9);
+    setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: query }]);
     setInputValue('');
     setIsTyping(true);
 
     try {
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query })
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${currentUser?.token}`
+        },
+        body: JSON.stringify({ 
+          query,
+          entidadId: currentEntity?.id 
+        })
       });
 
-      if (!response.ok) throw new Error("Error en el servidor");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Error desconocido" }));
+        throw new Error(errorData.detail || "Error en el servidor");
+      }
+      
       const data = await response.json();
 
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: Date.now() + Math.random().toString(36).substr(2, 9),
         role: 'assistant',
         content: data.answer,
         sources: data.sources
       }]);
     } catch (error) {
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: Date.now() + "_err",
         role: 'assistant',
-        content: "Lo siento, ha ocurrido un error al conectar con el servidor."
+        content: `Error: ${error.message}`
       }]);
     } finally {
       setIsTyping(false);
@@ -92,6 +147,17 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retención", type: "neutral" });
     return recs;
   }, [stats]);
+
+  // Agrupar registros por dependencia para mostrarlos individualmente
+  const trdsByOficina = React.useMemo(() => {
+    const groups = {};
+    trdRecords.forEach(rec => {
+      const key = rec.dependencia || "OFICINA GENERAL";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(rec);
+    });
+    return Object.entries(groups).map(([name, records]) => ({ name, count: records.length }));
+  }, [trdRecords]);
 
   return (
     <div className="flex-1 p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-6">
@@ -145,43 +211,51 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                    <table className="w-full text-left">
                       <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
                          <tr>
-                            <th className="px-6 py-4">Nombre del Reporte</th>
+                            <th className="px-6 py-4">Nombre del Reporte / Dependencia</th>
                             <th className="px-6 py-4">Entidad</th>
                             <th className="px-6 py-4">Fecha base</th>
                             <th className="px-6 py-4 text-center">Acciones</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                         <tr className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-5">
-                               <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                                     <FileText className="w-5 h-5" />
-                                  </div>
-                                  <div>
-                                     <span className="font-bold text-slate-900 block">Tabla de Retención Documental Oficial</span>
-                                     <span className="text-xs text-slate-500">{trdRecords.length} registros estructurados</span>
-                                  </div>
-                               </div>
-                            </td>
-                            <td className="px-6 py-5 font-semibold text-slate-700">
-                               {currentUser?.entidadNombre || "Tu Entidad"}
-                            </td>
-                            <td className="px-6 py-5 text-slate-500 text-sm">
-                               {new Date().toLocaleDateString()}
-                            </td>
-                            <td className="px-6 py-5">
-                               <div className="flex justify-center">
-                                  <button 
-                                    onClick={() => onDownloadPDF && onDownloadPDF()}
-                                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg hover:bg-slate-800 transition-all active:scale-95 uppercase tracking-wider"
-                                  >
-                                     <Download className="w-4 h-4" />
-                                     Descargar PDF
-                                  </button>
-                               </div>
-                            </td>
-                         </tr>
+                         {trdsByOficina.length > 0 ? trdsByOficina.map((trd, idx) => (
+                           <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-5">
+                                 <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                       <FileText className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                       <span className="font-bold text-slate-900 block uppercase text-xs">{trd.name}</span>
+                                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{trd.count} registros vinculados</span>
+                                    </div>
+                                 </div>
+                              </td>
+                              <td className="px-6 py-5 font-bold text-slate-700 text-xs uppercase">
+                                 {currentUser?.entidadNombre || currentEntity?.razonSocial || "OSE SISTEMA GLOBAL"}
+                              </td>
+                              <td className="px-6 py-5 text-slate-500 text-xs font-medium">
+                                 {new Date().toLocaleDateString('es-CO')}
+                              </td>
+                              <td className="px-6 py-5">
+                                 <div className="flex justify-center">
+                                    <button 
+                                      onClick={() => onDownloadPDF && onDownloadPDF(trd.name)}
+                                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg hover:bg-slate-800 transition-all active:scale-95 uppercase tracking-wider"
+                                    >
+                                       <Download className="w-4 h-4" />
+                                       Descargar PDF
+                                    </button>
+                                 </div>
+                              </td>
+                           </tr>
+                         )) : (
+                           <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+                                 No hay registros TRD disponibles para consulta actualmente.
+                              </td>
+                           </tr>
+                         )}
                       </tbody>
                    </table>
                 </div>
@@ -215,7 +289,6 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
               <div className="flex items-center gap-3 overflow-x-auto pb-2 animate-in fade-in slide-in-from-left-4 duration-500">
                 <button 
                   onClick={() => {
-                     // Solamente refrescar (en SPA el estado ya es reactivo, pero simulamos acción)
                      console.log("♻️ Actualizando registro de actividad...");
                   }}
                   className="shrink-0 flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
@@ -231,15 +304,12 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
               </div>
             )}
 
-            {/* Registro de Actividad (Antes Documentos Identificados) */}
+            {/* Registro de Actividad */}
             <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden flex flex-col flex-1 animate-in zoom-in-95 duration-700">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
                  <h3 className="font-bold text-foreground">Registro de actividad</h3>
                  <div className="flex items-center gap-2">
                    <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">{activityLogs.length} registros</span>
-                   {role === 'user' && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded-md font-bold uppercase tracking-wider">Modo Consulta</span>
-                   )}
                  </div>
               </div>
               <div className="overflow-auto flex-1">
@@ -341,10 +411,6 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 }
 
 // Subcomponents
-
-function BotIcon({ className }) {
-  return <BrainCircuit className={cn("w-5 h-5", className)} />;
-}
 
 function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusColor }) {
   return (

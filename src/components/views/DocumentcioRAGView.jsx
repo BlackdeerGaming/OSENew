@@ -10,7 +10,7 @@ import API_BASE_URL from '@/config/api';
 
 // ─── CHAT PANEL ────────────────────────────────────────────────────────────────
 
-function ChatPanel({ currentEntityId }) {
+function ChatPanel({ currentEntityId, currentUser }) {
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -26,11 +26,55 @@ function ChatPanel({ currentEntityId }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // Recuperar historial de Documencio al cargar
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!currentUser?.token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+          headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando historial de Documencio:", e);
+      }
+    };
+    fetchHistory();
+  }, [currentUser]);
+
+  // Persistir historial de Documencio automáticamente
+  useEffect(() => {
+    const saveHistory = async () => {
+      if (!currentUser?.token || messages.length <= 1) return;
+      try {
+        await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({ messages })
+        });
+      } catch (e) {
+        console.error("Error guardando historial de Documencio:", e);
+      }
+    };
+
+    const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
+    return () => clearTimeout(timer);
+  }, [messages, currentUser]);
+
   const handleSend = async (text) => {
     const query = text || inputValue;
     if (!query.trim() || isTyping) return;
 
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: query }]);
+    const userMsgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: query }]);
     setInputValue('');
     setIsTyping(true);
 
@@ -45,15 +89,17 @@ function ChatPanel({ currentEntityId }) {
       });
       if (!res.ok) throw new Error('Error del servidor');
       const data = await res.json();
+      const assistantMsgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: assistantMsgId,
         role: 'assistant',
         content: data.answer,
         sources: data.sources
       }]);
     } catch {
+      const errMsgId = `${Date.now()}-err`;
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: errMsgId,
         role: 'assistant',
         content: 'Lo siento, ocurrió un error al conectar con el servidor. Por favor intenta de nuevo.'
       }]);
@@ -80,9 +126,27 @@ function ChatPanel({ currentEntityId }) {
           <h2 className="text-sm font-bold text-white">IA Biblioteca</h2>
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Asistente Documental · RAG Activo</p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">En línea</span>
+        <div className="ml-auto flex items-center gap-3">
+          {messages.length > 1 && (
+            <button 
+              onClick={() => {
+                if (window.confirm('¿Limpiar el historial de este chat?')) {
+                  setMessages([{
+                    id: 1,
+                    role: 'assistant',
+                    content: '¡Hola! Soy tu Asistente de Biblioteca, especialista en gestión documental. ¿En qué te puedo ayudar hoy?'
+                  }]);
+                }
+              }}
+              className="text-[10px] text-white/60 hover:text-white font-bold uppercase tracking-wider transition-colors border border-white/20 px-2 py-1 rounded"
+            >
+              Nuevo Chat
+            </button>
+          )}
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">En línea</span>
+          </div>
         </div>
       </div>
 
@@ -399,11 +463,9 @@ function DocumentViewer({ doc, onClose }) {
           <div className="flex flex-center gap-2">
             {fileUrl && (
               <a
-                href={fileUrl}
-                target="_blank"
-                rel="noreferrer"
+                href={`${fileUrl}${fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(doc.filename || 'documento.pdf')}`}
                 className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0 flex items-center gap-2 text-xs font-bold"
-                title="Descargar o Abrir Original"
+                title="Descargar Original"
               >
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Descargar</span>
@@ -568,8 +630,6 @@ function RAGLibraryPanel({ currentUser, currentEntityId }) {
 
   const existingFilenames = documents.map(d => d.filename).filter(Boolean);
 
-  useEffect(() => { fetchDocuments(); }, []);
-
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
@@ -584,6 +644,8 @@ function RAGLibraryPanel({ currentUser, currentEntityId }) {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => { fetchDocuments(); }, [currentEntityId]);
 
   const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar este documento de la base de conocimientos RAG? Esta acción no se puede deshacer.')) return;
@@ -783,8 +845,7 @@ function RAGLibraryPanel({ currentUser, currentEntityId }) {
                         </button>
                         {isSuperAdmin && doc.metadata?.file_url && (
                           <a
-                            href={doc.metadata.file_url}
-                            target="_blank" rel="noreferrer"
+                            href={`${doc.metadata.file_url}${doc.metadata.file_url.includes('?') ? '&' : '?'}download=${encodeURIComponent(doc.filename || 'documento.pdf')}`}
                             className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                             title="Descargar original"
                           >
@@ -883,12 +944,12 @@ export default function DocumentcioRAGView({ currentUser }) {
 
       {/* LEFT: Chat Panel (45%) */}
       <div className="w-[45%] shrink-0 flex flex-col h-full border-r border-slate-200">
-        <ChatPanel />
+        <ChatPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
       </div>
 
       {/* RIGHT: RAG Library Panel (55%) */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <RAGLibraryPanel currentUser={currentUser} />
+        <RAGLibraryPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
       </div>
     </div>
   );

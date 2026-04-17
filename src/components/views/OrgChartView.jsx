@@ -221,23 +221,40 @@ function buildOrgCanvas(rootNode, allNodes, opts = PRINT_PRESETS.SCREEN) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Componente visual de pantalla (inline styles — sin oklch tampoco)
 // ─────────────────────────────────────────────────────────────────────────────
-const TreeNode = ({ node, allNodes }) => {
+const TreeNode = ({ node, allNodes, onEdit }) => {
   const children = allNodes.filter(n => n.dependeDe === node.id);
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {/* Tarjeta */}
-      <div style={{
-        background: '#fff', border: `2px solid ${NAVY_BORDER}`,
-        borderRadius: 12, padding: '14px 16px', minWidth: 210, maxWidth: 270,
-        textAlign: 'center', boxShadow: '0 2px 8px rgba(45,58,94,0.08)'
-      }}>
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: TEXT_DARK, lineHeight: 1.35 }}>
+      <div 
+        onClick={() => onEdit && onEdit('dependencias', node)}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{
+          background: '#fff', 
+          border: `2px solid ${isHovered ? NAVY : NAVY_BORDER}`,
+          borderRadius: 12, 
+          padding: '14px 16px', 
+          minWidth: 210, 
+          maxWidth: 270,
+          textAlign: 'center', 
+          boxShadow: isHovered ? '0 10px 15px -3px rgba(45,58,94,0.15)' : '0 2px 8px rgba(45,58,94,0.08)',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+          position: 'relative',
+          zIndex: isHovered ? 10 : 1
+        }}
+      >
+        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: isHovered ? NAVY : TEXT_DARK, lineHeight: 1.35 }}>
           {node.nombre}
         </p>
         <span style={{
-          display: 'inline-block', marginTop: 7, background: NAVY_LIGHT,
-          padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.07em'
+          display: 'inline-block', marginTop: 7, background: isHovered ? NAVY : NAVY_LIGHT,
+          padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: isHovered ? '#fff' : NAVY, letterSpacing: '0.07em',
+          transition: 'all 0.2s ease'
         }}>
           {node.codigo}
         </span>
@@ -263,7 +280,7 @@ const TreeNode = ({ node, allNodes }) => {
                   }} />
                 )}
                 <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 1, height: 24, background: NAVY_CONN }} />
-                <TreeNode node={child} allNodes={allNodes} />
+                <TreeNode node={child} allNodes={allNodes} onEdit={onEdit} />
               </div>
             ))}
           </div>
@@ -276,7 +293,7 @@ const TreeNode = ({ node, allNodes }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Vista principal
 // ─────────────────────────────────────────────────────────────────────────────
-export default function OrgChartView({ dependencias }) {
+export default function OrgChartView({ dependencias, onEdit }) {
   const [selectedRootId, setSelectedRootId] = useState('');
   const [isExporting, setIsExporting]       = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -619,7 +636,7 @@ export default function OrgChartView({ dependencias }) {
 
           {/* Árbol visual (solo pantalla — el PDF usa canvas) */}
           <div style={{ display: 'inline-flex', justifyContent: 'center', minWidth: '100%', paddingBottom: 40 }}>
-            <TreeNode node={rootNode} allNodes={dependencias} />
+            <TreeNode node={rootNode} allNodes={dependencias} onEdit={onEdit} />
           </div>
         </div>
       ) : (

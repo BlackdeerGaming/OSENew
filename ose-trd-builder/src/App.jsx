@@ -35,7 +35,7 @@ const DEPS_FLOW = [
   { field: 'ciudad', query: '¿Y en qué ciudad?', type: 'text', quick: ['Bogotá', 'Medellín'] },
   { field: 'direccion', query: 'Dime la dirección física de la dependencia.', type: 'textarea', quick: [] },
   { field: 'telefono', query: '¿Algún teléfono de contacto?', type: 'text', quick: [] },
-  { field: 'dependeDe', query: 'Por último, ¿esta dependencia depende administrativamente de alguna otra?', type: 'text', quick: ['Despacho del Alcalde', 'Gerencia General'] },
+  { field: 'dependeDe', query: '¿Esta dependencia depende administrativamente de otra, o es una dependencia principal (raíz sin padre)? Si es principal o independiente, escribe "ninguna".', type: 'text', quick: ['ninguna', 'Despacho del Alcalde', 'Gerencia General'] },
 ];
 
 const SERIE_FLOW = [

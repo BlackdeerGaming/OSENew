@@ -127,7 +127,8 @@ export const RAGProvider = ({ children }) => {
   const handleSendMessage = async (query) => {
     if (!query.trim() || isTyping) return;
 
-    const userMessage = { id: Date.now(), role: 'user', content: query };
+    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const userMessage = { id: requestId, role: 'user', content: query };
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
 
@@ -140,23 +141,24 @@ export const RAGProvider = ({ children }) => {
 
       const data = await response.json();
 
+      const assistantId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       if (response.ok) {
         setMessages(prev => [...prev, { 
-          id: Date.now() + 1, 
+          id: assistantId, 
           role: 'assistant', 
           content: data.answer,
           sources: data.sources 
         }]);
       } else {
         setMessages(prev => [...prev, { 
-          id: Date.now() + 1, 
+          id: assistantId + "-err", 
           role: 'system', 
           content: `❌ Error: ${data.detail || "No se pudo obtener respuesta."}` 
         }]);
       }
     } catch (error) {
       setMessages(prev => [...prev, { 
-        id: Date.now() + 1, 
+        id: Date.now() + "-conn-err", 
         role: 'system', 
         content: "❌ Error de conexión con el servidor RAG." 
       }]);
