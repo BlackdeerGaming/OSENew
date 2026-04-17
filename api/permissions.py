@@ -19,9 +19,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail='Invalid authentication token')
 
 def require_entity_admin(user: dict, entity_id: str):
-    if user.get('role') not in ('administrador', 'superadmin'):
+    if user.get('role') not in ('administrador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail='Insufficient role')
-    if user.get('role') == 'administrador' and str(user.get('entity_id')) != str(entity_id):
+    if user.get('role') in ('administrador', 'admin') and str(user.get('entity_id')) != str(entity_id):
         raise HTTPException(status_code=403, detail='Cannot access other entity data')
     # superadmin passes automatically
 
