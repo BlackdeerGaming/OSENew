@@ -403,7 +403,7 @@ async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: d
         print(f"  Error subiendo PDF a Storage, se continuar con el RAG pero no habr visor original: {e}")
 
     # Determinar entidad para el documento
-    entidad_final = user.get("entity_id") if user.get("role") == "admin" else entidad_id
+    entidad_final = user.get("entity_id") if user.get("role") == ADMIN_ROLE else entidad_id
 
     documents = []
     text_count = 0
@@ -1118,7 +1118,7 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"
     supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
     file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
-    entidad_final = user.get("entity_id") if user.get("role") == "admin" else entidad_id
+    entidad_final = user.get("entity_id") if user.get("role") == ADMIN_ROLE else entidad_id
     res = supabase_client.table("rag_documents").insert({
         "content": "Import Session Snapshot",
         "metadata": {
