@@ -13,7 +13,7 @@ const MAIN_NAV = [
   { id: 'help', label: 'Ayuda y Soporte', icon: HelpCircle },
 ];
 
-export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity }) {
+export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity, isOpen, onClose }) {
   const role = currentUser?.role || 'user';
   const iaAvailable = currentUser?.iaDisponible ?? true;
   const [showIARestriction, setShowIARestriction] = React.useState(false);
@@ -44,11 +44,27 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
       return;
     }
     onNavigate(itemId);
+    if (onClose && window.innerWidth < 1024) onClose();
   };
 
   return (
     <>
-      <aside className="w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-xl shrink-0 transition-all duration-300 relative z-20 print:hidden">
+      {/* Mobile Backdrop */}
+      <div 
+        className={cn(
+          "fixed inset-0 bg-slate-900/60 z-[60] lg:hidden transition-opacity backdrop-blur-sm", 
+          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        )} 
+        onClick={onClose} 
+      />
+
+      <aside 
+        className={cn(
+          "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-2xl lg:shadow-xl shrink-0 transition-transform duration-300 z-[70] print:hidden",
+          "fixed lg:relative inset-y-0 left-0",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
         <div className="p-6 border-b border-white/10 flex items-center gap-3">
           {currentEntity ? (
              currentEntity.logoUrl ? (

@@ -1,20 +1,26 @@
 import React from "react";
-import { LogOut, User, Download, CheckCircle2, Printer } from "lucide-react";
+import { LogOut, User, Download, CheckCircle2, Printer, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function MainHeader({ 
   onLogout, mainView, trdProps, currentUser, onExportPDF, onNavigate,
-  selectedEntityId, userEntities, onSelectEntity 
+  selectedEntityId, userEntities, onSelectEntity, onMenuToggle
 }) {
   // Extract TRD props safely
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
-  return (
-    <header className="sticky top-0 z-10 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-6 shadow-sm print:hidden">
-      <div className="flex items-center gap-4 py-2">
+    <header className="sticky top-0 z-50 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-4 lg:px-6 shadow-sm print:hidden">
+      <div className="flex items-center gap-2 lg:gap-4 py-2">
+        <button 
+          onClick={onMenuToggle}
+          className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Abrir menú"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
         <div className="flex flex-col">
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Centro de control documental</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
+          <h1 className="text-sm lg:text-xl font-bold text-foreground tracking-tight leading-tight md:leading-normal truncate max-w-[150px] md:max-w-none">Centro Documental</h1>
+          <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 hidden xs:block truncate max-w-[200px] md:max-w-none">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
         </div>
       </div>
 

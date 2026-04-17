@@ -1,4 +1,5 @@
-import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp } from "lucide-react";
+import { useState } from "react";
+import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser, hasTrdData }) {
   const role = currentUser?.role || 'user';
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
 
   const filteredItems = NAV_ITEMS.filter(item => {
     if (role === 'superadmin' || role === 'admin') return true;
@@ -22,7 +24,7 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
   });
 
   return (
-    <aside className="w-60 border-r border-border bg-card flex flex-col h-full shadow-sm shrink-0">
+    <aside className="w-full lg:w-60 border-b lg:border-r border-border bg-card flex flex-col shadow-sm shrink-0">
       {/* Dynamic Orianna Toggle Button - Now at the Top */}
       {role !== 'user' && role !== 'Consulta' && (
         <div className="p-4 border-b border-border/50 bg-secondary/20">
@@ -42,11 +44,23 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
         </div>
       )}
 
-      <div className="p-4 py-5 border-b border-border/50">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Estructura</h2>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between p-4 border-b border-border/50 bg-background lg:py-5 lg:bg-transparent">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider lg:px-2">Estructura Documental</h2>
+        <button 
+          onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+          className="lg:hidden p-1.5 bg-slate-100 ring-1 ring-slate-200 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isMobileExpanded && "rotate-180")} />
+        </button>
       </div>
       
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className={cn(
+        "flex-col p-3 space-y-1 lg:flex lg:flex-1 lg:overflow-y-auto",
+        isMobileExpanded ? "flex" : "hidden"
+      )}>
         {filteredItems.map((item, index) => {
           if (item.separator) {
             return <div key={`sep-${index}`} className="my-3 border-t border-border/50" />;
@@ -59,7 +73,12 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
           return (
             <button
               key={item.id}
-              onClick={() => !isDisabled && onNavigate(item.id)}
+              onClick={() => {
+                if (!isDisabled) {
+                  onNavigate(item.id);
+                  setIsMobileExpanded(false);
+                }
+              }}
               disabled={isDisabled}
               title={isDisabled ? "Debes tener datos estructurados para ver la TRD" : ""}
               className={cn(
@@ -73,7 +92,7 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
             >
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
               {item.label}
-              {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase">Bloqueado</span>}
+              {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase flex items-center gap-1"><Lock className="w-2 h-2"/> Bloqueado</span>}
             </button>
           );
         })}
@@ -81,7 +100,7 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
 
       {/* Orianna Status - Bottom of SideBar */}
       {role !== 'user' && role !== 'Consulta' && (
-        <div className="p-4 border-t border-border/50 bg-secondary/10">
+        <div className="hidden lg:block p-4 border-t border-border/50 bg-secondary/10">
           <div className="flex items-center gap-3 px-2">
             <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20">
               <Bot className="h-4 w-4" />

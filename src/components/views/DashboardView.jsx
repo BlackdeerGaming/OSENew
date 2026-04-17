@@ -160,11 +160,11 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   }, [trdRecords]);
 
   return (
-    <div className="flex-1 p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-6">
+    <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-4 md:gap-6">
       
       {/* Top Cards Indicator */}
       {showMetrics && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
           <StatsCard 
             title="Documentos totales" 
             value={stats.totalDocs} 
@@ -207,14 +207,14 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                    </div>
                 </div>
 
-                <div className="overflow-hidden border border-slate-100 rounded-2xl">
-                   <table className="w-full text-left">
+                <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                   <table className="w-full min-w-[500px] text-left">
                       <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
                          <tr>
-                            <th className="px-6 py-4">Nombre del Reporte / Dependencia</th>
-                            <th className="px-6 py-4">Entidad</th>
-                            <th className="px-6 py-4">Fecha base</th>
-                            <th className="px-6 py-4 text-center">Acciones</th>
+                            <th className="px-4 lg:px-6 py-4">Nombre del Reporte / Dependencia</th>
+                            <th className="px-4 lg:px-6 py-4 hidden sm:table-cell">Entidad</th>
+                            <th className="px-4 lg:px-6 py-4 hidden md:table-cell">Fecha base</th>
+                            <th className="px-4 lg:px-6 py-4 text-center">Acciones</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -276,7 +276,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             
             {/* Analysis Cards */}
             {showAnalysis && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 animate-in fade-in duration-700">
                 <AnalysisWidget title="Detectar Series" desc={`${stats.totalDocs > 0 ? seriesCount : 0} series identificadas`} type="info" />
                 <AnalysisWidget title="Análisis" desc={stats.expiredDocs > 0 ? "Requiere revisión de retención" : "Estado funcional óptimo"} type="neutral" />
                 <AnalysisWidget title="TRD no aprobadas" desc={`${stats.unapprovedTRDs} registros pendientes`} type="warning" />
@@ -306,14 +306,14 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
             {/* Registro de Actividad */}
             <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden flex flex-col flex-1 animate-in zoom-in-95 duration-700">
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
-                 <h3 className="font-bold text-foreground">Registro de actividad</h3>
+              <div className="px-4 lg:px-5 py-3 lg:py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
+                 <h3 className="font-bold text-foreground text-sm lg:text-base">Registro de actividad</h3>
                  <div className="flex items-center gap-2">
                    <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">{activityLogs.length} registros</span>
                  </div>
               </div>
               <div className="overflow-auto flex-1">
-                <table className="w-full text-sm text-left">
+                <table className="w-full min-w-[520px] text-sm text-left">
                   <thead className="bg-slate-50 text-slate-500 font-medium">
                     <tr>
                       <th className="px-5 py-3">ID Acción</th>

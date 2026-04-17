@@ -927,7 +927,7 @@ export default function DocumentcioRAGView({ currentUser }) {
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-white">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden bg-white">
       {/* IA Restriction Overlay */}
       {!iaAvailable && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">
@@ -942,13 +942,13 @@ export default function DocumentcioRAGView({ currentUser }) {
         </div>
       )}
 
-      {/* LEFT: Chat Panel (45%) */}
-      <div className="w-[45%] shrink-0 flex flex-col h-full border-r border-slate-200">
+      {/* TOP on mobile / LEFT on desktop: Chat Panel */}
+      <div className="w-full h-80 lg:h-full lg:w-[45%] shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200">
         <ChatPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
       </div>
 
-      {/* RIGHT: RAG Library Panel (55%) */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {/* BOTTOM on mobile / RIGHT on desktop: RAG Library Panel */}
+      <div className="flex-1 flex flex-col overflow-hidden">
         <RAGLibraryPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
       </div>
     </div>

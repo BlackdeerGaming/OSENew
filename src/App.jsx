@@ -89,6 +89,7 @@ function App() {
   const [mainView, setMainView] = useState('dashboard');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Global App Data State
   const [entities, setEntities] = useState([
@@ -981,7 +982,7 @@ function App() {
   };
 
   const renderLegacyTRDLayout = () => (
-    <div className="flex flex-1 overflow-hidden w-full h-full bg-background rounded-l-2xl border-l border-y shadow-inner">
+    <div className="flex flex-col lg:flex-row flex-1 overflow-hidden w-full h-full bg-background lg:rounded-l-2xl border-l border-y shadow-inner">
       {/* Navigation Sidebar */}
       <Sidebar 
         activeModule={activeModule} 
@@ -994,7 +995,7 @@ function App() {
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
       {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && currentUser?.role !== 'user' && currentUser?.role !== 'Consulta' && (
-        <section className="w-[350px] shrink-0 border-r border-border h-full shadow-lg z-10 bg-card transition-all duration-300 relative">
+        <section className="w-full lg:w-[350px] h-80 lg:h-full shrink-0 border-b lg:border-b-0 lg:border-r border-border shadow-lg z-10 bg-card transition-all duration-300 relative">
           <AgentChat 
             messages={messages} 
             onSendMessage={handleUserMessage} 
@@ -1017,8 +1018,8 @@ function App() {
         </section>
       )}
 
-      {/* Right Panel: Content Area */}
-      <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full rounded-br-2xl">
+      {/* Content Area */}
+      <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full lg:rounded-br-2xl">
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-primary/[0.02] to-transparent" />
         <div className="relative p-6 h-full flex flex-col">
           
@@ -1208,8 +1209,7 @@ function App() {
 
   return (
     <RAGProvider>
-      <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
-      <div className="flex h-screen overflow-hidden">
+      <div className="relative flex h-screen overflow-hidden bg-background font-sans">
           <MainSidebar 
             activeView={mainView} 
             onNavigate={(id) => {
@@ -1221,6 +1221,8 @@ function App() {
             currentUser={currentUser}
             currentEntity={userEntities.length > 0 && currentUser?.role !== 'superadmin' ? userEntities[0] : null}
             hasTrdData={(trdRecords || []).length > 0 || (dependencias || []).length > 0 || (series || []).length > 0}
+            isOpen={isMobileMenuOpen}
+            onClose={() => setIsMobileMenuOpen(false)}
           />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
@@ -1246,6 +1248,7 @@ function App() {
                userEntities={userEntities}
                selectedEntityId={selectedEntityId}
                onSelectEntity={setSelectedEntityId}
+               onMenuToggle={() => setIsMobileMenuOpen(prev => !prev)}
             />
 
             <div className="flex-1 overflow-y-auto relative flex">
@@ -1281,7 +1284,6 @@ function App() {
               {mainView === 'trd' && renderLegacyTRDLayout()}
             </div>
          </div>
-      </div>
       
       <StatusModal 
         isOpen={modalStatus.isOpen} 

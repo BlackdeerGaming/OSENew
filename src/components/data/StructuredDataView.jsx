@@ -254,24 +254,24 @@ export default function StructuredDataView({ dependencias, series, subseries, on
   return (
     <div className="flex flex-col h-full bg-card rounded-xl border border-border overflow-hidden">
       {/* Search & Filters Toolbar */}
-      <div className="p-6 border-b border-border bg-secondary/[0.03] space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="p-4 md:p-6 border-b border-border bg-secondary/[0.03] space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-              <Database className="h-6 w-6 text-primary" />
+            <h2 className="text-base md:text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+              <Database className="h-5 w-5 md:h-6 md:w-6 text-primary" />
               Datos Estructurados
             </h2>
             <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mt-1">Gestión Jerárquica y Filtrado en Tiempo Real</p>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
              <ViewToggle view={view} onChange={setView} />
              <button 
                onClick={resetFilters}
-               className="text-[10px] font-black uppercase text-slate-400 hover:text-primary flex items-center gap-1.5 transition-colors px-3 py-1.5 hover:bg-primary/5 rounded-lg border border-transparent hover:border-primary/10"
+               className="text-[10px] font-black uppercase text-slate-400 hover:text-primary flex items-center gap-1.5 transition-colors px-2.5 py-1.5 hover:bg-primary/5 rounded-lg border border-transparent hover:border-primary/10"
              >
                <RotateCcw className="h-3.5 w-3.5" />
-               Restablecer Vistas
+               <span className="hidden xs:inline">Restablecer</span>
              </button>
           </div>
         </div>
@@ -283,10 +283,10 @@ export default function StructuredDataView({ dependencias, series, subseries, on
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors" />
             <input 
               type="text"
-              placeholder="Buscar por nombre de dependencia, serie, subserie o código..."
+              placeholder="Buscar por nombre, código..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-12 py-4 bg-white border-2 border-slate-200 rounded-2xl text-base font-medium focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all shadow-lg placeholder:text-slate-400"
+              className="w-full pl-12 pr-12 py-3 md:py-4 bg-white border-2 border-slate-200 rounded-2xl text-sm md:text-base font-medium focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all shadow-lg placeholder:text-slate-400"
             />
             {searchQuery && (
               <button 
@@ -353,7 +353,9 @@ export default function StructuredDataView({ dependencias, series, subseries, on
             </button>
           </div>
         ) : view === 'table' ? (
-          <TableView filteredData={filteredData} onEdit={onEdit} onDelete={onDelete} canModify={canModify} />
+          <div className="overflow-x-auto flex-1 h-full">
+            <TableView filteredData={filteredData} onEdit={onEdit} onDelete={onDelete} canModify={canModify} />
+          </div>
         ) : (
           filteredData.map(dep => (
             <div key={dep.id} className="border border-border rounded-2xl bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow group/card">
