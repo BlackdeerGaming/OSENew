@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Database, Users, Settings, Search, FileSignature, Building2, FileSpreadsheet, FileUp, BrainCircuit, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, Database, Users, Settings, Search, FileSignature, Building2, FileSpreadsheet, FileUp, BrainCircuit, HelpCircle, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
@@ -8,12 +8,13 @@ const MAIN_NAV = [
   { id: 'import', label: 'Importación TRD', icon: FileUp },
   { id: 'rag', label: 'Biblioteca', icon: BrainCircuit, badge: 'RAG' },
   { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
+  { id: 'invitations', label: 'Invitaciones', icon: Mail },
   { id: 'users', label: 'Usuarios', icon: Users },
   { id: 'settings', label: 'Configuración', icon: Settings },
   { id: 'help', label: 'Ayuda y Soporte', icon: HelpCircle },
 ];
 
-export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity, isOpen, onClose }) {
+export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity, isOpen, onClose, pendingInvitationsCount = 0 }) {
   const role = currentUser?.role || 'user';
   const iaAvailable = currentUser?.iaDisponible ?? true;
   const [showIARestriction, setShowIARestriction] = React.useState(false);
@@ -29,9 +30,9 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
       return true; // Admin ve todo excepto Entidades
     }
     
-    if (role === 'user' || role === 'Consulta') {
-      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD, Configuración y Ayuda
-      return ['dashboard', 'rag', 'trd', 'settings', 'help'].includes(item.id);
+    if (role === 'user' || role === 'usuario' || role === 'Consulta') {
+      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD, Configuración e Invitaciones
+      return ['dashboard', 'rag', 'trd', 'settings', 'help', 'invitations'].includes(item.id);
     }
     
     return false;
@@ -132,14 +133,21 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
                     BLOQUEADO
                   </span>
                 ) : (
-                  item.badge && (
-                    <span className={cn(
-                      "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                      isActive ? "bg-white/20 text-white" : "bg-white/10 text-slate-400"
-                    )}>
-                      {item.badge}
-                    </span>
-                  )
+                  <>
+                    {item.badge && (
+                      <span className={cn(
+                        "text-[10px] font-black px-1.5 py-0.5 rounded-md",
+                        item.badge === 'RAG' ? "bg-primary/20 text-primary" : "bg-purple-500/20 text-purple-400"
+                      )}>
+                        {item.badge}
+                      </span>
+                    )}
+                    {item.id === 'invitations' && pendingInvitationsCount > 0 && (
+                      <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white animate-bounce shadow-lg shadow-rose-500/50">
+                        {pendingInvitationsCount}
+                      </span>
+                    )}
+                  </>
                 )}
                 {isLocked && <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse ml-1" />}
               </button>
