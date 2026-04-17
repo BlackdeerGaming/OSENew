@@ -872,6 +872,15 @@ function App() {
     }
     setAuthView('dashboard');
   };
+  
+  const handleLogout = async () => {
+    if (supabase) await supabase.auth.signOut();
+    setAuthView('login');
+    setCurrentUser(null);
+    setSelectedDependencia("TODAS");
+    setSelectedTrdIds(new Set());
+    localStorage.removeItem('ose_user');
+  };
 
   // Restore session from localStorage if present
   useEffect(() => {
@@ -1272,14 +1281,7 @@ function App() {
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
             <MainHeader 
-               onLogout={async () => { 
-                 if (supabase) await supabase.auth.signOut();
-                 setAuthView('login'); 
-                 setCurrentUser(null); 
-                 setSelectedDependencia("TODAS");
-                 setSelectedTrdIds(new Set());
-                 localStorage.removeItem('ose_user');
-               }}
+               onLogout={handleLogout}
                mainView={mainView}
                onExportPDF={handleExportTRD}
                trdProps={{ 
@@ -1323,7 +1325,7 @@ function App() {
               )}
               {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
-              {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} />}
+              {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
               {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
               
               {/* TRD Módulo (Layout Anterior embebido) */}

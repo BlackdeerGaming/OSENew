@@ -81,11 +81,11 @@ export default function MainHeader({
         </button>
         <button 
           onClick={onLogout}
-          className="hidden xs:flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm"
+          className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm group"
           title="Cerrar sesión"
         >
-          <LogOut className="h-4 w-4" />
-          <span className="hidden md:inline">Cerrar sesión</span>
+          <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+          <span className="inline">Cerrar sesión</span>
         </button>
         </div>
       </div>

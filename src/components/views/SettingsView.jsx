@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { User, Phone, Lock, Save, LayoutTemplate } from 'lucide-react';
+import { User, Phone, Lock, Save, LayoutTemplate, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export default function SettingsView({ currentUser, onUpdate }) {
+export default function SettingsView({ currentUser, onUpdate, onLogout }) {
   const [formData, setFormData] = useState({
     username: currentUser?.username || '',
     email: currentUser?.email || '',
@@ -174,6 +174,24 @@ export default function SettingsView({ currentUser, onUpdate }) {
              </button>
           </div>
         </form>
+      </div>
+      
+      {/* Session Management Section */}
+      <div className="mt-8 bg-destructive/5 border border-destructive/20 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="text-center md:text-left">
+          <h3 className="text-lg font-bold text-destructive flex items-center justify-center md:justify-start gap-2">
+            <LogOut className="h-5 w-5" />
+            Cerrar Sesión Segura
+          </h3>
+          <p className="text-xs text-destructive/70 mt-1">Finaliza tu sesión actual y limpia las credenciales de este navegador.</p>
+        </div>
+        <button 
+          onClick={onLogout}
+          className="w-full md:w-auto bg-destructive text-white font-bold px-8 py-3 rounded-xl shadow-lg hover:bg-destructive/90 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
+        >
+          <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+          Cerrar Sesión Activa
+        </button>
       </div>
     </div>
   );
