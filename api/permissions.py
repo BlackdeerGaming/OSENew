@@ -13,7 +13,18 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        # Expected payload fields: role, entity_id, user_id
+        
+        # --- NORMALIZACIÓN DE ROLES CENTRALIZADA ---
+        raw_role = payload.get('role', 'usuario')
+        if raw_role in ('admin', 'administrador', 'administración'):
+            payload['role'] = 'administrador'
+        elif raw_role in ('superadmin'):
+            payload['role'] = 'superadmin'
+        elif raw_role in ('user', 'usuario', 'Consulta', 'cliente'):
+            payload['role'] = 'usuario'
+        else:
+            payload['role'] = raw_role # Por si hay otros roles
+            
         return payload
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail='Invalid authentication token')

@@ -969,9 +969,13 @@ async def google_auth(req: GoogleAuthRequest):
 async def get_users(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
     query = supabase_client.table("profiles").select("*")
-    if user.get("role") == "admin":
+    role = user.get("role")
+    
+    if role == ADMIN_ROLE:
+        # Administradores solo ven usuarios de su propia entidad
         query = query.eq("entidad_id", user.get("entity_id"))
-    elif entidad_id:
+    elif entidad_id and role == SUPERADMIN_ROLE:
+        # Superadmin puede filtrar por entidad si lo desea
         query = query.eq("entidad_id", entidad_id)
     res = query.execute()
     rel_res = supabase_client.table("profile_entities").select("*").execute()
@@ -1071,24 +1075,29 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     if not supabase_client: raise HTTPException(400, "No Supabase")
     
     role = current_user.get("role")
+    admin_entity_id = current_user.get("entity_id")
+    
     if role == SUPERADMIN_ROLE:
         # SuperAdmin puede borrar a cualquier usuario
-        supabase_client.table("profiles").delete().eq("id", user_id).execute()
+        res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
+        if not res.data:
+            raise HTTPException(404, "Usuario no encontrado")
+            
     elif role == ADMIN_ROLE:
-        # Administrador solo puede borrar usuarios de su propia entidad
-        entity_id = current_user.get("entity_id")
-        if not entity_id:
+        if not admin_entity_id:
             raise HTTPException(403, "No perteneces a ninguna entidad")
             
-        # Intentamos borrar asegurando que la entidad coincida
-        res = supabase_client.table("profiles").delete().eq("id", user_id).eq("entidad_id", entity_id).execute()
-        if not res.data:
-            # Si no se borró nada, puede ser que el usuario no exista o sea de otra entidad
-            raise HTTPException(403, "No tienes permisos para borrar este usuario o no pertenece a tu entidad")
-    else:
-        raise HTTPException(403, "No tienes permisos para realizar esta acción")
+        # Verificar que el usuario a borrar pertenece a la misma entidad que el admin
+        # NOTA: En profiles, la columna es entidad_id
+        res = supabase_client.table("profiles").delete().eq("id", user_id).eq("entidad_id", admin_entity_id).execute()
         
-    return {"status": "deleted"}
+        if not res.data:
+             # Podría no haber borrado nada si el ID no existe o la entidad no coincide
+             raise HTTPException(403, "No tienes permisos para borrar este usuario o no pertenece a tu entidad")
+    else:
+        raise HTTPException(403, "No tienes permisos suficentes para realizar esta acción")
+        
+    return {"status": "success", "message": "Usuario eliminado correctamente"}
 
 @router.get("/entities")
 async def get_entities():
