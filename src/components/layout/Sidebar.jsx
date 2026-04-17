@@ -44,9 +44,6 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
         </div>
       )}
 
-        </div>
-      )}
-
       <div className="flex items-center justify-between p-4 border-b border-border/50 bg-background lg:py-5 lg:bg-transparent">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider lg:px-2">Estructura Documental</h2>
         <button 

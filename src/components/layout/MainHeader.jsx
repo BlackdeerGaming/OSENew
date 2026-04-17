@@ -9,6 +9,7 @@ export default function MainHeader({
   // Extract TRD props safely
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
+  return (
     <header className="sticky top-0 z-50 flex min-h-[4rem] w-full items-center justify-between border-b border-border bg-background px-4 lg:px-6 shadow-sm print:hidden">
       <div className="flex items-center gap-2 lg:gap-4 py-2">
         <button 
