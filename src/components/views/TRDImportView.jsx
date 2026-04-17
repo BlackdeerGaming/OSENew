@@ -272,7 +272,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   return (
-    <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-32 relative">
+    <div className="max-w-6xl mx-auto w-full flex flex-col gap-6 md:gap-8 p-4 md:p-8 pb-32 relative">
       {/* IA Restriction Overlay */}
       {!iaAvailable && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">
@@ -328,7 +328,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       {/* Header section */}
       <section className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Importación Inteligente Masiva</h1>
+          <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight text-slate-900">Importación Inteligente Masiva</h1>
           <p className="text-slate-500 max-w-2xl">
             Sube múltiples archivos escaneados o digitales. Orianna IA extraerá la estructura de cada uno, 
             preservando tu progreso automáticamente y almacenándolos en la <span className="font-bold text-primary ml-1 underline decoration-primary/20">Biblioteca RAG</span>.

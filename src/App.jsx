@@ -1021,7 +1021,7 @@ function App() {
       {/* Content Area */}
       <main className="flex-1 bg-secondary/10 relative overflow-y-auto w-full lg:rounded-br-2xl">
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-primary/[0.02] to-transparent" />
-        <div className="relative p-6 h-full flex flex-col">
+        <div className="relative p-3 pb-8 md:p-6 h-full flex flex-col gap-4">
           
           <div className="flex-1">
             {activeModule === 'dependencias' && (

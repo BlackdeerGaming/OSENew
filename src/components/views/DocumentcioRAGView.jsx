@@ -927,7 +927,7 @@ export default function DocumentcioRAGView({ currentUser }) {
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden bg-white">
+    <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden bg-white">
       {/* IA Restriction Overlay */}
       {!iaAvailable && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">

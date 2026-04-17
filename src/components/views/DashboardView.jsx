@@ -199,7 +199,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
              <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
                 <div className="flex items-center justify-between mb-8">
                    <div>
-                      <h2 className="text-2xl font-black text-slate-900 tracking-tight">Tablas de Retención (TRD) Disponibles</h2>
+                      <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">Tablas de Retención (TRD) Disponibles</h2>
                       <p className="text-slate-500 font-medium">Visualiza y descarga los reportes oficiales de tu entidad.</p>
                    </div>
                    <div className="p-3 bg-primary/5 rounded-2xl text-primary">
@@ -421,7 +421,7 @@ function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusCol
       <div className="flex items-start justify-between relative z-10">
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
-          <h4 className={cn("text-2xl font-bold mt-1", statusColor || "text-slate-800")}>{value}</h4>
+          <h4 className={cn("text-xl md:text-2xl font-bold mt-1", statusColor || "text-slate-800")}>{value}</h4>
         </div>
         <div className={cn("p-2.5 rounded-lg", alert ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
           <Icon className="w-5 h-5" />

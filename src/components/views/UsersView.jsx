@@ -204,7 +204,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-[#0f172a] tracking-tight">Gestión de Usuarios</h1>
+          <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-[#0f172a] tracking-tight">Gestión de Usuarios</h1>
           <p className="text-slate-500 mt-1">
              {currentUser?.role === 'superadmin' 
                ? "Administración global de todos los accesos al sistema."

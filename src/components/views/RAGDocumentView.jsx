@@ -43,7 +43,7 @@ export default function RAGDocumentView({ currentUser }) {
   return (
     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 p-6 pb-20 overflow-y-auto h-full">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Biblioteca RAG</h1>
+        <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight text-slate-900">Biblioteca RAG</h1>
         <p className="text-slate-500 max-w-2xl">
           Gestión de documentos fuente para el sistema de recuperación y asistencia con IA. Estos documentos alimentan el contexto de Orianna.
         </p>
@@ -57,7 +57,7 @@ export default function RAGDocumentView({ currentUser }) {
           </div>
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Documentos</span>
-            <span className="text-2xl font-black text-slate-900">{documents.length}</span>
+            <span className="text-lg md:text-xl lg:text-2xl font-black text-slate-900">{documents.length}</span>
           </div>
         </div>
         <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center gap-4">
