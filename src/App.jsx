@@ -29,6 +29,7 @@ import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import StatusModal from './components/ui/StatusModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
+import { supabase } from './lib/supabase';
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -130,20 +131,52 @@ function App() {
       direccion: 'Avenida El Dorado # 60-00'
     }
   ]);
-  const [users, setUsers] = useState([
-    { 
-      id: 'u0', 
-      nombre: 'Super', 
-      apellido: 'Admin', 
-      email: 'superadmin@ose.com', 
-      username: 'superadmin',
-      perfil: 'superadmin', 
-      estado: 'Activo', 
-      isActivated: true,
-      activationToken: null,
-      password: 'admin' 
     }
   ]);
+
+  // Manejar sesión de Google (Supabase OAuth)
+  useEffect(() => {
+    if (!supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Solo actuar si es un evento de login y no tenemos usuario interno
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !currentUser) {
+        if (session.user.app_metadata.provider === 'google') {
+          try {
+            setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con Google...' });
+            
+            const response = await fetch(`${API_BASE_URL}/auth/google`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: session.user.email,
+                nombre: session.user.user_metadata.full_name || session.user.user_metadata.name || "Usuario",
+                apellido: "",
+                uid: session.user.id
+              })
+            });
+
+            if (response.ok) {
+              const userData = await response.json();
+              handleLogin(userData, true); 
+              setModalStatus({ isOpen: false, type: 'loading', message: '' });
+            } else {
+              const error = await response.json();
+              setModalStatus({ isOpen: true, type: 'error', message: error.detail || 'Error al sincronizar con el servidor.' });
+              await supabase.auth.signOut();
+            }
+          } catch (err) {
+            console.error("Google sync error:", err);
+            setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión durante la sincronización.' });
+          }
+        }
+      }
+    });
+
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
+  }, [currentUser, modalStatus.isOpen]);
 
   // Detectar tokens en la URL
   useEffect(() => {
@@ -1227,7 +1260,8 @@ function App() {
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
             <MainHeader 
-               onLogout={() => { 
+               onLogout={async () => { 
+                 if (supabase) await supabase.auth.signOut();
                  setAuthView('login'); 
                  setCurrentUser(null); 
                  setSelectedDependencia("TODAS");

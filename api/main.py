@@ -172,6 +172,12 @@ class LoginRequest(BaseModel):
     activationToken: str | None = None
     tokenExpiry: int | None = None
 
+class GoogleAuthRequest(BaseModel):
+    email: str
+    nombre: str
+    apellido: str | None = ""
+    uid: str | None = None
+
 class UserUpdate(BaseModel):
     nombre: str | None = None
     apellido: str | None = None
@@ -850,6 +856,80 @@ async def login(req: LoginRequest):
         "entidadId": user_data.get("entidad_id"),
         "entidadIds": entidad_ids,
         "token": token
+    }
+
+@router.post("/auth/google")
+async def google_auth(req: GoogleAuthRequest):
+    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
+    
+    # 1. Buscar si el usuario ya existe por email
+    res = supabase_client.table("profiles").select("*").eq("email", req.email).execute()
+    
+    user_data = None
+    is_new = False
+    
+    if res.data:
+        # El usuario ya existe, conservamos sus datos y su rol (perfil)
+        user_data = res.data[0]
+        print(f" Usuario Google encontrado: {req.email} (Rol: {user_data['perfil']})")
+    else:
+        # 2. El usuario no existe, lo creamos con rol 'Consulta' (usuario)
+        print(f" Creando nuevo usuario via Google: {req.email}")
+        is_new = True
+        
+        # Generar un username unico basado en el email
+        username = req.email.split('@')[0]
+        # Verificar si el username ya existe (poco probable pero posible)
+        unique_check = supabase_client.table("profiles").select("id").eq("username", username).execute()
+        if unique_check.data:
+            username = f"{username}_{int(time.time())}"
+            
+        new_user_payload = {
+            "nombre": req.nombre,
+            "apellido": req.apellido or "",
+            "email": req.email,
+            "username": username,
+            "perfil": "Consulta", # Rol por defecto para Google
+            "estado": "Activo",
+            "is_activated": True,
+            "entidad_id": "e0", # Entidad por defecto
+            "created_at": datetime.now().isoformat()
+        }
+        
+        create_res = supabase_client.table("profiles").insert(new_user_payload).execute()
+        if not create_res.data:
+            raise HTTPException(500, "Error al crear el perfil de usuario")
+        user_data = create_res.data[0]
+        
+        # Crear relacion con entidad por defecto también en profile_entities
+        supabase_client.table("profile_entities").insert({
+            "profile_id": user_data["id"],
+            "entity_id": "e0"
+        }).execute()
+
+    # 3. Obtener entidades asociadas
+    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
+    entidad_ids = [e["entity_id"] for e in entities_res.data]
+    
+    # 4. Generar el JWT del sistema
+    # IMPORTANTE: Mapear el rol de la DB al rol que entiende el frontend si es necesario
+    # Aunque el sistema parece usar los strings de la DB directamente en el token
+    payload = {
+        "user_id": str(user_data["id"]),
+        "role": user_data["perfil"],
+        "entity_id": str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    return {
+        "id": user_data["id"],
+        "nombre": user_data["nombre"],
+        "email": user_data["email"],
+        "role": user_data["perfil"],
+        "entidadId": user_data.get("entidad_id") or "e0",
+        "entidadIds": entidad_ids,
+        "token": token,
+        "isNew": is_new
     }
 
 @router.get("/users")
