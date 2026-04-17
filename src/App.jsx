@@ -22,8 +22,10 @@ import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
 import TRDImportView from './components/views/TRDImportView';
+import InvitationsView from './components/views/InvitationsView';
 import HelpCenterView from './components/views/HelpCenterView';
 import DocumentcioRAGView from './components/views/DocumentcioRAGView';
+import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
@@ -91,6 +93,8 @@ function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeModule, setActiveModule] = useState('dashboard');
+  const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
 
   // Global App Data State
   const [entities, setEntities] = useState([
@@ -235,6 +239,25 @@ function App() {
     if (currentUser) fetchData();
   }, [currentUser]);
 
+  // Polling for invitations
+  useEffect(() => {
+    if (!currentUser?.token) return;
+    const fetchInvitations = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/invitations/my`, {
+          headers: { 'Authorization': `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPendingInvitationsCount(data.length || 0);
+        }
+      } catch (e) { console.error("Error polling invitations:", e); }
+    };
+    fetchInvitations();
+    const interval = setInterval(fetchInvitations, 60000); // 1 min
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
   const handleActivateUser = async (token, newPassword) => {
     try {
       const response = await fetch(`${API_BASE_URL}/activate`, {
@@ -318,7 +341,6 @@ function App() {
     return { success: true };
   };
 
-  const [activeModule, setActiveModule] = useState('dependencias');
   const [activeFormData, setActiveFormData] = useState({});
   const [formsPersistence, setFormsPersistence] = useState({
     dependencias: {},
@@ -1139,7 +1161,14 @@ function App() {
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
                           {aiQueryResult.data.map((item, idx) => (
                             <div key={idx} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/60 block mb-1">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/60 block mb-1"
+                                onClick={() => {
+                                  if (currentUser.role === 'superadmin' || currentUser.role === 'administrador') {
+                                    setActiveModule('import');
+                                  } else {
+                                    alert("Solo un Administrador puede realizar importaciones masivas.");
+                                  }
+                                }}>
                                 {item.type || 'Item'}
                               </span>
                               <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
@@ -1252,14 +1281,17 @@ function App() {
             selectedIds={selectedTrdIds}
             onToggleRow={() => {}} 
             onToggleAll={() => {}}
-            currentUser={currentUser}
-            currentEntity={currentEntity}
-            logoBase64={entidadLogoBase64}
-          />
-        </div>
-      </div>
-    );
-  }
+  // --- LÓGICA DE DERIVACIÓN DE ENTIDADES PARA RBAC ---
+  // Si es SuperAdmin, puede ver TODAS las entidades. Si es Admin, solo las vinculadas.
+  const userEntities = currentUser?.role === 'superadmin' 
+    ? entities 
+    : entities.filter(e => (currentUser?.entidadIds || []).includes(e.id) || e.id === currentUser?.entidadId);
+
+  // Entidad actual seleccionada (para carga de datos y contexto)
+  const currentEntityId = selectedEntityId || currentUser?.entidadId || (userEntities.length > 0 ? userEntities[0].id : 'e0');
+  const currentEntity = userEntities.find(e => e.id === currentEntityId) || userEntities[0] || (entities.find(e => e.id === 'e0'));
+
+  if (authView === 'print-preview') {
 
   return (
     <RAGProvider>
@@ -1273,10 +1305,11 @@ function App() {
             searchQuery={globalSearchQuery}
             onSearchQueryChange={setGlobalSearchQuery}
             currentUser={currentUser}
-            currentEntity={userEntities.length > 0 && currentUser?.role !== 'superadmin' ? userEntities[0] : null}
+            currentEntity={currentEntity}
             hasTrdData={(trdRecords || []).length > 0 || (dependencias || []).length > 0 || (series || []).length > 0}
             isOpen={isMobileMenuOpen}
             onClose={() => setIsMobileMenuOpen(false)}
+            pendingInvitationsCount={pendingInvitationsCount}
           />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
@@ -1327,6 +1360,14 @@ function App() {
               {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
               {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
               {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
+              
+              {mainView === 'invitations' && (
+                <InvitationsView 
+                  currentUser={currentUser}
+                  API_BASE_URL={API_BASE_URL}
+                  onNavigate={setMainView}
+                />
+              )}
               
               {/* TRD Módulo (Layout Anterior embebido) */}
               {mainView === 'trd' && renderLegacyTRDLayout()}

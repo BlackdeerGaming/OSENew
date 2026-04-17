@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock } from "lucide-react";
+import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -11,22 +11,24 @@ const NAV_ITEMS = [
   { separator: true },
   { id: "datos", label: "Datos Estructurados", icon: Database },
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
+  { separator: true },
+  { id: "invitations", label: "Invitaciones", icon: Mail },
 ];
 
-export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser, hasTrdData }) {
-  const role = currentUser?.role || 'user';
+export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser, hasTrdData, pendingInvitationsCount = 0 }) {
+  const role = currentUser?.role || 'usuario';
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
 
   const filteredItems = NAV_ITEMS.filter(item => {
-    if (role === 'superadmin' || role === 'admin') return true;
-    // For 'user' or 'Consulta' role, only show these specific modules
-    return ['orgchart', 'datos', 'trd'].includes(item.id) || item.separator;
+    if (role === 'superadmin' || role === 'administrador') return true;
+    // For 'usuario' role, only show these specific modules
+    return ['orgchart', 'datos', 'trd', 'invitations'].includes(item.id) || item.separator;
   });
 
   return (
     <aside className="w-full lg:w-60 border-b lg:border-r border-border bg-card flex flex-col shadow-sm shrink-0">
       {/* Dynamic Orianna Toggle Button - Now at the Top */}
-      {role !== 'user' && role !== 'Consulta' && (
+      {role !== 'usuario' && (
         <div className="p-4 border-b border-border/50 bg-secondary/20">
           <button
             onClick={onToggleAgent}
@@ -90,13 +92,18 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
               {item.label}
               {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase flex items-center gap-1"><Lock className="w-2 h-2"/> Bloqueado</span>}
+              {item.id === 'invitations' && pendingInvitationsCount > 0 && (
+                <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white animate-bounce shadow-lg shadow-rose-500/20">
+                  {pendingInvitationsCount}
+                </span>
+              )}
             </button>
           );
         })}
       </nav>
 
       {/* Orianna Status - Bottom of SideBar */}
-      {role !== 'user' && role !== 'Consulta' && (
+      {role !== 'usuario' && (
         <div className="hidden lg:block p-4 border-t border-border/50 bg-secondary/10">
           <div className="flex items-center gap-3 px-2">
             <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20">

@@ -1,16 +1,54 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle, Link } from 'lucide-react';
+import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle, Link, Mail, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
 export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [], selectedEntityId }) {
-  const role = currentUser?.role || 'user';
+  const role = currentUser?.role || 'usuario';
   const [showModal, setShowModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showManualInviteModal, setShowManualInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isInviting, setIsInviting] = useState(false);
   const [generatedLink, setGeneratedLink] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle'); // 'idle' | 'sending' | 'sent' | 'error'
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'perfil', 'entidades'
   const [editingUserId, setEditingUserId] = useState(null);
+  
+  const handleSendInvitation = async () => {
+    if (!inviteEmail || !inviteEmail.includes('@')) {
+      alert("Introduce un correo electrónico válido");
+      return;
+    }
+
+    setIsInviting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/invitations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
+        body: JSON.stringify({
+          email: inviteEmail,
+          entity_id: selectedEntityId || currentUser?.entidadId || 'e0'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert("¡Invitación enviada con éxito!");
+        setShowManualInviteModal(false);
+        setInviteEmail('');
+      } else {
+        alert(data.detail || "Error al enviar la invitación");
+      }
+    } catch (error) {
+      alert("Error de conexión al enviar invitación");
+    } finally {
+      setIsInviting(false);
+    }
+  };
   
   const [newUser, setNewUser] = useState({
     tipoDocumento: '',
@@ -153,9 +191,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: role === 'admin' ? 'user' : null, 
-      entidadId: role === 'admin' ? currentUser?.entidadId : null, 
-      entidadIds: role === 'admin' ? [currentUser?.entidadId].filter(Boolean) : [], 
+      perfil: role === 'administrador' ? 'usuario' : null, 
+      entidadId: role === 'administrador' ? currentUser?.entidadId : null, 
+      entidadIds: role === 'administrador' ? [currentUser?.entidadId].filter(Boolean) : [], 
       iaDisponible: false
     });
   };
@@ -163,12 +201,15 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   const handleDelete = (id) => {
     if(confirm("¿Eliminar este usuario de forma permanente?")) {
       fetch(`${API_BASE_URL}/users/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${currentUser?.token}`
+        }
       }).then(res => {
         if (res.ok) {
           setUsers(users.filter(u => u.id !== id));
         } else {
-          alert("Error al eliminar usuario.");
+          alert("Error al eliminar usuario. Verifica tus permisos.");
         }
       });
     }
@@ -179,16 +220,15 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   // Los administradores solo ven los usuarios de su propia entidad.
   const filteredUsers = users.filter(u => {
     if (currentUser?.role === 'superadmin') {
-      // Si el superadmin ha seleccionado una entidad específica en el cabezote global, filtramos por ella.
       if (selectedEntityId) {
         return u.entidadId === selectedEntityId;
       }
-      return true; // Si no hay entidad seleccionada, ve todo (Contexto Global)
+      return true;
     }
-    if (currentUser?.role === 'admin') {
+    if (currentUser?.role === 'administrador') {
       return u.entidadId === currentUser.entidadId;
     }
-    return false; // Los usuarios normales no deberían ver este módulo
+    return false;
   });
 
   // --- BÚSQUEDA ---
@@ -212,68 +252,89 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
           </p>
         </div>
         
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
-        >
-          <Plus className="h-5 w-5" />
-          Nuevo Usuario
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowManualInviteModal(true)}
+            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-slate-800/10 transition-all active:scale-95"
+          >
+            <Mail className="h-5 w-5" />
+            Invitar
+          </button>
+          
+          <button 
+            onClick={() => setShowModal(true)}
+            className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
+          >
+            <Plus className="h-5 w-5" />
+            Nuevo Usuario
+          </button>
+        </div>
       </div>
 
-      {/* Invitation Link Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 text-center space-y-6 animate-in zoom-in-95">
-             <div className="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mx-auto">
-                <Check className="h-8 w-8" />
-             </div>
-             <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  {emailStatus === 'sent' ? '¡Invitación enviada!' : '¡Usuario creado!'}
-                </h2>
-                <div className="mt-3 flex flex-col items-center gap-2">
-                   {emailStatus === 'sending' && (
-                     <div className="flex items-center gap-2 text-primary animate-pulse">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-xs font-bold uppercase tracking-wider">Enviando correo...</span>
-                     </div>
-                   )}
-                   {emailStatus === 'sent' && (
-                     <div className="flex items-center gap-2 text-success">
-                        <Check className="h-4 w-4" />
-                        <span className="text-xs font-bold uppercase tracking-wider">Correo enviado a {newUser.email}</span>
-                     </div>
-                   )}
-                   {emailStatus === 'error' && (
-                     <div className="flex items-center gap-2 text-destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-xs font-bold uppercase tracking-wider">Error al enviar correo</span>
-                     </div>
-                   )}
-                   {emailStatus === 'idle' && (
-                     <p className="text-sm text-slate-500">Envía el siguiente enlace al usuario para que active su cuenta. Expira en 30 minutos.</p>
-                   )}
+      {/* Modal de Invitación Manual */}
+      {showManualInviteModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 relative overflow-hidden">
+            <button 
+              onClick={() => setShowManualInviteModal(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+            >
+              <X className="h-6 w-6" />
+            </button>
+
+            <div className="mb-8 items-center text-center">
+              <div className="bg-primary/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 text-primary rotate-3">
+                <Mail className="h-10 w-10" />
+              </div>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Invitar Usuario</h2>
+              <p className="text-slate-500 mt-2 font-medium">
+                Envía una invitación formal para unirse a <br/>
+                <span className="text-primary font-bold">
+                  {entities.find(e => e.id === (selectedEntityId || currentUser?.entidadId))?.razonSocial || 'la organización'}
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-sm font-black text-slate-700 uppercase tracking-widest px-1">Correo Electrónico</label>
+                <div className="relative group">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors" />
+                  <input
+                    type="email"
+                    placeholder="usuario@ejemplo.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-slate-900 font-bold"
+                  />
                 </div>
-             </div>
-             <div className="bg-slate-50 p-4 rounded-xl border border-dashed border-slate-200 break-all text-xs font-mono text-primary font-bold">
-                {generatedLink}
-             </div>
-             <div className="flex flex-col gap-3">
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedLink);
-                    alert("Enlace copiado al portapapeles");
-                  }}
-                  className="w-full bg-primary text-white py-3 rounded-lg font-bold shadow-md hover:opacity-90 transition-all flex items-center justify-center gap-2"
-                >
-                  <Save className="h-4 w-4" />
-                  Copiar Enlace
-                </button>
-                <button onClick={() => { setShowInviteModal(false); resetModal(); }} className="w-full py-2 text-slate-400 text-sm font-bold hover:text-slate-600 transition-colors">
-                  Cerrar
-                </button>
-             </div>
+              </div>
+
+              <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex gap-3">
+                 <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                 <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                   Solo puedes invitar usuarios a una entidad principal. Si el usuario ya pertenece a otra, deberá aceptar tu invitación como su nueva entidad principal.
+                 </p>
+              </div>
+
+              <button
+                onClick={handleSendInvitation}
+                disabled={isInviting}
+                className="w-full bg-primary hover:bg-primary/90 text-white py-5 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {isInviting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    ENVIANDO...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-5 w-5" />
+                    ENVIAR INVITACIÓN REAL
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -334,9 +395,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                     <td className="px-6 py-4">
                       <span className={cn(
                         "rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider",
-                        user.perfil === 'admin' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
+                        user.perfil === 'administrador' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
                       )}>
-                        {user.perfil === 'admin' ? 'Administrador' : user.perfil === 'user' ? 'Consulta' : (user.perfil || 'user')}
+                        {user.perfil === 'administrador' ? 'Administrador' : user.perfil === 'usuario' ? 'Usuario' : (user.perfil || 'usuario')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -413,7 +474,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                    activeTab === 'perfil' ? "text-[#00bfa5] border-[#00bfa5]" : "text-slate-400 border-transparent"
                  )}
                >
-                 Administrar Perfiles
+                 Asignar Perfil
                  {!newUser.perfil && (
                    <span className="bg-[#00c853] text-white text-[10px] h-5 w-5 flex items-center justify-center rounded-full font-bold">1</span>
                  )}
@@ -551,31 +612,31 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                  </div>
                )}
 
-               {activeTab === 'perfil' && (
+                {activeTab === 'perfil' && (
                   <div className="space-y-4">
                      {role === 'superadmin' && (
                        <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
                           <div className={cn(
                              "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                             newUser.perfil === 'admin' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                             newUser.perfil === 'administrador' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
                           )}>
                              <Check className="h-4 w-4 text-white" />
                           </div>
-                          <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'admin'})} />
-                          <span className="text-slate-400 font-semibold">Administrador</span>
+                          <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'administrador'})} />
+                          <span className={cn(newUser.perfil === 'administrador' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>Administrador</span>
                        </label>
                      )}
                      
                      <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
                         <div className={cn(
                            "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
-                           newUser.perfil === 'user' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
+                           newUser.perfil === 'usuario' ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-[#f1f5f9] border-transparent"
                         )}>
                            <Check className="h-4 w-4 text-white" />
                         </div>
-                        <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'user'})} />
-                        <span className={cn(newUser.perfil === 'user' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>
-                          Consulta {role === 'admin' && "(Único perfil disponible)"}
+                        <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'usuario'})} />
+                        <span className={cn(newUser.perfil === 'usuario' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>
+                          Usuario {role === 'administrador' && "(Único perfil disponible)"}
                         </span>
                      </label>
                   </div>

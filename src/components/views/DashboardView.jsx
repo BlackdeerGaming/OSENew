@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
 export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF }) {
-  const role = currentUser?.role || 'user';
+  const role = currentUser?.role || 'usuario';
   const [messages, setMessages] = React.useState([
     {
       id: 1,
@@ -106,9 +106,9 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   };
 
-  const showMetrics = role === 'superadmin' || role === 'admin';
-  const showAnalysis = role === 'superadmin' || role === 'admin';
-  const showActions = role === 'superadmin' || role === 'admin';
+  const showMetrics = role === 'superadmin' || role === 'administrador';
+  const showAnalysis = role === 'superadmin' || role === 'administrador';
+  const showActions = role === 'superadmin' || role === 'administrador';
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   const handleExportCSV = () => {
@@ -193,7 +193,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
       <div className="flex flex-col gap-6 flex-1 min-h-0">
         
-        {role === 'user' || role === 'Consulta' ? (
+        {role === 'usuario' ? (
           /* VISTA SIMPLIFICADA PARA CONSULTA */
           <div className="flex-1 flex flex-col gap-6 animate-in fade-in duration-700">
              <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
