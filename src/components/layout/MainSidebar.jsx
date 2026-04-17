@@ -26,7 +26,7 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
     // Si no es super admin, le bloqueamos Entidades explícitamente
     if (item.id === 'entities') return false;
 
-    if (role === 'admin') {
+    if (role === 'admin' || role === 'administrador') {
       return true; // Admin ve todo excepto Entidades
     }
     
