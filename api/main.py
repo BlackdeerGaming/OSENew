@@ -1092,17 +1092,21 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         if str(target_user_entity) != str(admin_entity_id):
             raise HTTPException(403, "No puedes eliminar usuarios de otras entidades")
 
+    # 2. Limpiar dependencias (Claves Foráneas) de forma segura
+    cleanup_tables = [
+        ("profile_entities", "profile_id"),
+        ("activity_logs", "user_id"),
+        ("chat_history", "user_id")
+    ]
+    
+    for table_name, column_name in cleanup_tables:
+        try:
+            supabase_client.table(table_name).delete().eq(column_name, user_id).execute()
+        except Exception as e:
+            # Ignorar si la tabla no existe o hay error de caché de esquema
+            print(f"  Aviso: No se pudo limpiar {table_name}: {e}")
+
     try:
-        # 2. Limpiar dependencias (Claves Foráneas)
-        # Borrar membresías en entidades
-        supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
-        
-        # ELIMINAR REGISTROS DE ACTIVIDAD (FK: activity_logs_user_id_fkey)
-        supabase_client.table("activity_logs").delete().eq("user_id", user_id).execute()
-        
-        # ELIMINAR HISTORIAL DE CHAT (Si existe)
-        supabase_client.table("chat_history").delete().eq("user_id", user_id).execute()
-        
         # 3. Borrar el perfil principal
         res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
         
@@ -1111,8 +1115,8 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
              raise HTTPException(500, "No se pudo confirmar la eliminación del usuario")
              
     except Exception as e:
-        print(f" Error eliminando usuario {user_id}: {str(e)}")
-        raise HTTPException(500, f"Error de base de datos al eliminar: {str(e)}")
+        print(f" Error eliminando perfil {user_id}: {str(e)}")
+        raise HTTPException(500, f"Error de base de datos al eliminar perfil: {str(e)}")
         
     return {"status": "success", "message": "Usuario y sus relaciones eliminados correctamente"}
 
