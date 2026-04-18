@@ -1273,22 +1273,91 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     entity_res = supabase_client.table("entities").select("razon_social").eq("id", req.entity_id).execute()
     entity_name = entity_res.data[0]["razon_social"] if entity_res.data else "una entidad de OSE IA"
     inviter_name = current_user.get("nombre", "Un administrador")
+    invitation_id = invitation["id"]
+    
+    # URL de la aplicación con contexto de invitación
+    frontend_url = "https://ose-new.vercel.app" # Cambiar por variable de entorno si aplica
+    invite_link = f"{frontend_url}/?invitation_id={invitation_id}&email={target_email}"
 
     if RESEND_API_KEY:
         try:
             html_content = f"""
-            <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                <h2>¡Has sido invitado a colaborar en OSE IA!</h2>
-                <p>Hola,</p>
-                <p><strong>{inviter_name}</strong> te ha invitado a unirte a <strong>{entity_name}</strong> en nuestra plataforma.</p>
-                <p>Para aceptar esta invitación, inicia sesión en la plataforma con tu correo <strong>{target_email}</strong> y ve a la sección de 'Invitaciones'.</p>
-                <div style="margin-top: 30px; padding: 15px; background: #f0f7ff; border-radius: 8px; border: 1px solid #cce3ff;">
-                    <p style="margin: 0; font-size: 14px;"><strong>Nota importante:</strong> Solo puedes pertenecer a una entidad principal por invitación. Si no tienes cuenta aún, regístrate con este mismo correo.</p>
-                </div>
-                <p style="margin-top: 20px;">Esta invitación expira en 24 horas.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-                <p style="font-size: 12px; color: #666;">Si no esperabas este correo, puedes ignorarlo con seguridad.</p>
-            </div>
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Invitación a OSE IA</title>
+            </head>
+            <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
+                <tr>
+                  <td align="center" style="padding: 40px 20px;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                      <!-- Header Color Bar -->
+                      <tr><td height="8" style="background: linear-gradient(90deg, #00bfa5, #009688); line-height: 8px; font-size: 8px;">&nbsp;</td></tr>
+                      
+                      <tr>
+                        <td style="padding: 40px 50px;">
+                          <div style="text-align: center; margin-bottom: 30px;">
+                             <h1 style="color: #0f172a; fontSize: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 0; font-weight: 800;">OSE IA</h1>
+                          </div>
+                          
+                          <h2 style="color: #0f172a; font-size: 28px; font-weight: 800; line-height: 36px; margin: 0 0 20px 0; text-align: center; tracking: -0.02em;">
+                            Colaboración Pendiente
+                          </h2>
+                          
+                          <p style="color: #64748b; font-size: 16px; line-height: 26px; margin: 0 0 30px 0; text-align: center;">
+                            Hola, <strong>{inviter_name}</strong> te ha invitado a formar parte de su equipo de trabajo en la plataforma oficial.
+                          </p>
+
+                          <!-- Invitation Card -->
+                          <div style="background-color: #f1f5f9; border-radius: 16px; padding: 25px; margin-bottom: 35px; border: 1px solid #e2e8f0;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                              <tr>
+                                <td style="padding-bottom: 15px;">
+                                  <span style="color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">Entidad</span><br>
+                                  <span style="color: #0f172a; font-size: 16px; font-weight: 700;">{entity_name}</span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  <span style="color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">Tu Rol</span><br>
+                                  <span style="color: #0f172a; font-size: 16px; font-weight: 700;">{req.role.capitalize()}</span>
+                                </td>
+                              </tr>
+                            </table>
+                          </div>
+
+                          <div style="text-align: center; margin-bottom: 35px;">
+                            <a href="{invite_link}" style="background-color: #00bfa5; color: #ffffff; display: inline-block; font-size: 14px; font-weight: 800; line-height: 20px; padding: 18px 40px; text-align: center; text-decoration: none; border-radius: 14px; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 10px 15px rgba(0,191,165,0.2);">
+                              Aceptar Invitación
+                            </a>
+                          </div>
+
+                          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+                          
+                          <p style="color: #94a3b8; font-size: 12px; line-height: 20px; margin: 0; text-align: center;">
+                            <strong>Nota para usuarios nuevos:</strong> Si no tienes una cuenta, este enlace te guiará gratis al registro. Al terminar, tu invitación estará lista para ser aceptada.<br><br>
+                            Esta invitación es válida por 24 horas.
+                          </p>
+                        </td>
+                      </tr>
+                      
+                      <tr>
+                        <td style="padding: 20px 50px 40px 50px; background-color: #f8fafc; text-align: center;">
+                          <p style="color: #94a3b8; font-size: 11px; margin: 0;">
+                            © 2024 OSE IA • Gestión Documental Inteligente<br>
+                            Este es un correo automático, por favor no respondas.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </body>
+            </html>
             """
             async with httpx.AsyncClient() as client:
                 await client.post(
@@ -1297,15 +1366,14 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                     json={
                         "from": "onboarding@resend.dev",
                         "to": [target_email],
-                        "subject": f"Invitación para unirte a {entity_name}",
+                        "subject": f"✅ Invitación a {entity_name}",
                         "html": html_content
                     }
                 )
         except Exception as e:
             print(f" Error enviando mail de invitación: {e}")
-            # No fallamos la request si el mail falla, pero lo logueamos
 
-    return {"status": "success", "message": "Invitación enviada correctamente", "invitation": invitation}
+    return {"status": "success", "message": "Invitación enviada", "invitation": invitation}
 
 @router.get("/invitations/my")
 async def get_my_invitations(current_user: dict = Depends(get_current_user)):

@@ -21,6 +21,15 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   // Filtros
   const [filterEntity, setFilterEntity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  
+  // Resaltado de contexto
+  const [highlightedId, setHighlightedId] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invId = params.get('invitation_id');
+    if (invId) setHighlightedId(invId);
+  }, []);
 
   const isAdmin = currentUser?.role === 'administrador' || currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
@@ -129,6 +138,33 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   return (
     <div className="flex-1 p-6 lg:p-10 bg-[#f8fafc] min-h-screen overflow-y-auto w-full">
       <div className="max-w-6xl mx-auto">
+        {/* Welcome Banner for external invites */}
+        {highlightedId && activeTab === 'received' && (
+          <div className="mb-10 bg-gradient-to-br from-primary to-primary-foreground/10 p-1 rounded-3xl shadow-xl shadow-primary/10 animate-in fade-in slide-in-from-top-6 duration-1000">
+            <div className="bg-white/95 backdrop-blur-md rounded-[1.4rem] p-8 flex flex-col md:flex-row items-center gap-8 border border-white">
+              <div className="bg-primary/10 p-6 rounded-[2rem] shrink-0">
+                <Send className="h-10 w-10 text-primary animate-bounce-subtle" />
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <span className="bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full mb-4 inline-block">
+                  Onboarding Prioritario
+                </span>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
+                  ¡Hola! Has sido invitado a colaborar.
+                </h2>
+                <p className="text-slate-500 mt-2 font-medium max-w-lg">
+                  Hemos identificado tu invitación. Para unirte a la entidad, simplemente busca el registro <span className="text-primary font-bold">resaltado en azul</span> y dale clic a "Aceptar".
+                </p>
+              </div>
+              <button 
+                onClick={() => setHighlightedId(null)}
+                className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        )}
         
         {/* Header con Tabs */}
         <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -234,7 +270,20 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
             ) : (
               <div className="grid gap-4">
                 {filteredInvites.map((inv) => (
-                  <div key={inv.id} className="bg-white rounded-[2rem] p-6 border border-slate-200 shadow-sm group hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all">
+                  <div 
+                    key={inv.id} 
+                    className={cn(
+                      "relative bg-white rounded-[2rem] p-6 border transition-all duration-500 group",
+                      highlightedId === inv.id 
+                        ? "border-primary ring-4 ring-primary/10 shadow-2xl shadow-primary/10 -translate-y-1" 
+                        : "border-slate-200 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5"
+                    )}
+                  >
+                    {highlightedId === inv.id && (
+                      <div className="absolute -top-3 left-8 px-4 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg z-10">
+                        TU INVITACIÓN
+                      </div>
+                    )}
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                       <div className="flex items-start gap-5">
                         <div className={cn(

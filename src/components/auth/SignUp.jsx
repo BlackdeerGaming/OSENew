@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Mail, Lock, User, Phone, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function SignUp({ onSignUp, onNavigateToLogin }) {
+export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' }) {
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
+    email: initialEmail,
     phone: '',
     password: '',
     confirmPassword: ''

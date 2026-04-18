@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 import { supabase } from '../../lib/supabase';
 
-export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword }) {
-  const [formData, setFormData] = useState({ identifier: '', password: '', rememberMe: false });
+export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotPassword, initialEmail = '' }) {
+  const [formData, setFormData] = useState({ identifier: initialEmail, password: '', rememberMe: false });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 

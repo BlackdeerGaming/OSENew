@@ -90,6 +90,10 @@ function App() {
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
   const [entidadLogoBase64, setEntidadLogoBase64] = useState(null);
   const [selectedEntityId, setSelectedEntityId] = useState(null);
+  const [invitationContext, setInvitationContext] = useState(() => {
+    const saved = localStorage.getItem('invitation_context');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
@@ -215,6 +219,16 @@ function App() {
       setAuthView('reset-password');
     }
 
+    // Invitaciones Manuales (Flujo externo)
+    const invId = params.get('invitation_id');
+    const invEmail = params.get('email');
+    if (invId && invEmail) {
+      const context = { id: invId, email: invEmail };
+      setInvitationContext(context);
+      localStorage.setItem('invitation_context', JSON.stringify(context));
+      if (!currentUser) setAuthView('signup');
+    }
+    
     // Cargar usuarios y entidades iniciales desde el backend
     // Cargar usuarios y entidades iniciales si no hay usuario logueado (público o cache)
     // Pero si el API está protegido, esto fallará. En ese caso, mejor cargarlos después del login o permitir GET público si es necesario.
@@ -895,7 +909,13 @@ function App() {
     if (rememberMe) {
       localStorage.setItem('ose_user', JSON.stringify(user));
     }
-    setAuthView('dashboard');
+
+    if (invitationContext) {
+      setMainView('invitations');
+      localStorage.removeItem('invitation_context');
+    } else {
+      setMainView('dashboard');
+    }
   };
   
   const handleLogout = async () => {
@@ -1000,13 +1020,14 @@ function App() {
             onLogin={handleLogin} 
             onNavigateToSignUp={() => setAuthView('signup')} 
             onNavigateToForgotPassword={() => setAuthView('forgot-password')} 
-            users={users} 
+            initialEmail={invitationContext?.email}
           />
         )}
         {authView === 'signup' && (
           <SignUp 
             onSignUp={(u) => { setUsers([...users, u]); setAuthView('login'); }} 
             onNavigateToLogin={() => setAuthView('login')} 
+            initialEmail={invitationContext?.email}
           />
         )}
         {authView === 'activate' && (
