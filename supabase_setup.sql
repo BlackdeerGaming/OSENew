@@ -260,3 +260,20 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON activity_logs FOR ALL USING (true);
+
+-- ============================================================
+-- 10. TABLA DE INVITACIONES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS invitations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  inviter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'pendiente', -- 'pendiente', 'aceptada', 'rechazada'
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON invitations FOR ALL USING (true);
