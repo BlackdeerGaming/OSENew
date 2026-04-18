@@ -277,3 +277,48 @@ CREATE TABLE IF NOT EXISTS invitations (
 
 ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON invitations FOR ALL USING (true);
+-- ============================================================
+-- 11. ROLES POR ENTIDAD Y MEJORAS DE INVITACIÓN
+-- ============================================================
+
+-- A. Añadir columna de rol a la tabla de unión
+ALTER TABLE profile_entities ADD COLUMN IF NOT EXISTS role TEXT;
+
+-- Migrar roles actuales: los usuarios heredan su perfil global como rol en su entidad
+UPDATE profile_entities pe
+SET role = p.perfil
+FROM profiles p
+WHERE pe.profile_id = p.id AND pe.role IS NULL;
+
+-- Por defecto será 'usuario'
+ALTER TABLE profile_entities ALTER COLUMN role SET DEFAULT 'usuario';
+UPDATE profile_entities SET role = 'usuario' WHERE role IS NULL;
+
+-- B. Añadir columna de rol a la tabla de invitaciones
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS role_invited TEXT DEFAULT 'usuario';
+
+-- C. RLS para Invitaciones (Enviadas y Recibidas)
+ALTER TABLE invitations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "admin_manage_entity_invitations" ON invitations
+FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM profile_entities pe
+    WHERE pe.profile_id = auth.uid()::text -- Nota: en este sistema usamos IDs texto
+    AND pe.entity_id = invitations.entity_id
+    AND pe.role IN ('administrador', 'admin', 'superadmin')
+  )
+);
+
+CREATE POLICY "user_view_own_invitations" ON invitations
+FOR SELECT USING (
+  email = (SELECT email FROM profiles WHERE id = auth.uid()::text)
+);
+
+CREATE POLICY "superadmin_full_access_invitations" ON invitations
+FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid()::text AND perfil = 'superadmin'
+  )
+);

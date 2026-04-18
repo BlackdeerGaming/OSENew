@@ -178,6 +178,7 @@ class UserCreate(BaseModel):
 class InvitationCreate(BaseModel):
     email: str
     entity_id: str
+    role: str = "usuario"
 
 class ActivityLogCreate(BaseModel):
     message: str
@@ -867,10 +868,16 @@ async def login(req: LoginRequest):
     if user_data.get("password") != req.password: raise HTTPException(401, "Contrasea incorrecta")
     entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
     entidad_ids = [e["entity_id"] for e in entities_res.data]
+    active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
+    
+    # Obtener el rol específico para esta entidad de la tabla de unión
+    role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
+    active_role = role_res.data[0]["role"] if role_res.data else user_data["perfil"]
+
     payload = {
         "user_id": str(user_data["id"]),
-        "role": user_data["perfil"],
-        "entity_id": str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else None))
+        "role": active_role,
+        "entity_id": active_entity_id
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {
@@ -1251,6 +1258,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
         "email": target_email,
         "entity_id": req.entity_id,
         "inviter_id": inviter_id,
+        "role_invited": req.role,
         "status": "pendiente",
         "expires_at": expires_at
     }
@@ -1328,6 +1336,44 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
             
     return valid_invitations
 
+@router.get("/invitations/sent")
+async def get_sent_invitations(current_user: dict = Depends(get_current_user)):
+    """Lista las invitaciones enviadas (Vista Administrador)"""
+    if not supabase_client: return []
+    if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
+        raise HTTPException(403, "Permisos insuficientes")
+    
+    query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        query = query.eq("entity_id", current_user.get("entity_id"))
+    
+    res = query.order("created_at", desc=True).execute()
+    return [{
+        "id": inv["id"],
+        "email": inv["email"],
+        "entity_id": inv["entity_id"],
+        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad"),
+        "role": inv.get("role_invited", "usuario"),
+        "status": inv["status"],
+        "created_at": inv["created_at"],
+        "expires_at": inv["expires_at"],
+        "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}"
+    } for inv in res.data]
+
+@router.delete("/invitations/{inv_id}")
+async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(503)
+    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
+    if not inv_res.data: raise HTTPException(404, "No encontrada")
+    
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        if current_user.get("entity_id") != inv_res.data[0]["entity_id"]:
+            raise HTTPException(403, "No autorizado")
+        require_entity_admin(current_user, inv_res.data[0]["entity_id"])
+        
+    supabase_client.table("invitations").delete().eq("id", inv_id).execute()
+    return {"status": "success"}
+
 @router.post("/invitations/{inv_id}/respond")
 async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
     """Acepta o rechaza una invitación"""
@@ -1346,21 +1392,21 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
 
     if resp.action == "accept":
         # 2. Lógica de aceptación
-        # 2.1 Vincular en profile_entities
+        # 2.1 Vincular en profile_entities con el ROL INVITADO
         try:
             supabase_client.table("profile_entities").upsert({
                 "profile_id": current_user.get("user_id"),
-                "entity_id": invitation["entity_id"]
+                "entity_id": invitation["entity_id"],
+                "role": invitation.get("role_invited", "usuario")
             }).execute()
             
             # 2.2 Actualizar el perfil del usuario para que esta sea su entidad principal si no tiene otra o por defecto
-            # Opcional: El usuario podría elegir su principal, pero aquí lo vinculamos
             supabase_client.table("profiles").update({"entidad_id": invitation["entity_id"]}).eq("id", current_user.get("user_id")).execute()
             
             # 2.3 Marcar como aceptada
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
             
-            return {"status": "success", "message": "¡Invitación aceptada! Ahora eres miembro de la entidad."}
+            return {"status": "success", "message": "¡Invitación aceptada!"}
         except Exception as e:
             raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
             

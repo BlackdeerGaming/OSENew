@@ -254,91 +254,28 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
         </div>
         
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setShowManualInviteModal(true)}
-            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-slate-800/10 transition-all active:scale-95"
-          >
-            <Mail className="h-5 w-5" />
-            Invitar
-          </button>
-          
-          <button 
-            onClick={() => setShowModal(true)}
-            className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
-          >
-            <Plus className="h-5 w-5" />
-            Nuevo Usuario
-          </button>
+          {currentUser?.role === 'superadmin' && (
+            <button 
+              onClick={() => setShowModal(true)}
+              className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
+            >
+              <Plus className="h-5 w-5" />
+              Nuevo Usuario (Directo)
+            </button>
+          )}
+          {currentUser?.role !== 'superadmin' && (
+             <button 
+                onClick={() => onNavigate && onNavigate('invitations')}
+                className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
+             >
+                <Mail className="h-5 w-5" />
+                Invitar Miembros
+             </button>
+          )}
         </div>
       </div>
 
-      {/* Modal de Invitación Manual */}
-      {showManualInviteModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 relative overflow-hidden">
-            <button 
-              onClick={() => setShowManualInviteModal(false)}
-              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
-            >
-              <X className="h-6 w-6" />
-            </button>
 
-            <div className="mb-8 items-center text-center">
-              <div className="bg-primary/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 text-primary rotate-3">
-                <Mail className="h-10 w-10" />
-              </div>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Invitar Usuario</h2>
-              <p className="text-slate-500 mt-2 font-medium">
-                Envía una invitación formal para unirse a <br/>
-                <span className="text-primary font-bold">
-                  {entities.find(e => e.id === (selectedEntityId || currentUser?.entidadId))?.razonSocial || 'la organización'}
-                </span>
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-black text-slate-700 uppercase tracking-widest px-1">Correo Electrónico</label>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors" />
-                  <input
-                    type="email"
-                    placeholder="usuario@ejemplo.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-slate-900 font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex gap-3">
-                 <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                 <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
-                   Solo puedes invitar usuarios a una entidad principal. Si el usuario ya pertenece a otra, deberá aceptar tu invitación como su nueva entidad principal.
-                 </p>
-              </div>
-
-              <button
-                onClick={handleSendInvitation}
-                disabled={isInviting}
-                className="w-full bg-primary hover:bg-primary/90 text-white py-5 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
-              >
-                {isInviting ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    ENVIANDO...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="h-5 w-5" />
-                    ENVIAR INVITACIÓN REAL
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
