@@ -25,6 +25,9 @@ import TRDImportView from './components/views/TRDImportView';
 import InvitationsView from './components/views/InvitationsView';
 import HelpCenterView from './components/views/HelpCenterView';
 import DocumentcioRAGView from './components/views/DocumentcioRAGView';
+import FuncionesView from './components/views/FuncionesView';
+import EntrevistasView from './components/views/EntrevistasView';
+import GeneradorDocumentalView from './components/views/GeneradorDocumentalView';
 import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
@@ -1117,6 +1120,18 @@ function App() {
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
+            )}
+            {activeModule === 'funciones' && (
+              <FuncionesView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+            )}
+            {activeModule === 'entrevistas' && (
+              <EntrevistasView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+            )}
+            {activeModule === 'generador_ia' && (
+              <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="ai" />
+            )}
+            {activeModule === 'generador_manual' && (
+              <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="manual" />
             )}
             {activeModule === 'trd' && (
               <div id="trd-final-report-area" className="print-content h-full">

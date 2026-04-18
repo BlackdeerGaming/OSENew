@@ -6,8 +6,10 @@ import uuid
 from .permissions import get_current_user, require_entity_admin, require_super_admin
 from .cloud_storage import upload_record, delete_record
 
-# Assuming supabase_client is imported from main module
-from .main import supabase_client
+# Assuming supabase_client and llm is imported from main module
+from .main import supabase_client, llm
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 router = APIRouter()
 
@@ -49,6 +51,29 @@ class TRDRecordCreate(BaseModel):
     procedimiento: Optional[str] = None
     acto_admo: Optional[str] = None
     # flags omitted for brevity
+
+class FuncionCreate(BaseModel):
+    titulo: str
+    codigo_funcion: Optional[str] = None
+    descripcion: Optional[str] = None
+    dependencia_id: str
+    proyecto_nombre: Optional[str] = None
+    proyecto_sigla: Optional[str] = None
+
+class EntrevistadoSchema(BaseModel):
+    id: Optional[str] = None
+    nombres: str
+    apellidos: str
+    cargo: str
+
+class EntrevistaCreate(BaseModel):
+    dependencia_id: str
+    fecha_entrevista: str
+    entrevistado: EntrevistadoSchema
+
+class GenerateManualRequest(BaseModel):
+    cargo: str  # Cargo name from entrevistados list
+    dependencia_id: str # To grab context
 
 # ---------- Helper functions ----------
 def _record_to_dict(record) -> dict:
@@ -204,6 +229,139 @@ async def create_trd_record_entity(
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
     return record
 
+# ---------- Funciones ----------
+@router.post("/entity/{entity_id}/funciones", response_model=dict)
+async def create_funcion_entity(
+    entity_id: str,
+    payload: FuncionCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    data = payload.dict()
+    data["entity_id"] = entity_id
+    res = supabase_client.table("funciones").insert(data).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create funcion")
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
+        supabase_client.table("funciones").update({"cloud_key": path}).eq("id", record["id"]).execute()
+    except Exception as e:
+        supabase_client.table("funciones").delete().eq("id", record["id"]).execute()
+        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+    return record
+
+@router.get("/entity/{entity_id}/funciones", response_model=List[dict])
+async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("funciones").select("*").eq("entity_id", entity_id).execute()
+    return res.data
+
+@router.put("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
+async def update_funcion_entity(
+    entity_id: str,
+    func_id: str,
+    payload: FuncionCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    data = payload.dict(exclude_unset=True)
+    res = supabase_client.table("funciones").update(data).eq("id", func_id).eq("entity_id", entity_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Funcion not found")
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "funciones", func_id, _record_to_dict(record))
+        supabase_client.table("funciones").update({"cloud_key": path}).eq("id", func_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
+    return record
+
+@router.delete("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
+async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try:
+        delete_record(supabase_client, entity_id, "funciones", func_id)
+    except Exception:
+        pass
+    res = supabase_client.table("funciones").delete().eq("id", func_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted", "id": func_id}
+
+# ---------- Entrevistas y Entrevistados ----------
+
+@router.get("/entity/{entity_id}/entrevistados", response_model=List[dict])
+async def list_entrevistados_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("entrevistados").select("*").eq("entity_id", entity_id).execute()
+    return res.data
+
+@router.post("/entity/{entity_id}/entrevistas", response_model=dict)
+async def create_entrevista_entity(
+    entity_id: str,
+    payload: EntrevistaCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    
+    # 1. Manage Entrevistado
+    entrevistado_data = payload.entrevistado.dict(exclude_unset=True)
+    entrevistado_id = entrevistado_data.get("id")
+    
+    if entrevistado_id:
+        # Update existing
+        supabase_client.table("entrevistados").update({
+            "nombres": entrevistado_data["nombres"],
+            "apellidos": entrevistado_data["apellidos"],
+            "cargo": entrevistado_data["cargo"]
+        }).eq("id", entrevistado_id).eq("entity_id", entity_id).execute()
+    else:
+        # Create new
+        res_entrev_create = supabase_client.table("entrevistados").insert({
+            "entity_id": entity_id,
+            "nombres": entrevistado_data["nombres"],
+            "apellidos": entrevistado_data["apellidos"],
+            "cargo": entrevistado_data["cargo"]
+        }).execute()
+        if not res_entrev_create.data:
+            raise HTTPException(status_code=500, detail="Failed to create entrevistado")
+        entrevistado_id = res_entrev_create.data[0]["id"]
+
+    # 2. Manage Entrevista
+    entrevista_data = {
+        "entity_id": entity_id,
+        "dependencia_id": payload.dependencia_id,
+        "entrevistado_id": entrevistado_id,
+        "fecha_entrevista": payload.fecha_entrevista
+    }
+    res = supabase_client.table("entrevistas").insert(entrevista_data).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create entrevista")
+    
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "entrevistas", record["id"], _record_to_dict(record))
+        supabase_client.table("entrevistas").update({"cloud_key": path}).eq("id", record["id"]).execute()
+    except Exception as e:
+        pass # Ignore minor cloud sync upload error on create
+    return record
+
+@router.get("/entity/{entity_id}/entrevistas", response_model=List[dict])
+async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    # Using foreign key joins for easiest frontend use
+    res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entity_id", entity_id).execute()
+    return res.data
+
+@router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
+async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try:
+        delete_record(supabase_client, entity_id, "entrevistas", ent_id)
+    except Exception:
+        pass
+    res = supabase_client.table("entrevistas").delete().eq("id", ent_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted", "id": ent_id}
+
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
 @router.get("/admin/dependencias", response_model=List[dict])
 async def admin_list_dependencias(user: dict = Depends(get_current_user)):
@@ -216,6 +374,85 @@ async def admin_list_series(user: dict = Depends(get_current_user)):
     require_super_admin(user)
     res = supabase_client.table("series").select("*").execute()
     return res.data
+
+# ---------- Generación Documental con LLM ----------
+
+@router.post("/entity/{entity_id}/generate/ccd")
+async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    
+    # 1. Gather all dependencias and funciones
+    res_dep = supabase_client.table("dependencias").select("*").eq("entity_id", entity_id).execute()
+    res_fun = supabase_client.table("funciones").select("*").eq("entity_id", entity_id).execute()
+    
+    deps = res_dep.data or []
+    funs = res_fun.data or []
+    
+    # Simple structured tree formatting
+    tree_text = "Estructura de la Entidad:\n"
+    for d in deps:
+        tree_text += f"- Dependencia: {d.get('codigo', '')} - {d.get('nombre', '')}\n"
+        deps_funs = [f for f in funs if f.get('dependencia_id') == d.get('id')]
+        for f in deps_funs:
+            tree_text += f"  * Función: {f.get('codigo_funcion', '')} - {f.get('titulo', '')}\n"
+            
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "Eres un experto archivista enfocado en la Ley 594 de 2000 (Colombia). Tu tarea es generar el 'Cuadro de Clasificación Documental' (CCD) exacto. " 
+         "Te proveeré el fondo documental (Estructura de la entidad, con sus Dependencias/Secciones y Funciones). "
+         "Agrupa jerárquicamente en 'Fondo > Sección (Dependencia) > Serie (Función)'. Si ves agrupaciones lógicas para 'Subseries', proponlas. "
+         "RESPONDE ÚNICAMENTE CON CÓDIGO HTML bien estructurado y formal (usa <h1>, <h2>, tablas o listas) sin bloques markdown (sin ```html). Evita saludos. Usa fuentes y colores formales si usas CSS inline."),
+        ("user", "{data}")
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    try:
+        html_output = chain.invoke({"data": tree_text})
+        return {"html": html_output}
+    except Exception as e:
+        print(f"LLM Error generating CCD: {e}")
+        raise HTTPException(status_code=500, detail="Error de generación por IA.")
+
+@router.post("/entity/{entity_id}/generate/manual-funciones")
+async def generate_manual(
+    entity_id: str, 
+    payload: GenerateManualRequest, 
+    user: dict = Depends(get_current_user)
+):
+    require_entity_admin(user, entity_id)
+    
+    # Query dependency
+    dep_res = supabase_client.table("dependencias").select("*").eq("id", payload.dependencia_id).execute()
+    dep_data = dep_res.data[0] if dep_res.data else {}
+    
+    # Query functions of that dependency
+    func_res = supabase_client.table("funciones").select("*").eq("dependencia_id", payload.dependencia_id).execute()
+    funciones = func_res.data or []
+    
+    # Context format
+    ctx = f"Cargo a documentar: {payload.cargo}\n"
+    ctx += f"Dependencia (Sección): {dep_data.get('nombre')} (Cód {dep_data.get('codigo')})\n"
+    ctx += "Funciones de la Dependencia:\n"
+    for f in funciones:
+        ctx += f"- {f.get('titulo')} (Detalle: {f.get('descripcion', '')})\n"
+        
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "Eres un analista de talento humano experto en el sector público de Colombia y la ley 594. "
+         "Tu objetivo es redactar el 'Manual de Funciones' para un cargo específico dentro de una dependencia. "
+         "Deberás:\n"
+         "1. Establecer el Propósito Principal del Cargo basado en el nombre y las funciones de su área.\n"
+         "2. Extraer y formatear formalmente las Funciones Específicas del cargo, basándote en las funciones provistas.\n"
+         "3. Inferir las Relaciones e Interacciones con otras áreas.\n\n"
+         "RESPONDE ÚNICAMENTE EN FORMATO HTML bien estructurado estilo documento formal (<h1>, <h2>, <ul>) y sin macros markdown (sin ```html), para ser embebido en una vista. No expongas saludos informales."),
+        ("user", "{data}")
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    try:
+        html_output = chain.invoke({"data": ctx})
+        return {"html": html_output}
+    except Exception as e:
+        print(f"LLM Error generating Manual: {e}")
+        raise HTTPException(status_code=500, detail="Error de generación por IA.")
 
 @router.get("/admin/subseries", response_model=List[dict])
 async def admin_list_subseries(user: dict = Depends(get_current_user)):

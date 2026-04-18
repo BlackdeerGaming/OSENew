@@ -9,7 +9,7 @@ load_dotenv()
 from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.permissions import get_current_user, require_super_admin, require_entity_admin
-JWT_SECRET = os.environ.get("JWT_SECRET", "ose-ia-secret-key-2024")
+JWT_SECRET = os.environ.get("JWT_SECRET", "ose-ia-secret-key-2024-standard")
 JWT_ALGORITHM = "HS256"
 
 # RBAC CONFIGURATION
@@ -26,7 +26,7 @@ import fitz  # PyMuPDF
 import time
 import httpx
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # LangChain imports
 from langchain_core.documents import Document
@@ -1207,10 +1207,14 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     # 1. Validar permisos: Solo admin de la entidad o superadmin
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        if current_user.get("entity_id") != req.entity_id:
+    user_role = current_user.get("role")
+    user_entity_id = str(current_user.get("entity_id") or "")
+    target_entity_id = str(req.entity_id or "")
+
+    if user_role != SUPERADMIN_ROLE:
+        if user_entity_id != target_entity_id:
             raise HTTPException(403, "No puedes invitar a usuarios a una entidad que no gestionas")
-        require_entity_admin(current_user, req.entity_id)
+        require_entity_admin(current_user, target_entity_id)
 
     target_email = req.email.strip().lower()
 
@@ -1231,11 +1235,12 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     if check_existing.data:
         # Verificar expiración
         inv = check_existing.data[0]
-        if datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00')) > datetime.now(inv["expires_at"].tzinfo if hasattr(inv["expires_at"], 'tzinfo') else None).utcnow():
+        expires_at_dt = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
+        if expires_at_dt > datetime.now(timezone.utc):
              raise HTTPException(400, "Ya existe una invitación pendiente y activa para este correo")
 
     # 4. Crear la invitación (expira en 1 día)
-    expires_at = (datetime.utcnow() + timedelta(days=1)).isoformat()
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     inviter_id = current_user.get("user_id")
     
     new_inv = {

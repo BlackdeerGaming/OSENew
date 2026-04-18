@@ -191,3 +191,58 @@ CREATE TABLE IF NOT EXISTS chat_history (
 ALTER TABLE chat_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON chat_history FOR ALL USING (true);
 
+-- ============================================================
+-- 7. TABLA DE FUNCIONES TRD
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS funciones (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  titulo TEXT NOT NULL,
+  codigo_funcion TEXT,
+  descripcion TEXT,
+  dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  proyecto_nombre TEXT,
+  proyecto_sigla TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  cloud_key TEXT,
+  UNIQUE(codigo_funcion, dependencia_id)
+);
+
+ALTER TABLE funciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON funciones FOR ALL USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_funciones_entity ON funciones(entity_id);
+CREATE INDEX IF NOT EXISTS idx_funciones_cloud_key ON funciones(cloud_key);
+
+-- ============================================================
+-- 8. TABLA DE ENTREVISTADOS Y ENTREVISTAS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS entrevistados (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  nombres TEXT NOT NULL,
+  apellidos TEXT NOT NULL,
+  cargo TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS entrevistas (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  entrevistado_id TEXT NOT NULL REFERENCES entrevistados(id) ON DELETE CASCADE,
+  fecha_entrevista DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  cloud_key TEXT
+);
+
+ALTER TABLE entrevistados ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON entrevistados FOR ALL USING (true);
+CREATE INDEX IF NOT EXISTS idx_entrevistados_entity ON entrevistados(entity_id);
+
+ALTER TABLE entrevistas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON entrevistas FOR ALL USING (true);
+CREATE INDEX IF NOT EXISTS idx_entrevistas_entity ON entrevistas(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entrevistas_cloud_key ON entrevistas(cloud_key);

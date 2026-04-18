@@ -4,7 +4,9 @@ import jwt
 
 # Assuming JWT secret and algorithm are set in env
 import os
-JWT_SECRET = os.getenv('JWT_SECRET', 'super-secret-key-ose-2026-segura-123456')
+from dotenv import load_dotenv
+load_dotenv()
+JWT_SECRET = os.getenv('JWT_SECRET', 'ose-ia-secret-key-2024-standard')
 JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
 security = HTTPBearer()

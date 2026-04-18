@@ -24,6 +24,7 @@ import UsersView from './components/views/UsersView';
 import SettingsView from './components/views/SettingsView';
 import OrgChartView from './components/views/OrgChartView';
 import EntitiesView from './components/views/EntitiesView';
+import FuncionesView from './components/views/FuncionesView';
 import API_BASE_URL from './config/api';
 
 const DEPS_FLOW = [
@@ -687,6 +688,9 @@ function App() {
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
+            )}
+            {activeModule === 'funciones' && (
+              <FuncionesView dependencias={dependencias} entities={entities} currentUser={currentUser} />
             )}
             {activeModule === 'trd' && (
               <div className="print-content h-full">

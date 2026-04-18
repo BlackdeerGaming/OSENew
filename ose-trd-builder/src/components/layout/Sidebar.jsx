@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { id: "subseries", label: "Subseries", icon: FileText },
   { id: "trdform", label: "Valoración TRD", icon: Database },
   { separator: true },
+  { id: "funciones", label: "Funciones", icon: FileText },
   { id: "datos", label: "Datos Estructurados", icon: Database },
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
 ];

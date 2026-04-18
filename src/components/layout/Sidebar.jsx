@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock, Mail } from "lucide-react";
+import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock, Mail, Users, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -8,11 +8,13 @@ const NAV_ITEMS = [
   { id: "series", label: "Series", icon: FolderOpen },
   { id: "subseries", label: "Subseries", icon: FileText },
   { id: "trdform", label: "Valoración TRD", icon: Database },
+  { id: "funciones", label: "Funciones", icon: FileText },
+  { id: "entrevistas", label: "Entrevistas", icon: Users },
   { separator: true },
+  { id: "generador_ia", label: "Reportes IA", icon: Wand2 },
+  { id: "generador_manual", label: "Reportes Manuales", icon: FileText },
   { id: "datos", label: "Datos Estructurados", icon: Database },
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
-  { separator: true },
-  { id: "invitations", label: "Invitaciones", icon: Mail },
 ];
 
 export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggleAgent, currentUser, hasTrdData, pendingInvitationsCount = 0 }) {
@@ -22,7 +24,7 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
   const filteredItems = NAV_ITEMS.filter(item => {
     if (role === 'superadmin' || role === 'administrador') return true;
     // For 'usuario' role, only show these specific modules
-    return ['orgchart', 'datos', 'trd', 'invitations'].includes(item.id) || item.separator;
+    return ['orgchart', 'datos', 'trd'].includes(item.id) || item.separator;
   });
 
   return (
@@ -92,11 +94,6 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
               {item.label}
               {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase flex items-center gap-1"><Lock className="w-2 h-2"/> Bloqueado</span>}
-              {item.id === 'invitations' && pendingInvitationsCount > 0 && (
-                <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white animate-bounce shadow-lg shadow-rose-500/20">
-                  {pendingInvitationsCount}
-                </span>
-              )}
             </button>
           );
         })}
