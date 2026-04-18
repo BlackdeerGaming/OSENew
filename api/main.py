@@ -8,7 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from api.permissions import get_current_user, require_super_admin, require_entity_admin
+from .permissions import get_current_user, require_super_admin, require_entity_admin
 JWT_SECRET = os.environ.get("JWT_SECRET", "ose-ia-secret-key-2024-standard")
 JWT_ALGORITHM = "HS256"
 
