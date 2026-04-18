@@ -246,3 +246,17 @@ ALTER TABLE entrevistas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON entrevistas FOR ALL USING (true);
 CREATE INDEX IF NOT EXISTS idx_entrevistas_entity ON entrevistas(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entrevistas_cloud_key ON entrevistas(cloud_key);
+
+-- ============================================================
+-- 9. TABLA DE REGISTRO DE ACTIVIDAD (Logs)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_name TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_service" ON activity_logs FOR ALL USING (true);

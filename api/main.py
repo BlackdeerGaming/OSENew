@@ -178,6 +178,10 @@ class UserCreate(BaseModel):
 class InvitationCreate(BaseModel):
     email: str
     entity_id: str
+
+class ActivityLogCreate(BaseModel):
+    message: str
+    user_name: str
     # Opcional: mensajes personalizados, etc.
 
 class InvitationRespond(BaseModel):
@@ -1364,6 +1368,22 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
         # 3. Lógica de rechazo
         supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
         return {"status": "success", "message": "Invitación rechazada."}
+
+@router.post("/activity-logs")
+async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    new_log = {
+        "user_name": req.user_name,
+        "message": req.message
+    }
+    res = supabase_client.table("activity_logs").insert(new_log).execute()
+    return res.data
+
+@router.get("/activity-logs")
+async def get_activity_logs(current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    res = supabase_client.table("activity_logs").select("*").order("created_at", desc=True).limit(50).execute()
+    return res.data
 
 app.include_router(router)
 
