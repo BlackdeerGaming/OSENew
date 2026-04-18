@@ -1077,27 +1077,41 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     role = current_user.get("role")
     admin_entity_id = current_user.get("entity_id")
     
-    if role == SUPERADMIN_ROLE:
-        # SuperAdmin puede borrar a cualquier usuario
-        res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
-        if not res.data:
-            raise HTTPException(404, "Usuario no encontrado")
-            
-    elif role == ADMIN_ROLE:
+    # 1. Verificar existencia y pertenencia antes de borrar si es Admin
+    user_res = supabase_client.table("profiles").select("entidad_id").eq("id", user_id).execute()
+    if not user_res.data:
+        raise HTTPException(404, "El usuario que intentas eliminar no existe")
+    
+    target_user_entity = user_res.data[0].get("entidad_id")
+    
+    if role != SUPERADMIN_ROLE:
+        if role != ADMIN_ROLE:
+            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acción")
         if not admin_entity_id:
-            raise HTTPException(403, "No perteneces a ninguna entidad")
-            
-        # Verificar que el usuario a borrar pertenece a la misma entidad que el admin
-        # NOTA: En profiles, la columna es entidad_id
-        res = supabase_client.table("profiles").delete().eq("id", user_id).eq("entidad_id", admin_entity_id).execute()
+            raise HTTPException(403, "No perteneces a ninguna entidad activa")
+        if str(target_user_entity) != str(admin_entity_id):
+            raise HTTPException(403, "No puedes eliminar usuarios de otras entidades")
+
+    try:
+        # 2. Limpiar dependencias (Claves Foráneas)
+        # Borrar membresías en entidades
+        supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
+        
+        # Opcional: Podrías querer borrar invitaciones pendientes también
+        # supabase_client.table("invitations").delete().eq("email", user_email).execute()
+        
+        # 3. Borrar el perfil principal
+        res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
         
         if not res.data:
-             # Podría no haber borrado nada si el ID no existe o la entidad no coincide
-             raise HTTPException(403, "No tienes permisos para borrar este usuario o no pertenece a tu entidad")
-    else:
-        raise HTTPException(403, "No tienes permisos suficentes para realizar esta acción")
+             # Si llegamos aquí y no hay data, algo falló en la query de borrado silenciosamente
+             raise HTTPException(500, "No se pudo confirmar la eliminación del usuario")
+             
+    except Exception as e:
+        print(f" Error eliminando usuario {user_id}: {str(e)}")
+        raise HTTPException(500, f"Error de base de datos al eliminar: {str(e)}")
         
-    return {"status": "success", "message": "Usuario eliminado correctamente"}
+    return {"status": "success", "message": "Usuario y sus relaciones eliminados correctamente"}
 
 @router.get("/entities")
 async def get_entities():

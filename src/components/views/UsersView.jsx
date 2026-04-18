@@ -205,11 +205,12 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
         headers: {
           'Authorization': `Bearer ${currentUser?.token}`
         }
-      }).then(res => {
+      }).then(async res => {
+        const data = await res.json();
         if (res.ok) {
           setUsers(users.filter(u => u.id !== id));
         } else {
-          alert("Error al eliminar usuario. Verifica tus permisos.");
+          alert("Error: " + (data.detail || "Verifica tus permisos o restricciones de datos."));
         }
       });
     }
