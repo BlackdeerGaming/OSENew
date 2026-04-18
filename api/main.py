@@ -1097,8 +1097,11 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         # Borrar membresías en entidades
         supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
         
-        # Opcional: Podrías querer borrar invitaciones pendientes también
-        # supabase_client.table("invitations").delete().eq("email", user_email).execute()
+        # ELIMINAR REGISTROS DE ACTIVIDAD (FK: activity_logs_user_id_fkey)
+        supabase_client.table("activity_logs").delete().eq("user_id", user_id).execute()
+        
+        # ELIMINAR HISTORIAL DE CHAT (Si existe)
+        supabase_client.table("chat_history").delete().eq("user_id", user_id).execute()
         
         # 3. Borrar el perfil principal
         res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
