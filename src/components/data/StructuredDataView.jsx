@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Building2, FolderOpen, FileText, Pencil, Trash2, Search, X, Filter, RotateCcw, Database, LayoutGrid, Table2, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeText } from "../../utils/stringUtils";
 
 // ─── View Toggle ────────────────────────────────────────────────────────────────
 function ViewToggle({ view, onChange }) {
@@ -170,7 +171,7 @@ function TableView({ filteredData, onEdit, onDelete, canModify }) {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────────
-export default function StructuredDataView({ dependencias, series, subseries, onEdit, onDelete, currentUser }) {
+export default function StructuredDataView({ dependencias = [], series = [], subseries = [], onEdit, onDelete, currentUser }) {
   const [view, setView] = useState('hierarchy');
   const [searchQuery, setSearchQuery] = useState("");
   const [depFilter, setDepFilter] = useState("all");
@@ -181,9 +182,9 @@ export default function StructuredDataView({ dependencias, series, subseries, on
   const canModify = role === 'superadmin' || role === 'admin';
 
   // Opciones para los filtros
-  const depOptions = useMemo(() => [...new Set(dependencias.map(d => d.nombre))].sort(), [dependencias]);
-  const serieOptions = useMemo(() => [...new Set(series.map(s => s.nombre))].sort(), [series]);
-  const subserieOptions = useMemo(() => [...new Set(subseries.map(s => s.nombre))].sort(), [subseries]);
+  const depOptions = useMemo(() => [...new Set((dependencias || []).map(d => d.nombre))].sort(), [dependencias]);
+  const serieOptions = useMemo(() => [...new Set((series || []).map(s => s.nombre))].sort(), [series]);
+  const subserieOptions = useMemo(() => [...new Set((subseries || []).map(s => s.nombre))].sort(), [subseries]);
 
   const resetFilters = () => {
     setSearchQuery("");
@@ -194,32 +195,39 @@ export default function StructuredDataView({ dependencias, series, subseries, on
 
   // Lógica de Filtrado Jerárquico
   const filteredData = useMemo(() => {
-    const q = searchQuery.toLowerCase();
+    const q = normalizeText(searchQuery);
 
     const matchesSearch = (item, fields) => {
       if (!q) return true;
-      return fields.some(f => item[f]?.toString().toLowerCase().includes(q));
+      return fields.some(f => normalizeText(item[f]).includes(q));
     };
 
-    return dependencias
+    const targetDep = normalizeText(depFilter);
+    const targetSerie = normalizeText(serieFilter);
+    const targetSub = normalizeText(subFilter);
+
+    return (dependencias || [])
       .map(dep => {
+        if (!dep) return null;
         // Filtrar Series dentro de la Dependencia
-        const matchedSeries = series
+        const matchedSeries = (series || [])
           .filter(s => s.dependenciaId === dep.id)
           .map(serie => {
+            if (!serie) return null;
             // Filtrar Subseries dentro de la Serie
-            const matchedSubseries = subseries.filter(sub => {
+            const matchedSubseries = (subseries || []).filter(sub => {
+              if (!sub) return false;
               const belongs = sub.serieId === serie.id;
               if (!belongs) return false;
               
-              const matchesSubFilter = subFilter === "all" || sub.nombre === subFilter;
+              const matchesSubFilter = targetSub === "ALL" || normalizeText(sub.nombre) === targetSub;
               const matchesText = matchesSearch(sub, ['nombre', 'codigo', 'tipoDocumental']);
               
               return matchesSubFilter && matchesText;
             });
 
             const hasMatchedSubseries = matchedSubseries.length > 0;
-            const matchesSerieFilter = serieFilter === "all" || serie.nombre === serieFilter;
+            const matchesSerieFilter = targetSerie === "ALL" || normalizeText(serie.nombre) === targetSerie;
             const matchesText = matchesSearch(serie, ['nombre', 'codigo', 'tipoDocumental']);
             
             // Una serie es visible si ella misma coincide con filtros O si alguna de sus subseries coincide
@@ -230,7 +238,7 @@ export default function StructuredDataView({ dependencias, series, subseries, on
           .filter(Boolean);
 
         const hasMatchedSeries = matchedSeries.length > 0;
-        const matchesDepFilter = depFilter === "all" || dep.nombre === depFilter;
+        const matchesDepFilter = targetDep === "ALL" || normalizeText(dep.nombre) === targetDep;
         const matchesText = matchesSearch(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
 
         // Una dependencia es visible si ella misma coincide con filtros O si alguna de sus series/subseries coincide

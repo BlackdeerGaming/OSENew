@@ -104,6 +104,7 @@ llm = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
     temperature=0.1,
     max_tokens=4096,
+    request_timeout=65, # Evitar cuelgues de 10 min
     default_headers={
         "HTTP-Referer": "https://ose-ia.vercel.app",
         "X-Title": "OSE Copilot RAG"
@@ -126,41 +127,44 @@ CONTEXTO DEL DOCUMENTO:
     ("human", "{question}")
 ])
 
-TRD_ARCHITECT_PROMPT = """Eres el Arquitecto TRD de OSE IA, experto en la Ley 594 de 2000 (Colombia) y normativas del AGN.
-Tu tarea es analizar el texto extraído (OCR) de una Tabla de Retención Documental y reconstruir su estructura jerárquica.
+TRD_ARCHITECT_PROMPT = """Eres el OCR Archivístico Inteligente de OSE IA, experto en digitalización y extracción de Tablas de Retención Documental (TRD) según la Ley 594 de 2000 (Colombia).
 
-DOCUMENTO A ANALIZAR:
-{text}
+TU OBJETIVO: 
+Se te proporcionará una mezcla de texto corregido (OCR) e IMÁGENES reales de un documento. Debes analizar visualmente la disposición de las tablas, filas y columnas para extraer información precisa.
 
-REGLAS DE EXTRACCIÓN:
-1. Identifica las DEPENDENCIAS (Unidades Administrativas): Suelen tener códigos (ej: 100, 110) y nombres (ej: Secretaría General).
-2. Identifica las SERIES: Pertenecen a una dependencia. Tienen código (ej: 01, 10) y están asociadas a la dependencia.
-3. Identifica las SUBSERIES: Pertenecen a una serie.
-4. Identifica METADATOS: Tiempos de retención (Archivo de Gestión, Archivo Central) y Disposición Final (CT, E, S, MD).
+REGLAS DE EXTRACCIÓN (MUY IMPORTANTES):
+1. IDENTIFICACIÓN DE CÓDIGOS:
+   - Dependencia: Suele ser un código de 3 dígitos (ej: 100, 110, 200).
+   - Serie: Suele ser el código de dependencia seguido de un punto o guion y un número (ej: 100-1, 200.70).
+   - Subserie: Código extendido (ej: 100-1-01).
+2. COLUMNAS DE VALORACIÓN:
+   - Gestión (AG): Años en archivo de oficina.
+   - Central (AC): Años en archivo central.
+   - Disposición: CT (Conservación Total), E (Eliminación), S (Selección).
+3. TRATAMIENTO DE IMAGEN:
+   - Si la imagen muestra una tabla, síguela fila por fila. No inventes datos.
+   - Si una celda está vacía, asume valor nulo o según contexto previo.
 
 FORMATO DE SALIDA (JSON ESTRICTO):
-{{
-  "message": "He analizado el documento y encontré [X] dependencias y [Y] series documentales.",
+{
+  "message": "He detectado visualmente [X] oficinas y su estructura documental.",
   "actions": [
-    {{
+    {
       "type": "CREATE",
-      "entity": "dependencias",
-      "id": "t1",  // Usa IDs temporales t1, t2... para relacionar
-      "payload": {{ "nombre": "Nombre de Unidad", "codigo": "100" }}
-    }},
-    {{
-      "type": "CREATE",
-      "entity": "series",
-      "id": "s1",
-      "payload": {{ "nombre": "Nombre Serie", "codigo": "10", "dependenciaId": "t1" }}
-    }}
+      "entity": "trd_records",
+      "payload": {
+        "dependenciaNombre": "SECRETARÍA GENERAL",
+        "codigo": "100.1.01",
+        "serieNombre": "ACTAS",
+        "subserieNombre": "ACTAS DE CONSEJO",
+        "retencionGestion": 2,
+        "retencionCentral": 8,
+        "disposicion": "CT",
+        "procedimiento": "Conservación total según AGN."
+      }
+    }
   ]
-}}
-
-IMPORTANTE: 
-- Si el texto es confuso o parece no ser una TRD, deja "actions" como [] y explica en "message".
-- No inventes datos.
-- Solo retorna el JSON.
+}
 """
 
 
@@ -297,33 +301,42 @@ def clean_text(text: str) -> str:
 def format_docs(docs):
     return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
+def clean_text(text):
+    # Basic cleaning
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
-    print(f"⚙️ Iniciando Background Task OCR para: {filename}")
+    """
+    Proceso de segundo plano para extraer texto e imágenes para Visión IA.
+    Actualiza el estado a 'reviewing' al terminar para que el usuario pueda aprobar.
+    """
+    print(f"--- Iniciando OCR NATIVO (Visión) para: {filename} ---")
+    
     extracted_text = ""
+    images_base64 = []
     
     try:
         import fitz
         from datetime import datetime
-        # Extraer texto de las primeras 20 páginas
+        
         fitz_doc = fitz.open(stream=content, filetype="pdf")
-        pages_to_process = min(len(fitz_doc), 20)
+        pages_to_process = min(len(fitz_doc), 5) 
+        
         for i in range(pages_to_process):
-            extracted_text += f"\n--- PÁGINA {i+1} ---\n" + fitz_doc[i].get_text()
+            page = fitz_doc[i]
+            text_chunk = page.get_text().strip()
+            if text_chunk:
+                extracted_text += f"\n--- PÁGINA {i+1} ---\n" + text_chunk
+            
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            img_data = pix.tobytes("png")
+            b64 = base64.b64encode(img_data).decode("utf-8")
+            images_base64.append(b64)
+            
         fitz_doc.close()
     except Exception as e:
-        print(f"❌ Error leyendo archivo en segundo plano: {e}")
-        current_meta = {}
-        try:
-            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-            if row.data: current_meta = row.data[0].get("metadata") or {}
-        except: pass
-        current_meta.update({"status": "error", "message": f"Error leyendo el archivo: {str(e)}"})
-        
-        supabase_client.table("rag_documents").update({
-            "metadata": current_meta
-        }).eq("id", doc_id).execute()
-        return
+        print(f"Error procesando PDF: {e}")
 
     # Obtener el file_url y entidad_id actuales de la sesión
     file_url = None
@@ -336,72 +349,78 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
     except: pass
 
     try:
-        # Generar metadata para el chunk consolidado
-        doc_metadata = {
-            "source": filename,
-            "type": "trd_upload",
-            "is_trd_internal": True,
-            "status": "success",
-            "extracted_at": str(datetime.now()),
-            "pages": pages_to_process,
-            "file_url": file_url,
-            "entidad_id": entidad_id
-        }
+        print(f"Solicitando Análisis Visual TRD para: {filename}")
         
-        # Generar embedding
-        embedding_vector = None
-        if embeddings:
-            try:
-                embedding_vector = embeddings.embed_query(extracted_text[:4000])
-            except: pass
-
-        # --- ANALISIS IA DE ESTRUCTURA TRD ---
-        print(f"🤖 Solicitando análisis TRD Architect para: {filename}")
+        messages = [
+            SystemMessage(content=TRD_ARCHITECT_PROMPT),
+        ]
         
-        prompt_full = TRD_ARCHITECT_PROMPT.format(text=extracted_text[:6000])
+        user_content = [
+            {"type": "text", "text": f"Analiza esta TRD. Texto extraído: \n{extracted_text[:4000]}"}
+        ]
+        
+        for b64_img in images_base64[:5]:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64_img}"}
+            })
+            
+        messages.append(HumanMessage(content=user_content))
+        
         parsed_actions = []
-        ai_message = "Análisis completado satisfactoriamente."
+        ai_message = "Módulo de Visión completó el análisis."
         
         try:
-            response_ai = llm.invoke([HumanMessage(content=prompt_full)])
+            response_ai = llm.invoke(messages)
             content_ai = response_ai.content.strip()
             
+            # Limpieza de JSON
             if "```json" in content_ai:
                 content_ai = content_ai.split("```json")[-1].split("```")[0].strip()
             elif "```" in content_ai:
                 content_ai = content_ai.split("```")[-1].split("```")[0].strip()
+            else:
+                start = content_ai.find('{')
+                end = content_ai.rfind('}')
+                if start != -1 and end != -1:
+                    content_ai = content_ai[start:end+1]
             
             ai_data = json.loads(content_ai)
             parsed_actions = ai_data.get("actions", [])
             ai_message = ai_data.get("message", ai_message)
         except Exception as ai_err:
-            print(f"⚠️ Error en análisis IA: {ai_err}")
-            ai_message = f"Error en análisis de estructura: {str(ai_err)}"
+            print(f"Error en IA: {ai_err}")
+            ai_message = f"Error en procesamiento: {str(ai_err)}"
 
-        # Insertar documento RAG con texto para búsqueda
-        supabase_client.table("rag_documents").insert({
-            "content": extracted_text,
-            "metadata": {**doc_metadata, "status": "success"},
-            "embedding": embedding_vector
-        }).execute()
-        
-        # Actualizar sesión original para que la UI muestre el botón de "Review"
-        final_meta = {
-            **doc_metadata,
+        # Guardar resultado final
+        doc_metadata = {
+            "source": filename,
+            "type": "temp_trd_session",
+            "file_url": file_url,
+            "entidad_id": entidad_id,
             "status": "reviewing",
             "actions": parsed_actions,
             "message": ai_message,
-            "ocr_engaged": True,
-            "type": "temp_trd_session"
+            "created_at": datetime.now().isoformat()
         }
         
         supabase_client.table("rag_documents").update({
-            "metadata": final_meta
+            "metadata": doc_metadata
         }).eq("id", doc_id).execute()
         
-        print(f"✅ Proceso OCR + Arquitectura completado para: {filename}")
+        print(f"OK: Proceso terminado para: {filename}")
+        
     except Exception as e:
-        print(f"❌ Error guardando OCR en RAG: {e}")
+        print(f"Error crítico: {e}")
+        try:
+            supabase_client.table("rag_documents").update({
+                "metadata": {
+                    "source": filename, "status": "error", "message": str(e),
+                    "type": "temp_trd_session", "created_at": datetime.now().isoformat()
+                }
+            }).eq("id", doc_id).execute()
+        except: pass
+
 
 #  Endpoints 
 
@@ -497,93 +516,12 @@ async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: d
     # Determinar entidad para el documento
     entidad_final = user.get("entity_id") if user.get("role") == ADMIN_ROLE else entidad_id
 
-    documents = []
-    text_count = 0
+    # En lugar de bloquear, lo delegamos a una tarea de fondo
+    background_tasks.add_task(index_document_rag, None, content, file.filename, entidad_final, file_url)
 
-    # Extraer texto con PyMuPDF
-    try:
-        fitz_doc = fitz.open(stream=content, filetype="pdf")
-        for page_num_0, page in enumerate(fitz_doc):
-            page_num = page_num_0 + 1
-            raw_text = page.get_text()
-            if raw_text:
-                cleaned = clean_text(raw_text)
-                if len(cleaned) > 30:
-                    documents.append(Document(
-                        page_content=cleaned,
-                        metadata={
-                            "page": page_num, 
-                            "source": file.filename, 
-                            "type": "text",
-                            "entidad_id": entidad_final,
-                            **({"file_url": file_url} if file_url else {})
-                        }
-                    ))
-                    text_count += 1
-        fitz_doc.close()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error leyendo el PDF: {str(e)}")
-
-    if not documents:
-        raise HTTPException(
-            status_code=400,
-            detail="No se pudo extraer texto del PDF. Puede ser una imagen escaneada sin capa de texto."
-        )
-
-    print(f" Pginas con texto extrado: {text_count}")
-
-    # Chunking
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000,
-        chunk_overlap=300,
-        separators=["\n\n", "\n", ".", " ", ""],
-    )
-    chunks = splitter.split_documents(documents)
-    print(f"  Chunks generados: {len(chunks)}")
-
-    # Guardar en Supabase pgvector
-    try:
-        # Indexar en Supabase MANUALMENTE para evitar errores de LangChain/OpenRouter
-        print(f" Preparando {len(chunks)} fragmentos para indexar...")
-        
-        batch_size = 25
-        data_to_insert = []
-        
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i:i+batch_size]
-            texts = [c.page_content for c in batch]
-            
-            # Embeddings con reintento por lote
-            batch_embeddings = None
-            for attempt in range(3):
-                try:
-                    batch_embeddings = embeddings.embed_documents(texts)
-                    if batch_embeddings: break
-                except Exception as e:
-                    print(f" Reintento batch {i//batch_size + 1}, intento {attempt+1}: {e}")
-                    if attempt == 2: raise Exception("No embedding data received during upload")
-            
-            for doc, emb in zip(batch, batch_embeddings):
-                data_to_insert.append({
-                    "content": doc.page_content,
-                    "metadata": doc.metadata,
-                    "embedding": emb
-                })
-
-        # Insercin directa en Supabase
-        print(f" Insertando {len(data_to_insert)} registros en Supabase...")
-        supabase_client.table("rag_documents").insert(data_to_insert).execute()
-
-    except Exception as e:
-        print(f" Error guardando en Supabase: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al indexar en la base de datos: {str(e)}")
-
-    print(f" '{file.filename}' indexado en Supabase: {len(chunks)} chunks")
     return {
-        "message": f"PDF '{file.filename}' procesado e indexado con xito",
-        "chunks_created": len(chunks),
-        "text_pages": text_count,
-        "vector_store": "supabase_pgvector"
+        "message": f"PDF '{file.filename}' recibido. Se estÃ¡ indexando en segundo plano.",
+        "status": "indexing"
     }
 
 @router.post("/chat")
@@ -1327,70 +1265,117 @@ async def get_entities():
 async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = Form(""), user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
     content = await file.read()
-    filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"
+    
+    # Asegurar que el filename sea seguro para Storage
+    safe_name = file.filename.replace(' ', '_').replace('/', '_')
+    filename_clean = f"{int(datetime.now().timestamp())}_{safe_name}"
+    
     supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
     file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
-    entidad_final = user.get("entity_id") if user.get("role") == ADMIN_ROLE else entidad_id
+    
+    # Lógica de entidad: si es Admin usa su entidad, si es SuperAdmin usa la del form o la activa
+    entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
+    
     res = supabase_client.table("rag_documents").insert({
-        "content": "Import Session Snapshot",
+        "content": f"Import Session Snapshot: {file.filename}",
         "metadata": {
-            "source": file.filename, "status": "processing", "file_url": file_url, "entidad_id": entidad_final, "type": "temp_trd_session"
+            "source": file.filename, 
+            "status": "processing", 
+            "file_url": file_url, 
+            "entidad_id": entidad_final, 
+            "type": "temp_trd_session",
+            "created_at": datetime.now().isoformat()
         }
     }).execute()
+    
+    if not res.data:
+        raise HTTPException(500, detail="No se pudo crear la sesión de importación")
+        
     doc_id = res.data[0]["id"]
+    
+    # Iniciar procesos paralelos en segundo plano
+    # 1. OCR para aprobación inmediata (Prioridad Máxima)
     background_tasks.add_task(process_ocr_task, doc_id, content, file.filename)
-    return {"id": doc_id, "status": "processing"}
+    
+    # RAG INDEXING DESACTIVADO TEMPORALMENTE SEGUN SOLICITUD PARA SPEED
+    # background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
+    
+    return {"id": doc_id, "status": "processing", "import_id": doc_id}
+
 
 @router.get("/rag-documents")
 async def get_rag_documents(entidad_id: str = None, user: dict = Depends(get_current_user)):
     if not supabase_client: return []
     
-    query = supabase_client.table("rag_documents").select("id, metadata, created_at")
+    # FILTRO ESTRICTO: solo sesiones de importación TRD (no chunks de texto RAG)
+    query = supabase_client.table("rag_documents").select("id, metadata, created_at") \
+        .contains("metadata", {"type": "temp_trd_session"})
     
-    # Aplicar filtro por entidad si no es superadmin
-    if user.get("role") != "superadmin":
-        entidad = entidad_id or user.get("entity_id")
-        if entidad:
-            query = query.contains("metadata", {"entidad_id": entidad})
+    # Aplicar filtro por entidad
+    entidad = entidad_id or (None if user.get("role") == "superadmin" else user.get("entity_id"))
+    if entidad:
+        query = query.contains("metadata", {"entidad_id": entidad})
     
-    res = query.order("created_at", desc=False).execute()
-    seen_sources = {}
-    for row in res.data:
+    res = query.order("created_at", desc=True).execute()
+    
+    output = []
+    for row in (res.data or []):
         meta = row.get("metadata") or {}
-        source = meta.get("source", "")
-        if not source: continue
-        
-        # Si ya lo vimos, intentamos enriquecer la metadata (especialmente file_url)
-        if source in seen_sources:
-            current = seen_sources[source]["metadata"]
-            if not current.get("file_url") and meta.get("file_url"):
-                current["file_url"] = meta["file_url"]
-            if not current.get("entidad_id") and meta.get("entidad_id"):
-                current["entidad_id"] = meta["entidad_id"]
-            # Si el nuevo registro tiene ÃƒÂ©xito, preferimos su status
-            if meta.get("status") == "success":
-                current["status"] = "success"
-        else:
-            # Documentos vÃƒÂ¡lidos para mostrar: success o sesiones activas para admins
-            is_valid = meta.get("status") == "success" or (user.get("role") == "superadmin" and meta.get("type") == "temp_trd_session")
-            if is_valid:
-                seen_sources[source] = {
-                    "id": row["id"], 
-                    "filename": meta.get("label") or source, 
-                    "metadata": meta, 
-                    "created_at": row["created_at"]
-                }
-                
-    return sorted(seen_sources.values(), key=lambda d: d["created_at"], reverse=True)
+        # HIDE COMPLETED SESSIONS: Si ya fue exitosa, no la mostramos en la lista de importación activa
+        if meta.get("status") == "success":
+            continue
+            
+        output.append({
+            "id": row["id"],
+            "filename": meta.get("source", "Documento sin nombre"),
+            "metadata": meta,
+            "status": meta.get("status", "processing"),
+            "created_at": row["created_at"]
+        })
+    
+    return output
 
 @router.delete("/rag-documents/{doc_id}")
-async def delete_rag_document(doc_id: str):
+async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
+    
+    # Validar permisos
     res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-    if res.data:
-        source = res.data[0].get("metadata", {}).get("source")
-        if source: supabase_client.table("rag_documents").delete().contains("metadata", {"source": source}).execute()
-    return {"status": "deleted"}
+    if not res.data:
+        # Si no existe por ID, quizás ya se borró o es un error de ID
+        return {"status": "deleted"}
+        
+    meta = res.data[0].get("metadata", {})
+    source = meta.get("source")
+    
+    # Borrado en cascada por source (borra la sesión y el documento indexado)
+    if source:
+        supabase_client.table("rag_documents").delete().eq("metadata->>source", source).execute()
+    else:
+        supabase_client.table("rag_documents").delete().eq("id", doc_id).execute()
+        
+    return {"status": "success", "message": f"Documento {source or doc_id} eliminado correctamente."}
+
+@router.put("/rag-documents/{doc_id}")
+async def update_rag_document_status(doc_id: str, payload: dict, user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(503)
+    
+    # Obtener metadata actual
+    res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+    if not res.data: raise HTTPException(404, "Documento no encontrado")
+    
+    meta = res.data[0]["metadata"]
+    new_status = payload.get("status", meta.get("status"))
+    meta["status"] = new_status
+    
+    # Si se marca como éxito, cambiamos el tipo de sesión temporal a carga persistente
+    if new_status == "success":
+        meta["type"] = "trd_upload"
+        
+    supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
+    return {"status": "success", "new_status": new_status}
+
+
     
 @router.post("/invitations")
 async def create_invitation(req: InvitationCreate, current_user: dict = Depends(get_current_user)):

@@ -3,6 +3,7 @@ import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, Chevron
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { id: "import", label: "Importar por IA", icon: FileUp },
   { id: "dependencias", label: "Dependencias", icon: Building2 },
   { id: "orgchart", label: "Organigramas", icon: Network },
   { id: "series", label: "Series", icon: FolderOpen },

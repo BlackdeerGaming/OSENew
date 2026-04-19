@@ -34,6 +34,7 @@ import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import StatusModal from './components/ui/StatusModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
+import { normalizeText } from './utils/stringUtils';
 import { supabase } from './lib/supabase';
 
 const DEPS_FLOW = [
@@ -538,74 +539,128 @@ function App() {
         const name = action.payload?.nombre || action.payload?.name || "Registro";
 
         if (action.type === 'CREATE') {
-          // ... (keep previous logic)
-          // Add logging here if needed, but we can log at the end of loop or per action
-          addActivityLog(`Creación ${entityLabel} - ${name}`);
-          
-          const newId = Date.now().toString() + "_" + Math.floor(Math.random()*10000);
-          if (action.id) idMap[action.id] = newId;
-
           const rawPayload = { ...action.payload };
           
-          // Auto-create missing dependencies if they don't exist by name
-          let depId = rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre;
-          const foundDep = dependencias.find(x => x.id === depId || x.nombre?.toLowerCase() === depId?.toLowerCase());
-          if (!foundDep && depId && !idMap[depId] && entity === 'TRD') {
-              const strId = Date.now().toString() + "_dep";
-              idMap[depId] = strId;
-              await addDependencia({ id: strId, entityId: userEntities[0]?.id, nombre: depId, sigla: "GEN", codigo: (Math.floor(Math.random() * 900) + 100).toString() });
-              addActivityLog(`Creación Dependencia - ${depId} (Auto)`);
+          // --- LOGICA DE AUTO-CREACIÓN DE DEPENDENCIAS/SERIES ---
+          if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion' || entity === 'series' || entity === 'subseries') {
+            
+            // 1. Resolver o Crear Dependencia
+            let depIdInput = rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre;
+            let finalDepId = null;
+
+            if (depIdInput) {
+               const targetName = normalizeText(depIdInput);
+               const foundDep = dependencias.find(x => x.id === depIdInput || normalizeText(x.nombre) === targetName);
+               if (foundDep) {
+                 finalDepId = foundDep.id;
+               } else if (idMap[depIdInput]) {
+                 finalDepId = idMap[depIdInput];
+               } else {
+                 const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
+                 idMap[depIdInput] = strId;
+                 await addDependencia({ 
+                   id: strId, 
+                   entidadId: currentEntity?.id || userEntities[0]?.id, 
+                   nombre: depIdInput, 
+                   sigla: "GEN", 
+                   codigo: rawPayload.dependenciaCodigo || (Math.floor(Math.random() * 900) + 100).toString() 
+                 });
+                 addActivityLog(`Auto-creación Dependencia: ${depIdInput}`);
+                 finalDepId = strId;
+               }
+            }
+
+            // 2. Resolver o Crear Serie (si aplica)
+            if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion' || entity === 'subseries') {
+              let serIdInput = rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre;
+              let finalSerId = null;
+
+               if (serIdInput) {
+                 const targetName = normalizeText(serIdInput);
+                 const foundSer = series.find(x => x.id === serIdInput || normalizeText(x.nombre) === targetName);
+                 if (foundSer) {
+                   finalSerId = foundSer.id;
+                } else if (idMap[serIdInput]) {
+                  finalSerId = idMap[serIdInput];
+                } else {
+                  const strId = Date.now().toString() + "_ser_" + Math.floor(Math.random()*100);
+                  idMap[serIdInput] = strId;
+                  await addSerie({ 
+                    id: strId, 
+                    entidadId: currentEntity?.id || userEntities[0]?.id, 
+                    dependenciaId: finalDepId, 
+                    nombre: serIdInput, 
+                    codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
+                    tipoDocumental: rawPayload.tipoDocumental || "Documentos" 
+                  });
+                  addActivityLog(`Auto-creación Serie: ${serIdInput}`);
+                  finalSerId = strId;
+                }
+              }
+              rawPayload.dependenciaId = finalDepId;
+              rawPayload.serieId = finalSerId;
+
+              // 3. Resolver o Crear Subserie (si aplica para TRD/Valoración)
+              if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion') {
+                let subIdInput = rawPayload.subserieId || rawPayload.subserieNombre;
+                if (subIdInput) {
+                  const targetName = normalizeText(subIdInput);
+                  const foundSub = subseries.find(x => x.id === subIdInput || normalizeText(x.nombre) === targetName);
+                  if (foundSub) {
+                    rawPayload.subserieId = foundSub.id;
+                  } else if (idMap[subIdInput]) {
+                    rawPayload.subserieId = idMap[subIdInput];
+                  } else {
+                    const strId = Date.now().toString() + "_sub_" + Math.floor(Math.random()*100);
+                    idMap[subIdInput] = strId;
+                    await addSubserie({
+                      id: strId,
+                      entidadId: currentEntity?.id || userEntities?.[0]?.id,
+                      dependenciaId: finalDepId,
+                      serieId: finalSerId,
+                      nombre: subIdInput,
+                      codigo: rawPayload.subserieCodigo || (Math.floor(Math.random() * 90) + 10).toString(),
+                      tipoDocumental: rawPayload.tipoDocumental || "Documentos"
+                    });
+                    addActivityLog(`Auto-creación Subserie: ${subIdInput}`);
+                    rawPayload.subserieId = strId;
+                  }
+                }
+              }
+            } else {
+              rawPayload.dependenciaId = finalDepId;
+            }
           }
 
-          let serId = rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre;
-          const foundSer = series.find(x => x.id === serId || x.nombre?.toLowerCase() === serId?.toLowerCase());
-          if (!foundSer && serId && !idMap[serId] && entity === 'TRD') {
-              const strId = Date.now().toString() + "_ser";
-              idMap[serId] = strId;
-              let actualDepId = idMap[depId] || foundDep?.id;
-              await addSerie({ id: strId, entityId: userEntities[0]?.id, dependenciaId: actualDepId, nombre: serId, codigo: (Math.floor(Math.random() * 90) + 10).toString(), tipoDocumental: rawPayload.tipoDocumental || "Documentos" });
-              addActivityLog(`Creación Serie - ${serId} (Auto)`);
-          }
-
-          const resolveId = (providedId, collection) => {
-              if (!providedId) return null;
-              if (idMap[providedId]) return idMap[providedId];
-              const found = collection.find(x => x.id === providedId || x.nombre?.toLowerCase() === providedId.toLowerCase());
-              return found ? found.id : providedId;
-          };
+          // --- PERSISTENCIA FINAL DEL REGISTRO ---
+          const finalId = action.id && !action.id.startsWith('temp_') ? action.id : (Date.now().toString() + "_" + Math.floor(Math.random()*1000));
+          if (action.id) idMap[action.id] = finalId;
 
           const payload = {
-              entityId: rawPayload.entidadId || rawPayload.entityId || userEntities[0]?.id || null,
-              nombre: rawPayload.nombre || rawPayload.name || "Sin nombre",
-              codigo: rawPayload.codigo || rawPayload.code || (Math.floor(Math.random() * 900) + 100).toString(),
+              entidadId: currentEntity?.id || userEntities?.[0]?.id || null,
+              nombre: name,
+              codigo: rawPayload.codigo || (Math.floor(Math.random() * 900) + 100).toString(),
               sigla: rawPayload.sigla || "GEN",
-              pais: rawPayload.pais || "Colombia",
-              departamento: rawPayload.departamento || "Cundinamarca",
-              ciudad: rawPayload.ciudad || "Bogotá",
-              direccion: rawPayload.direccion || "Carrera 7 # 12-34",
-              telefono: rawPayload.telefono || "6012345678",
-              dependeDe: resolveId(rawPayload.dependeDe, dependencias) || "ninguna",
-              dependenciaId: resolveId(rawPayload.dependenciaId || rawPayload.dependencyId || rawPayload.dependenciaNombre, dependencias),
-              serieId: resolveId(rawPayload.serieId || rawPayload.seriesId || rawPayload.serieNombre, series),
-              subserieId: resolveId(rawPayload.subserieId || rawPayload.subseriesId || rawPayload.subserieNombre, subseries),
+              dependenciaId: rawPayload.dependenciaId,
+              serieId: rawPayload.serieId,
+              subserieId: rawPayload.subserieId,
               tipoDocumental: rawPayload.tipoDocumental || "Documentos generales",
-              retencionGestion: rawPayload.retencionGestion || 2,
-              retencionCentral: rawPayload.retencionCentral || 10,
+              retencionGestion: parseInt(rawPayload.retencionGestion) || 2,
+              retencionCentral: parseInt(rawPayload.retencionCentral) || 10,
               disposicion: rawPayload.disposicion || "CT",
               procedimiento: rawPayload.procedimiento || "Conservación total según norma.",
-              ddhh: rawPayload.ddhh || "No",
-              actoAdmo: rawPayload.actoAdmo || "Resolución 001",
+              "disp_Conservación total": rawPayload.disposicion === 'CT' || rawPayload.disposicion?.includes('CT'),
+              "disp_Eliminación": rawPayload.disposicion === 'E' || rawPayload.disposicion?.includes('E'),
+              "disp_Selección": rawPayload.disposicion === 'S' || rawPayload.disposicion?.includes('S'),
+              "disp_Medio Técnico": rawPayload.disposicion === 'MT' || rawPayload.disposicion?.includes('MT'),
           };
 
-          const newRecord = { ...payload, id: newId };
-          if (entity === 'dependencias') await addDependencia(newRecord);
-          else if (entity === 'series') await addSerie(newRecord);
-          else if (entity === 'subseries') await addSubserie(newRecord);
-          else if (entity === 'TRD' || entity === 'valoracion') await addTrdRecord(newRecord);
+          if (entity === 'dependencias') await addDependencia({ ...payload, id: finalId });
+          else if (entity === 'series') await addSerie({ ...payload, id: finalId });
+          else if (entity === 'subseries') await addSubserie({ ...payload, id: finalId });
+          else if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion') await addTrdRecord({ ...payload, id: finalId });
           
-          // REGISTRO DE ACTIVIDAD: Individual creation
-          addActivityLog(`Creación ${entityLabel} - ${payload.nombre || newId}`);
-          
+          addActivityLog(`Integrado ${entityLabel}: ${name}`);
           actionsProcessed++;
         } 
         else if (action.type === 'UPDATE') {
@@ -618,7 +673,7 @@ function App() {
              if (entity === 'dependencias') await addDependencia(updated);
              else if (entity === 'series') await addSerie(updated);
              else if (entity === 'subseries') await addSubserie(updated);
-             else if (entity === 'TRD') await addTrdRecord(updated);
+             else if (entity === 'TRD' || entity === 'trd_records') await addTrdRecord(updated);
              actionsProcessed++;
           }
         }
@@ -638,8 +693,11 @@ function App() {
       setModalStatus({ 
         isOpen: true, 
         type: 'success', 
-        message: `¡Sincronización completa! Se han procesado y guardado ${actionsProcessed} registros exitosamente en la nube.` 
+        message: `¡Sincronización completa! Se han procesado y guardado ${actionsProcessed} registros exitosamente en la nube de ${currentEntity?.razonSocial || currentEntity?.nombre || 'la entidad'}.` 
       });
+      // Navegar automáticamente a la vista de TRD para ver los datos integrados
+      setMainView('trd');
+      setActiveModule('datos');
     } else {
       setModalStatus({ isOpen: false, type: 'loading', message: '' });
     }
@@ -817,10 +875,10 @@ function App() {
   };
 
   // Calculate TRD Rows globally
-  const trdRows = trdRecords.map(record => {
-    const dep = dependencias.find(d => d.id === record.dependenciaId) || {};
-    const serie = series.find(s => s.id === record.serieId) || {};
-    const subserie = record.subserieId ? subseries.find(s => s.id === record.subserieId) : null;
+  const trdRows = (trdRecords || []).map(record => {
+    const dep = (dependencias || []).find(d => String(d.id) === String(record.dependenciaId)) || {};
+    const serie = (series || []).find(s => String(s.id) === String(record.serieId)) || {};
+    const subserie = record.subserieId ? (subseries || []).find(s => String(s.id) === String(record.subserieId)) : null;
 
     let disposicionStr = [];
     if (record['disp_Conservación total']) disposicionStr.push("CT");
@@ -845,8 +903,10 @@ function App() {
 
   // Filtered rows for UI and PDF
   const filteredTrdRows = React.useMemo(() => {
-    if (selectedDependencia === "TODAS") return trdRows;
-    return trdRows.filter(r => r.dependencia === selectedDependencia);
+    if (!trdRows) return [];
+    const target = normalizeText(selectedDependencia);
+    if (target === "TODAS" || !target) return trdRows;
+    return trdRows.filter(r => normalizeText(r.dependencia) === target);
   }, [trdRows, selectedDependencia]);
 
   const uniqueDependencias = React.useMemo(() => {
@@ -929,7 +989,7 @@ function App() {
     return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
   }, [currentUser, entities]);
 
-  const currentEntity = entities.find(e => e.id === selectedEntityId) || userEntities[0];
+  const currentEntity = entities.find(e => e.id === selectedEntityId) || userEntities?.[0];
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
@@ -977,8 +1037,8 @@ function App() {
     } else {
       const autoData = {};
       if (userEntities.length > 0) {
-        console.log("📍 Auto-seleccionando entidad:", userEntities[0].nombre || userEntities[0].razonSocial);
-        autoData.entidadId = userEntities[0].id;
+        console.log("📍 Auto-seleccionando entidad:", userEntities?.[0]?.nombre || userEntities?.[0]?.razonSocial);
+        autoData.entidadId = userEntities?.[0]?.id;
       }
       setActiveFormData(autoData);
     }
@@ -1096,6 +1156,17 @@ function App() {
         <div className="relative p-3 pb-8 md:p-6 h-full flex flex-col gap-4">
           
           <div className="flex-1">
+            {activeModule === 'import' && (
+              <TRDImportView 
+                onImportComplete={executeAgentActions} 
+                currentUser={currentUser} 
+                currentEntity={currentEntity} 
+                logoBase64={entidadLogoBase64} 
+                imports={imports}
+                setImports={setImports}
+                addActivityLog={addActivityLog}
+              />
+            )}
             {activeModule === 'dependencias' && (
               <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
@@ -1197,6 +1268,7 @@ function App() {
                 logoBase64={entidadLogoBase64} 
                 imports={imports}
                 setImports={setImports}
+                addActivityLog={addActivityLog}
               />
             </div>
           </div>
@@ -1289,6 +1361,8 @@ function App() {
           <TRDGenerator 
             rows={filteredTrdRows} 
             selectedIds={selectedTrdIds}
+            currentEntity={currentEntity}
+            logoBase64={entidadLogoBase64}
             onToggleRow={() => {}} 
             onToggleAll={() => {}}
           />
