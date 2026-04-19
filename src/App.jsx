@@ -302,35 +302,8 @@ function App() {
   };
 
   const handleResetPassword = (token, newPassword) => {
-    // Si estamos en dev (petición simulada), buscamos el token en los usuarios
-    const userIndex = users.findIndex(u => u.resetToken === token);
-    
-    if (userIndex === -1) {
-       // Mock para tokens generados en la misma sesión dev (si no hay persistencia)
-       if (token.startsWith("RESET-")) {
-          return { success: true };
-       }
-       return { success: false, message: 'El enlace de recuperación no es válido o ha expirado.' };
-    }
-
-    const updatedUsers = [...users];
-    updatedUsers[userIndex] = {
-      ...users[userIndex],
-      password: newPassword,
-      resetToken: null,
-      resetExpiry: null
-    };
-    
-    setUsers(updatedUsers);
+    // El backend ya actualizó la contraseña. Aquí solo confirmamos éxito.
     return { success: true };
-  };
-
-  const handleIssueResetToken = (email, token) => {
-    setUsers(users.map(u => u.email.toLowerCase() === email.toLowerCase() ? {
-      ...u,
-      resetToken: token,
-      resetExpiry: Date.now() + (60 * 60 * 1000) // 1 hora
-    } : u));
   };
 
   const {
@@ -1040,7 +1013,6 @@ function App() {
         {authView === 'forgot-password' && (
           <ForgotPassword 
             onNavigateToLogin={() => setAuthView('login')} 
-            onIssueToken={handleIssueResetToken} 
           />
         )}
         {authView === 'reset-password' && (

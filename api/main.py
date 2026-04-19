@@ -39,7 +39,8 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import HumanMessage, SystemMessage
 from supabase import create_client, Client
 import json
-
+import uuid
+from datetime import datetime, timedelta, timezone
 #  Configuracin 
 
 OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY")
@@ -819,13 +820,90 @@ async def send_activation(request: ActivationEmailRequest):
 
 @router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
-    print(f"\n [MOCK RESET] PARA: {request.email}\n")
-    return {"status": "ok", "message": "Si el correo est registrado, recibirs un enlace de recuperacin."}
+    """Genera un token de reseteo y envía el correo"""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    target_email = request.email.strip().lower()
+    
+    # 1. Verificar si el usuario existe
+    user_res = supabase_client.table("profiles").select("id, nombre").eq("email", target_email).execute()
+    if not user_res.data:
+        # Por seguridad no revelamos si existe o no, pero retornamos éxito simulado si no existe
+        return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
+    
+    user = user_res.data[0]
+    token = str(uuid.uuid4())
+    expiry = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    
+    # 2. Guardar token en DB
+    supabase_client.table("profiles").update({
+        "reset_token": token,
+        "reset_token_expiry": expiry
+    }).eq("id", user["id"]).execute()
+    
+    # 3. Enviar correo
+    if RESEND_API_KEY:
+        reset_link = f"https://ose-new.vercel.app/?reset_token={token}"
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #00bfa5;">Recuperación de Contraseña</h2>
+                <p>Hola {user['nombre']},</p>
+                <p>Has solicitado restablecer tu contraseña en OSE IA. Haz clic en el siguiente botón para continuar:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer Contraseña</a>
+                </div>
+                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducará en 1 hora.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA • Gestión Documental Inteligente</p>
+            </div>
+        </body>
+        </html>
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "from": "OSE IA <onboarding@resend.dev>",
+                        "to": [target_email],
+                        "subject": "🔑 Recuperar tu contraseña - OSE IA",
+                        "html": html_content
+                    }
+                )
+        except Exception as e:
+            print(f"Error enviando correo de reset: {e}")
+
+    return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
-    print(f" Contrasea actualizada para token {request.token}")
-    return {"status": "success", "message": "Tu contrasea ha sido actualizada correctamente."}
+    """Valida el token y actualiza la contraseña"""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    # 1. Buscar usuario por token
+    now = int(datetime.now(timezone.utc).timestamp())
+    res = supabase_client.table("profiles").select("*").eq("reset_token", request.token).execute()
+    
+    if not res.data:
+        raise HTTPException(400, "El enlace de recuperación no es válido.")
+    
+    user = res.data[0]
+    
+    # 2. Verificar expiración
+    if user.get("reset_token_expiry") and user["reset_token_expiry"] < now:
+        raise HTTPException(400, "El enlace de recuperación ha expirado.")
+        
+    # 3. Actualizar contraseña y limpiar token
+    supabase_client.table("profiles").update({
+        "password": request.new_password,
+        "reset_token": None,
+        "reset_token_expiry": None
+    }).eq("id", user["id"]).execute()
+    
+    return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
 @router.post("/activate")
 async def activate_user(req: UserActivate):

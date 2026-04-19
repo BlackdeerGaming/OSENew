@@ -21,12 +21,7 @@ export default function ForgotPassword({ onNavigateToLogin, onIssueToken }) {
 
       const data = await response.json();
       
-      // En entorno local/dev, el backend ya generó un token y lo logueó.
-      // Pero necesitamos que el frontend de "App.jsx" simule que "guardó" ese token para que al hacer clic en el link funcione.
-      // Usamos un prefijo fijo para el mock en dev si el backend no persiste.
-      const mockToken = `RESET-${Math.random().toString(16).substring(2, 10).toUpperCase()}`;
-      onIssueToken(email, mockToken);
-
+      // El backend ahora maneja la generación de tokens y el envío de correos real.
       setStatus('success');
       setMessage(data.message);
     } catch (error) {
