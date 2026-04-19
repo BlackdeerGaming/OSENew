@@ -1679,14 +1679,15 @@ async def signup(req: UserSignUp):
     # 6. Preparar respuesta tipo Login para Auto-Login
     # Nota: Generamos un token temporal o simplemente retornamos los datos según se use en el frontend
     return {
-        "id": user_id,
-        "nombre": req.nombre,
-        "apellido": req.apellido,
-        "email": email,
-        "username": username,
-        "perfil": new_profile["perfil"],
-        "estado": new_profile["estado"],
-        "isActivated": new_profile["is_activated"],
+                "expires_at": inv["expires_at"]
+            })
+        else:
+            # Marcar como vencida silenciosamente solo si no lo est
+            if inv.get("status") != "vencida":
+                supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
+            
+    return valid_invitations
+
 @router.get("/invitations/sent")
 async def get_sent_invitations(entity_id: str | None = None, current_user: dict = Depends(get_current_user)):
     """Lista las invitaciones enviadas (Vista Administrador)"""
@@ -1869,7 +1870,6 @@ async def signup(req: UserSignUp):
         user_entidades.append(invitation["entity_id"])
 
     # 6. Preparar respuesta tipo Login para Auto-Login
-    # Nota: Generamos un token temporal o simplemente retornamos los datos según se use en el frontend
     return {
         "id": user_id,
         "nombre": req.nombre,
@@ -1881,8 +1881,12 @@ async def signup(req: UserSignUp):
         "isActivated": new_profile["is_activated"],
         "entidadId": new_profile["entidad_id"],
         "entidadIds": user_entidades,
-        "token": f"USER-{user_id}" # Simulación de token JWT para el frontend actual
+        "token": f"USER-{user_id}"
     }
+
+@router.get("/health-check")
+async def health_check():
+    return {"status": "ok", "message": "OSE Backend + Supabase ready"}
 
 app.include_router(router)
 
