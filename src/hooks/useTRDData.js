@@ -19,21 +19,21 @@ export function useTRDData(currentUser = null, entityId = null) {
     
     setIsLoading(true);
     try {
-      const trdScope = entityId ? { column: 'entidad_id', value: entityId } : null;
+      const trdScope = entityId || null;
 
-      const [d, s, ss, trd] = await Promise.all([
-        supabase.from('dependencias').select('*')
-          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
-          .order('codigo'),
-        supabase.from('series').select('*')
-          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
-          .order('codigo'),
-        supabase.from('subseries').select('*')
-          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null)
-          .order('codigo'),
-        supabase.from('trd_records').select('*')
-          .filter(trdScope ? trdScope.column : 'id', trdScope ? 'eq' : 'not.is', trdScope ? trdScope.value : null),
-      ]);
+      let depQ = supabase.from('dependencias').select('*').order('codigo');
+      let serQ = supabase.from('series').select('*').order('codigo');
+      let ssQ  = supabase.from('subseries').select('*').order('codigo');
+      let trdQ = supabase.from('trd_records').select('*');
+
+      if (trdScope) {
+        depQ = depQ.eq('entidad_id', trdScope);
+        serQ = serQ.eq('entidad_id', trdScope);
+        ssQ  = ssQ.eq('entidad_id', trdScope);
+        trdQ = trdQ.eq('entidad_id', trdScope);
+      }
+
+      const [d, s, ss, trd] = await Promise.all([depQ, serQ, ssQ, trdQ]);
 
       if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
       if (s.data) setSeries(s.data.map(mapSerieFromDB));

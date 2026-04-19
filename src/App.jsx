@@ -870,13 +870,14 @@ function App() {
 
   const handleLogin = (user, rememberMe) => {
     setCurrentUser(user);
-    // Establecer la entidad inicial basada en el perfil
-    if (user.entidadId) {
-      setSelectedEntityId(user.entidadId);
-    } else if (user.entidadIds?.length > 0) {
-      setSelectedEntityId(user.entidadIds[0]);
-    } else if (entities.length > 0) {
-      setSelectedEntityId(entities[0].id);
+    // Establecer la entidad inicial basada en el perfil del usuario
+    // Prioridad: entidadId directo > entidadIds[0] > primera entidad disponible
+    const entityFromUser = user.entidadId || user.entidadIds?.[0] || null;
+    if (entityFromUser) {
+      setSelectedEntityId(entityFromUser);
+    } else if (user.role === 'superadmin') {
+      // superadmin: deja el selector libre, no forzamos ninguna entidad
+      setSelectedEntityId(null);
     }
     
     if (rememberMe) {
@@ -1200,7 +1201,8 @@ function App() {
             </div>
           </div>
 
-          {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && currentUser?.role !== 'user' && (
+          {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && 
+           !['Consulta', 'consulta', 'viewer'].includes(currentUser?.role || currentUser?.perfil || '') && (
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-8">
              <button 
                onClick={handleSave}
@@ -1211,6 +1213,7 @@ function App() {
              </button>
            </div>
           )}
+
         </div>
       </main>
     </div>

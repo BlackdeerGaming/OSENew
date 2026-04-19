@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import base64
 from dotenv import load_dotenv
@@ -1620,10 +1620,11 @@ async def signup(req: UserSignUp):
         "apellido": req.apellido,
         "email": email,
         "username": username,
-        "perfil": new_profile["perfil"],
+        "perfil": role_invited if invitation else "Consulta",
+        "role": role_invited if invitation else "Consulta",
         "estado": new_profile["estado"],
         "isActivated": new_profile["is_activated"],
-        "entidadId": new_profile["entidad_id"],
+        "entidadId": invitation["entity_id"] if invitation else None,
         "entidadIds": user_entidades,
         "token": f"USER-{user_id}"
     }
