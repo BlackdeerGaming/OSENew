@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 #  CRITICAL: Load env vars FIRST before any other imports that read os.getenv 
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from .permissions import get_current_user, require_super_admin, require_entity_admin
 JWT_SECRET = os.environ.get("JWT_SECRET", "ose-ia-secret-key-2024-standard")
@@ -270,12 +270,19 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
         fitz_doc = fitz.open(stream=content, filetype="pdf")
         pages_to_process = min(len(fitz_doc), 20)
         for i in range(pages_to_process):
-            extracted_text += f"\n--- PÃƒÂGINA {i+1} ---\n" + fitz_doc[i].get_text()
+            extracted_text += f"\n--- PÃƒÂ GINA {i+1} ---\n" + fitz_doc[i].get_text()
         fitz_doc.close()
     except Exception as e:
-        print(f"Ã¢ÂÅ’ Error leyendo archivo en segundo plano: {e}")
+        print(f"❌ Error leyendo archivo en segundo plano: {e}")
+        current_meta = {}
+        try:
+            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            if row.data: current_meta = row.data[0].get("metadata") or {}
+        except: pass
+        current_meta.update({"status": "error", "message": f"Error leyendo el archivo: {str(e)}"})
+        
         supabase_client.table("rag_documents").update({
-            "metadata": {"status": "error", "message": f"Error leyendo el archivo: {str(e)}"}
+            "metadata": current_meta
         }).eq("id", doc_id).execute()
         return
 
@@ -1231,7 +1238,7 @@ async def get_entities():
     return mapped
 
 @router.post("/analyze-trd")
-async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
+async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = Form(""), user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
     content = await file.read()
     filename_clean = f"{datetime.now().timestamp()}_{file.filename.replace(' ', '_')}"

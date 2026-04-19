@@ -37,24 +37,41 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     }
     try {
       const entId = currentEntity?.id || '';
-      const res = await fetch(`${API_BASE_URL}/imports${entId ? `?entidad_id=${entId}` : ''}`, {
+      const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
         headers: { "Authorization": `Bearer ${currentUser.token}` }
       });
       if (res.ok) {
         const data = await res.json();
         setImports(prev => {
           // Mantener en frontend solo aquellos que aún se están subiendo localmente 
-          // (no tienen reflejo backend todavía)
-          const uploading = prev.filter(p => p.isUploading);
+          // (no tienen reflejo backend todavía) o que tienen un error local síncrono.
+          const uploading = prev.filter(p => p.isUploading || (p.status === 'error' && p.id.startsWith('temp_')));
           
-          // Agregamos los que vienen del backend o actualizamos
           const merged = [...uploading];
           for (const d of data) {
+             // Sólo queremos mostrar documentos de tipo 'temp_trd_session' o 'trd_upload' en esta vista.
+             if (d.metadata?.type !== 'temp_trd_session' && d.metadata?.type !== 'trd_upload') continue;
+
+             const mappedStatus = d.status === 'success' ? 'success' : 
+                                  d.status === 'processing' ? 'analyzing' : 
+                                  d.status === 'error' ? 'error' : 'analyzing';
+
+             const mappedImport = {
+                id: d.id,
+                filename: d.filename || d.metadata?.source || 'Documento sin nombre',
+                status: mappedStatus,
+                actions: d.metadata?.actions || [],
+                error: d.metadata?.message || null,
+                ocr_engaged: true,
+                isUploading: false,
+                rawFile: null
+             };
+
             const idx = merged.findIndex(m => m.id === d.id);
             if (idx >= 0) {
-               merged[idx] = d;
+               merged[idx] = mappedImport;
             } else {
-               merged.push(d);
+               merged.push(mappedImport);
             }
           }
           return merged;
@@ -104,10 +121,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       
       setImports(prev => prev.map(imp => {
          if (imp.id === tempId) {
+            // Map backend 'processing' strictly to 'analyzing' to match UI labels
+            const backendStatus = data.status === 'processing' ? 'analyzing' : (data.status || 'analyzing');
             return {
                ...imp,
-               id: data.import_id || imp.id,
-               status: data.status || 'analyzing',
+               id: data.import_id || data.id || imp.id,
+               status: backendStatus,
                isUploading: false
             };
          }
