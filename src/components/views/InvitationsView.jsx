@@ -131,7 +131,11 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       }
     } catch (error) {
       console.error(error);
-      const handleResend = async (id) => {
+      alert("Error al cancelar invitacion: " + error.message);
+    }
+  };
+
+  const handleResend = async (id) => {
     setProcessingId(id);
     try {
       const res = await fetch(`${API_BASE_URL}/invitations/${id}/resend`, {
@@ -147,6 +151,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       }
     } catch (error) {
       console.error(error);
+      alert("Error de conexión al reenviar: " + error.message);
     } finally {
       setProcessingId(null);
     }
