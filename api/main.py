@@ -215,6 +215,14 @@ class UserUpdate(BaseModel):
     isActivated: bool | None = None
     iaDisponible: bool | None = None
 
+class UserSignUp(BaseModel):
+    nombre: str
+    apellido: str | None = ""
+    email: str
+    username: str
+    password: str
+    phone: str | None = ""
+
 class EntityCreate(BaseModel):
     razonSocial: str
     nit: str | None = None
@@ -1613,7 +1621,76 @@ async def get_activity_logs(current_user: dict = Depends(get_current_user)):
 
 app.include_router(router)
 
-@app.get("/")
+@router.post("/auth/signup")
+async def signup(req: UserSignUp):
+    """Crea un nuevo perfil y vincula invitaciones si existen."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    email = req.email.strip().lower()
+    username = req.username.strip().lower()
+    
+    # 1. Verificar si ya existe
+    existing = supabase_client.table("profiles").select("id").or_(f"email.eq.{email},username.eq.{username}").execute()
+    if existing.data:
+        raise HTTPException(400, "El correo electrónico o nombre de usuario ya está registrado.")
+    
+    # 2. Buscar invitaciones pendientes
+    inv_res = supabase_client.table("invitations").select("*").eq("email", email).eq("status", "pendiente").execute()
+    invitation = inv_res.data[0] if inv_res.data else None
+    
+    # 3. Datos base del perfil
+    new_profile = {
+        "nombre": req.nombre,
+        "apellido": req.apellido,
+        "email": email,
+        "username": username,
+        "password": req.password, # Nota: En producción hasear. Aquí mantenemos coherencia con el resto.
+        "perfil": "Consulta", # Rol global por defecto
+        "estado": "Activo" if invitation else "Inactivo",
+        "is_activated": True if invitation else False,
+        "entidad_id": invitation["entity_id"] if invitation else None
+    }
+    
+    # 4. Insertar Perfil
+    prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
+    if not prof_insert.data:
+        raise HTTPException(500, "Error al crear el perfil.")
+    
+    user_id = prof_insert.data[0]["id"]
+    
+    # 5. Si hay invitación, vincular a entidad y marcar como aceptada
+    user_entidades = []
+    if invitation:
+        role_invited = invitation.get("role_invited", "usuario")
+        # Crear la relación en profile_entities
+        supabase_client.table("profile_entities").insert({
+            "profile_id": user_id,
+            "entity_id": invitation["entity_id"],
+            "role": role_invited
+        }).execute()
+        
+        # Marcar invitación como aceptada
+        supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
+        
+        user_entidades.append(invitation["entity_id"])
+
+    # 6. Preparar respuesta tipo Login para Auto-Login
+    # Nota: Generamos un token temporal o simplemente retornamos los datos según se use en el frontend
+    return {
+        "id": user_id,
+        "nombre": req.nombre,
+        "apellido": req.apellido,
+        "email": email,
+        "username": username,
+        "perfil": new_profile["perfil"],
+        "estado": new_profile["estado"],
+        "isActivated": new_profile["is_activated"],
+        "entidadId": new_profile["entidad_id"],
+        "entidadIds": user_entidades,
+        "token": f"USER-{user_id}" # Simulación de token JWT para el frontend actual
+    }
+
+@router.get("/health-check")
 async def health_check():
     return {"status": "ok", "message": "OSE Backend + Supabase ready"}
 

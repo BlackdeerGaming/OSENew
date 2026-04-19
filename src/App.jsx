@@ -998,9 +998,8 @@ function App() {
         )}
         {authView === 'signup' && (
           <SignUp 
-            onSignUp={(u) => { setUsers([...users, u]); setAuthView('login'); }} 
+            onSignUp={(userData) => handleLogin(userData, true)} 
             onNavigateToLogin={() => setAuthView('login')} 
-            initialEmail={invitationContext?.email}
           />
         )}
         {authView === 'activate' && (
