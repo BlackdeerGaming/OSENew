@@ -57,8 +57,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
 
   const handleCreateInvite = async () => {
     if (!newInvite.email || !newInvite.entity_id) {
-      alert("Por favor completa los campos obligatorios.");
-      return;
+       alert("Por favor completa los campos obligatorios.");
+       return;
     }
     setIsCreating(true);
     try {
@@ -70,7 +70,11 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
         },
         body: JSON.stringify(newInvite)
       });
-      const data = await res.json();
+      
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch(e) { data = { detail: text }; }
+
       if (res.ok) {
         setMessage({ type: 'success', text: "Invitación enviada con éxito." });
         setShowCreateModal(false);
@@ -80,7 +84,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
         alert(data.detail || "Error al enviar invitación");
       }
     } catch (error) {
-      alert("Error de conexión");
+      console.error(error);
+      alert("Error de conexión: " + error.message);
     } finally {
       setIsCreating(false);
     }
@@ -584,7 +589,5 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
 const XCircleIcon = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);9 0 0118 0z" />
   </svg>
 );

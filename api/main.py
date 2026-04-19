@@ -1385,7 +1385,7 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     res = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)").eq("email", email).eq("status", "pendiente").execute()
     
     # Filtrar expiradas manualmente por ahora
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     valid_invitations = []
     for inv in res.data:
         exp = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
@@ -1398,8 +1398,10 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
                 "created_at": inv["created_at"],
                 "expires_at": inv["expires_at"]
             })
-            # Marcar como vencida silenciosamente
-            supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
+        else:
+            # Marcar como vencida silenciosamente solo si no lo est
+            if inv.get("status") != "vencida":
+                supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
             
     return valid_invitations
 
