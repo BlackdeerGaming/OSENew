@@ -195,9 +195,15 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   const deleteTrdRecord = async (id) => {
     setTrdRecords(prev => prev.filter(x => x.id !== id));
-    if (supabase) {
-      const { error } = await supabase.from('trd_records').delete().eq('id', id);
-      if (error) throw error;
+    try {
+      const response = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/trd_records/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      if (!response.ok) throw new Error('Delete failed');
+    } catch (err) {
+      console.error('❌ Error deleting TRD record:', err);
+      throw err;
     }
   };
 
@@ -205,7 +211,7 @@ export function useTRDData(currentUser = null, entityId = null) {
     dependencias, series, subseries, trdRecords,
     isLoading, isSynced,
     setDependencias, setSeries, setSubseries, setTrdRecords,
-    addDependencia, updateDependencia, deleteDependencia,
+    addDependencia, updateDependencia: addDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
     addTrdRecord, deleteTrdRecord, refreshData,

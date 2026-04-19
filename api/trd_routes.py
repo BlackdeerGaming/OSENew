@@ -180,7 +180,7 @@ async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = De
     res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entity_id", entity_id).execute()
     return {"status": "deleted", "id": dep_id}
 
-# ---------- Series (similar pattern) ----------
+# ---------- Series ----------
 @router.post("/entity/{entity_id}/series", response_model=dict)
 async def create_serie_entity(
     entity_id: str,
@@ -208,7 +208,32 @@ async def list_series_entity(entity_id: str, user: dict = Depends(get_current_us
     res = supabase_client.table("series").select("*").eq("entity_id", entity_id).order("codigo").execute()
     return res.data or []
 
-# List, update, delete for series follow same pattern (omitted for brevity)
+@router.put("/entity/{entity_id}/series/{serie_id}", response_model=dict)
+async def update_serie_entity(
+    entity_id: str,
+    serie_id: str,
+    payload: SerieCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    data = payload.dict(exclude_unset=True)
+    res = supabase_client.table("series").update(data).eq("id", serie_id).eq("entity_id", entity_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Serie not found")
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "series", serie_id, _record_to_dict(record))
+        supabase_client.table("series").update({"cloud_key": path}).eq("id", serie_id).execute()
+    except Exception: pass
+    return record
+
+@router.delete("/entity/{entity_id}/series/{serie_id}")
+async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "series", serie_id)
+    except: pass
+    supabase_client.table("series").delete().eq("id", serie_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted", "id": serie_id}
 
 # ---------- Subseries ----------
 @router.post("/entity/{entity_id}/subseries", response_model=dict)
@@ -238,6 +263,33 @@ async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current
     res = supabase_client.table("subseries").select("*").eq("entity_id", entity_id).order("codigo").execute()
     return res.data or []
 
+@router.put("/entity/{entity_id}/subseries/{subserie_id}", response_model=dict)
+async def update_subserie_entity(
+    entity_id: str,
+    subserie_id: str,
+    payload: SubserieCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    data = payload.dict(exclude_unset=True)
+    res = supabase_client.table("subseries").update(data).eq("id", subserie_id).eq("entity_id", entity_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Subserie not found")
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "subseries", subserie_id, _record_to_dict(record))
+        supabase_client.table("subseries").update({"cloud_key": path}).eq("id", subserie_id).execute()
+    except Exception: pass
+    return record
+
+@router.delete("/entity/{entity_id}/subseries/{subserie_id}")
+async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
+    except: pass
+    supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted", "id": subserie_id}
+
 # ---------- TRD Records ----------
 @router.post("/entity/{entity_id}/trd_records", response_model=dict)
 async def create_trd_record_entity(
@@ -265,6 +317,33 @@ async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_curre
     require_entity_admin(user, entity_id)
     res = supabase_client.table("trd_records").select("*").eq("entity_id", entity_id).execute()
     return res.data or []
+
+@router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
+async def update_trd_record_entity(
+    entity_id: str,
+    record_id: str,
+    payload: TRDRecordCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    data = payload.dict(exclude_unset=True)
+    res = supabase_client.table("trd_records").update(data).eq("id", record_id).eq("entity_id", entity_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="TRD Record not found")
+    record = res.data[0]
+    try:
+        path = upload_record(supabase_client, entity_id, "trd_records", record_id, _record_to_dict(record))
+        supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record_id).execute()
+    except Exception: pass
+    return record
+
+@router.delete("/entity/{entity_id}/trd_records/{record_id}")
+async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "trd_records", record_id)
+    except: pass
+    supabase_client.table("trd_records").delete().eq("id", record_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted", "id": record_id}
 
 # ---------- Funciones ----------
 @router.post("/entity/{entity_id}/funciones", response_model=dict)
