@@ -29,7 +29,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
   // ── Manual mode: list of cargo entries ────────────────────────────────
   const [manualEntries, setManualEntries] = useState([
-    { cargo: "", proposito: "", funciones: "", relaciones: "" }
+    { cargo: "", proposito: "", funcionesSel: [], relaciones: "" }
   ]);
 
   const [loading, setLoading] = useState(false);
@@ -97,7 +97,16 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
           }
           html += `<h2>Identificación del Cargo: ${entry.cargo || "[Escriba Cargo]"}</h2>`;
           html += `<h3>Propósito Principal</h3><p>${entry.proposito || "Describa el propósito principal aquí..."}</p>`;
-          html += `<h3>Funciones Principales y Deberes</h3><p>${entry.funciones.replace(/\n/g, "<br/>") || "Liste las funciones..."}</p>`;
+          html += `<h3>Funciones Principales y Deberes</h3><ul>`;
+          if (entry.funcionesSel && entry.funcionesSel.length > 0) {
+            entry.funcionesSel.forEach(fnId => {
+              const fnObj = funcionesList.find(f => f.id === fnId);
+              if (fnObj) html += `<li>${fnObj.titulo}</li>`;
+            });
+          } else {
+            html += `<li>No se han seleccionado funciones.</li>`;
+          }
+          html += `</ul>`;
           html += `<h3>Relación con Otras Áreas</h3><p>${entry.relaciones || "Describa dependencias inter-áreas..."}</p>`;
         });
         setGeneratedHtml(html);
@@ -176,7 +185,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   };
 
   const addEntry = () => {
-    setManualEntries(prev => [...prev, { cargo: "", proposito: "", funciones: "", relaciones: "" }]);
+    setManualEntries(prev => [...prev, { cargo: "", proposito: "", funcionesSel: [], relaciones: "" }]);
   };
 
   const removeEntry = (idx) => {
@@ -371,9 +380,47 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Funciones</label>
-                          <textarea value={entry.funciones} onChange={e => updateEntry(idx, "funciones", e.target.value)}
-                            className="bg-background border border-input rounded min-h-20 p-2 text-sm focus:ring-1 focus:ring-slate-400 focus:border-slate-400 outline-none resize-none"
-                            placeholder={"1. Coordinar...\n2. Ejecutar..."} />
+                          <select 
+                            value=""
+                            onChange={(e) => {
+                              const selectedId = e.target.value;
+                              if (!selectedId) return;
+                              const currentSel = entry.funcionesSel || [];
+                              if (!currentSel.includes(selectedId)) {
+                                updateEntry(idx, "funcionesSel", [...currentSel, selectedId]);
+                              }
+                            }}
+                            className="bg-background border border-input rounded h-9 px-3 text-sm focus:ring-1 focus:ring-slate-400 focus:border-slate-400 outline-none"
+                          >
+                            <option value="">Buscar y agregar función...</option>
+                            {funcionesList.map(f => (
+                              <option key={f.id} value={f.id}>
+                                {f.codigo_funcion ? f.codigo_funcion + " - " : ""}{f.titulo}
+                              </option>
+                            ))}
+                          </select>
+                          
+                          {(entry.funcionesSel || []).length > 0 && (
+                            <div className="flex flex-col gap-1.5 mt-2 bg-slate-50 p-2 rounded border border-slate-100 max-h-32 overflow-y-auto">
+                              {(entry.funcionesSel || []).map(fnId => {
+                                const fnObj = funcionesList.find(f => f.id === fnId);
+                                return (
+                                  <div key={fnId} className="flex justify-between items-start text-xs p-1.5 bg-white border border-slate-200 rounded shadow-sm">
+                                    <span className="font-medium text-slate-700 leading-tight pr-2">
+                                      {fnObj ? fnObj.titulo : 'Función no encontrada'}
+                                    </span>
+                                    <button 
+                                      onClick={() => updateEntry(idx, "funcionesSel", entry.funcionesSel.filter(id => id !== fnId))}
+                                      title="Quitar función"
+                                      className="text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded p-1 transition-colors shrink-0"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex flex-col gap-1">
