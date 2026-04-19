@@ -30,11 +30,21 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail='Invalid authentication token')
 
 def require_entity_admin(user: dict, entity_id: str):
-    if user.get('role') not in ('administrador', 'admin', 'superadmin'):
-        raise HTTPException(status_code=403, detail='Insufficient role')
-    if user.get('role') in ('administrador', 'admin') and str(user.get('entity_id')) != str(entity_id):
+    # superadmin passes automatically for everything
+    if user.get('role') == 'superadmin':
+        return True
+        
+    if user.get('role') not in ('administrador', 'admin'):
+        raise HTTPException(status_code=403, detail='Insufficient role for this operation')
+    
+    # Check if the user is attached to this entity
+    if str(user.get('entity_id')) != str(entity_id):
+        # Even if the JWT says one entity, the user might have others in profile_entities.
+        # However, for simplicity and security, we expect the frontend to be in the correct context
+        # or we verify in the DB.
         raise HTTPException(status_code=403, detail='Cannot access other entity data')
-    # superadmin passes automatically
+    
+    return True
 
 def require_super_admin(user: dict):
     if user.get('role') != 'superadmin':

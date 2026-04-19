@@ -1219,13 +1219,13 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     # 1. Validar permisos: Solo admin de la entidad o superadmin
     user_role = current_user.get("role")
-    user_entity_id = str(current_user.get("entity_id") or "")
     target_entity_id = str(req.entity_id or "")
 
     if user_role != SUPERADMIN_ROLE:
-        if user_entity_id != target_entity_id:
-            raise HTTPException(403, "No puedes invitar a usuarios a una entidad que no gestionas")
-        require_entity_admin(current_user, target_entity_id)
+        # Verificación dinámica: ¿Es admin de esta entidad específica?
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
 
     target_email = req.email.strip().lower()
 
@@ -1398,22 +1398,30 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
                 "created_at": inv["created_at"],
                 "expires_at": inv["expires_at"]
             })
-        else:
             # Marcar como vencida silenciosamente
             supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
             
     return valid_invitations
 
 @router.get("/invitations/sent")
-async def get_sent_invitations(current_user: dict = Depends(get_current_user)):
+async def get_sent_invitations(entity_id: str | None = None, current_user: dict = Depends(get_current_user)):
     """Lista las invitaciones enviadas (Vista Administrador)"""
     if not supabase_client: return []
     if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
         raise HTTPException(403, "Permisos insuficientes")
     
     query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        query = query.eq("entity_id", current_user.get("entity_id"))
+    
+    if current_user.get("role") == SUPERADMIN_ROLE:
+        if entity_id:
+            query = query.eq("entity_id", entity_id)
+    else:
+        # Verificación dinámica: solo puede ver de entidades donde es admin
+        target_id = entity_id or current_user.get("entity_id")
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
+        query = query.eq("entity_id", target_id)
     
     res = query.order("created_at", desc=True).execute()
     return [{
@@ -1434,13 +1442,37 @@ async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_curren
     inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
     if not inv_res.data: raise HTTPException(404, "No encontrada")
     
+    target_entity_id = inv_res.data[0]["entity_id"]
+    
     if current_user.get("role") != SUPERADMIN_ROLE:
-        if current_user.get("entity_id") != inv_res.data[0]["entity_id"]:
-            raise HTTPException(403, "No autorizado")
-        require_entity_admin(current_user, inv_res.data[0]["entity_id"])
-        
-    supabase_client.table("invitations").delete().eq("id", inv_id).execute()
-    return {"status": "success"}
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
+             
+    # Cambiamos el estado a 'cancelada'
+    supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
+    return {"status": "success", "message": "Invitación cancelada"}
+
+@router.post("/invitations/{inv_id}/resend")
+async def resend_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(503)
+    
+    inv_res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
+    if not inv_res.data: raise HTTPException(404, "Invitación no encontrada")
+    inv = inv_res.data[0]
+    
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", inv["entity_id"]).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
+    
+    new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    supabase_client.table("invitations").update({
+        "expires_at": new_expiry,
+        "status": "pendiente" 
+    }).eq("id", inv_id).execute()
+    
+    return {"status": "success", "message": "Invitación reenviada correctamente"}
 
 @router.post("/invitations/{inv_id}/respond")
 async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):

@@ -126,8 +126,29 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       }
     } catch (error) {
       console.error(error);
+      const handleResend = async (id) => {
+    setProcessingId(id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/invitations/${id}/resend`, {
+        method: 'POST',
+        headers: { "Authorization": `Bearer ${currentUser.token}` }
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: "Invitación reenviada correctamente (+24h de validez)." });
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.detail || "Error al reenviar");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setProcessingId(null);
     }
   };
+
+  const [viewDetailId, setViewDetailId] = useState(null);
+  const detailInv = invitations.find(i => i.id === viewDetailId);
 
   const filteredInvites = invitations.filter(inv => {
     if (filterEntity !== 'all' && inv.entity_id !== filterEntity) return false;
@@ -143,7 +164,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
           <div className="mb-10 bg-gradient-to-br from-primary to-primary-foreground/10 p-1 rounded-3xl shadow-xl shadow-primary/10 animate-in fade-in slide-in-from-top-6 duration-1000">
             <div className="bg-white/95 backdrop-blur-md rounded-[1.4rem] p-8 flex flex-col md:flex-row items-center gap-8 border border-white">
               <div className="bg-primary/10 p-6 rounded-[2rem] shrink-0">
-                <Send className="h-10 w-10 text-primary animate-bounce-subtle" />
+                <Send className="h-10 w-10 text-primary" />
               </div>
               <div className="flex-1 text-center md:text-left">
                 <span className="bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full mb-4 inline-block">
@@ -233,7 +254,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   <Filter className="h-4 w-4" />
                   <span className="text-[10px] uppercase font-black tracking-tighter">Filtrar por:</span>
                 </div>
-                {currentUser?.role === 'superadmin' && (
+                {(currentUser?.role === 'superadmin' || entities.length > 1) && (
                   <select 
                     value={filterEntity}
                     onChange={e => setFilterEntity(e.target.value)}
@@ -253,6 +274,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   <option value="aceptada">Aceptadas</option>
                   <option value="rechazada">Rechazadas</option>
                   <option value="vencida">Vencidas</option>
+                  <option value="cancelada">Canceladas</option>
                 </select>
               </div>
             )}
@@ -290,6 +312,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                           "p-4 rounded-2xl transition-colors",
                           inv.status === 'aceptada' ? "bg-emerald-50 text-emerald-600" : 
                           inv.status === 'pendiente' ? "bg-amber-50 text-amber-600" :
+                          inv.status === 'cancelada' ? "bg-rose-50 text-rose-400" :
                           "bg-slate-100 text-slate-400"
                         )}>
                           {activeTab === 'received' ? <Briefcase className="h-6 w-6" /> : <UserIcon className="h-6 w-6" />}
@@ -303,6 +326,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                               "px-3 py-1 text-[9px] font-black rounded-full uppercase tracking-widest border",
                               inv.status === 'pendiente' ? "bg-amber-50 text-amber-600 border-amber-100" :
                               inv.status === 'aceptada' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                              inv.status === 'cancelada' ? "bg-rose-50 text-rose-600 border-rose-100" :
                               "bg-slate-50 text-slate-400 border-slate-200"
                             )}>
                               {inv.status}
@@ -353,9 +377,26 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                           </>
                         )}
                         {activeTab === 'sent' && (
-                           <>
+                           <div className="flex items-center gap-1">
+                             <button
+                               onClick={() => setViewDetailId(inv.id)}
+                               className="px-4 py-2 rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 font-black text-[10px] uppercase tracking-widest transition-all"
+                             >
+                               Detalle
+                             </button>
+                             {inv.status !== 'aceptada' && (
+                               <button
+                                 disabled={processingId === inv.id}
+                                 onClick={() => handleResend(inv.id)}
+                                 className="p-3 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                                 title="Reenviar invitación"
+                               >
+                                 <Send className="h-5 w-5" />
+                               </button>
+                             )}
                              {inv.status === 'pendiente' && (
                                <button 
+                                 disabled={processingId === inv.id}
                                  onClick={() => handleDelete(inv.id)}
                                  className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                                  title="Cancelar invitación"
@@ -363,10 +404,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                                  <Trash2 className="h-5 w-5" />
                                </button>
                              )}
-                             <div className="text-[10px] font-bold text-slate-400 px-4 italic">
-                               Ref: #{inv.id.slice(0,8)}
-                             </div>
-                           </>
+                           </div>
                         )}
                       </div>
                     </div>
@@ -396,6 +434,65 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
             </div>
         </div>
       </div>
+
+      {/* Modal para Ver Detalle */}
+      {viewDetailId && detailInv && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in zoom-in duration-300">
+           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-6">
+                <button onClick={() => setViewDetailId(null)} className="text-slate-300 hover:text-slate-600">
+                   <XCircle className="h-6 w-6" />
+                </button>
+              </div>
+              <div className="mb-8">
+                 <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center text-primary mb-6">
+                   <Search className="h-8 w-8" />
+                 </div>
+                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Detalle de Invitación</h2>
+                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Información enviada originalmente</p>
+              </div>
+              
+              <div className="space-y-6">
+                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                    <div className="mb-4">
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block mb-1">Correo Invitado</span>
+                      <p className="font-bold text-slate-800">{detailInv.email}</p>
+                    </div>
+                    <div className="mb-4">
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block mb-1">Entidad</span>
+                      <p className="font-bold text-slate-800">{detailInv.entity_name}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block mb-1">Rol Asignado</span>
+                      <p className="font-bold text-primary uppercase text-xs">{detailInv.role || 'usuario'}</p>
+                    </div>
+                 </div>
+
+                 <div className="flex flex-col gap-2">
+                   <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>Estado:</span>
+                      <span className="text-slate-800 uppercase tracking-tighter">{detailInv.status}</span>
+                   </div>
+                   <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>Enviada por:</span>
+                      <span>{detailInv.inviter}</span>
+                   </div>
+                   <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>Vence:</span>
+                      <span className="text-rose-500">{new Date(detailInv.expires_at).toLocaleString()}</span>
+                   </div>
+                 </div>
+
+                 <button 
+                  onClick={() => setViewDetailId(null)}
+                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest mt-4"
+                 >
+                   Cerrar Vista
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Modal para Crear Invitación */}
       {showCreateModal && (
@@ -441,20 +538,19 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                       >
                          <option value="usuario">Usuario Estándar</option>
                          <option value="administrador">Administrador</option>
-                         <option value="superadmin" disabled={currentUser.role !== 'superadmin'}>Superadmin</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 block px-1">Entidad Destino</label>
                       <select 
-                        disabled={currentUser.role !== 'superadmin'}
+                        disabled={currentUser.role !== 'superadmin' && entities.length <= 1}
                         value={newInvite.entity_id}
                         onChange={e => setNewInvite({...newInvite, entity_id: e.target.value})}
                         className="w-full px-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 outline-none focus:border-primary transition-all disabled:opacity-60"
                       >
-                         {currentUser.role !== 'superadmin' ? (
-                            <option value={currentUser.entidadId}>{currentUser.entidadNombre}</option>
+                         {(currentUser.role !== 'superadmin' && entities.length <= 1) ? (
+                            <option value={currentUser.entity_id}>{currentUser.entidadNombre || "Entidad actual"}</option>
                          ) : (
                             entities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)
                          )}
@@ -488,5 +584,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
 const XCircleIcon = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);9 0 0118 0z" />
   </svg>
 );

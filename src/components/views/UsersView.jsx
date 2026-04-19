@@ -263,15 +263,6 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
               Nuevo Usuario (Directo)
             </button>
           )}
-          {currentUser?.role !== 'superadmin' && (
-             <button 
-                onClick={() => onNavigate && onNavigate('invitations')}
-                className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
-             >
-                <Mail className="h-5 w-5" />
-                Invitar Miembros
-             </button>
-          )}
         </div>
       </div>
 
