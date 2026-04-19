@@ -871,16 +871,17 @@ async def request_reset(request: PasswordResetRequest):
         """
         try:
             async with httpx.AsyncClient() as client:
-                await client.post(
+                res = await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                     json={
                         "from": "OSE IA <onboarding@resend.dev>",
                         "to": [target_email],
-                        "subject": "🔑 Recuperar tu contraseña - OSE IA",
+                        "subject": "Recuperar contrasena - OSE IA",
                         "html": html_content
                     }
                 )
+                print(f"DEBUG Email Reset status: {res.status_code}")
         except Exception as e:
             print(f"Error enviando correo de reset: {e}")
 
@@ -1373,7 +1374,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Invitación a OSE IA</title>
+              <title>Invitaci&#243;n a OSE IA</title>
             </head>
             <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
               <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
@@ -1386,11 +1387,11 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                       <tr>
                         <td style="padding: 40px 50px;">
                           <div style="text-align: center; margin-bottom: 30px;">
-                             <h1 style="color: #0f172a; fontSize: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 0; font-weight: 800;">OSE IA</h1>
+                             <h1 style="color: #0f172a; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 0; font-weight: 800;">OSE IA</h1>
                           </div>
                           
-                          <h2 style="color: #0f172a; font-size: 28px; font-weight: 800; line-height: 36px; margin: 0 0 20px 0; text-align: center; tracking: -0.02em;">
-                            Colaboración Pendiente
+                          <h2 style="color: #0f172a; font-size: 28px; font-weight: 800; line-height: 36px; margin: 0 0 20px 0; text-align: center; letter-spacing: -0.02em;">
+                            Colaboraci&#243;n Pendiente
                           </h2>
                           
                           <p style="color: #64748b; font-size: 16px; line-height: 26px; margin: 0 0 30px 0; text-align: center;">
@@ -1417,15 +1418,15 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
 
                           <div style="text-align: center; margin-bottom: 35px;">
                             <a href="{invite_link}" style="background-color: #00bfa5; color: #ffffff; display: inline-block; font-size: 14px; font-weight: 800; line-height: 20px; padding: 18px 40px; text-align: center; text-decoration: none; border-radius: 14px; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 10px 15px rgba(0,191,165,0.2);">
-                              Aceptar Invitación
+                              Aceptar Invitaci&#243;n
                             </a>
                           </div>
 
                           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
                           
                           <p style="color: #94a3b8; font-size: 12px; line-height: 20px; margin: 0; text-align: center;">
-                            <strong>Nota para usuarios nuevos:</strong> Si no tienes una cuenta, este enlace te guiará gratis al registro. Al terminar, tu invitación estará lista para ser aceptada.<br><br>
-                            Esta invitación es válida por 24 horas.
+                            <strong>Nota para usuarios nuevos:</strong> Si no tienes una cuenta, este enlace te guiar&#225; gratis al registro. Al terminar, tu invitaci&#243;n estar&#225; lista para ser aceptada.<br><br>
+                            Esta invitaci&#243;n es v&#225;lida por 24 horas.
                           </p>
                         </td>
                       </tr>
@@ -1433,8 +1434,8 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                       <tr>
                         <td style="padding: 20px 50px 40px 50px; background-color: #f8fafc; text-align: center;">
                           <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-                            © 2024 OSE IA • Gestión Documental Inteligente<br>
-                            Este es un correo automático, por favor no respondas.
+                            &#169; 2024 OSE IA &#8226; Gesti&#243;n Documental Inteligente<br>
+                            Este es un correo autom&#225;tico, por favor no respondas.
                           </p>
                         </td>
                       </tr>
@@ -1446,16 +1447,17 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
             </html>
             """
             async with httpx.AsyncClient() as client:
-                await client.post(
+                res = await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                     json={
                         "from": "onboarding@resend.dev",
                         "to": [target_email],
-                        "subject": f"✅ Invitación a {entity_name}",
+                        "subject": f"Invitacion a {entity_name}",
                         "html": html_content
                     }
                 )
+                print(f"DEBUG Email Invitation status: {res.status_code}")
         except Exception as e:
             print(f" Error enviando mail de invitación: {e}")
 
