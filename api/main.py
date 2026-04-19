@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import base64
 from dotenv import load_dotenv
@@ -18,7 +18,7 @@ DEFAULT_ROLE = "usuario"
 ADMIN_ROLE = "administrador"
 SUPERADMIN_ROLE = "superadmin"
 
-# ConfiguraciÃ³n Pinecone
+# ConfiguraciÃƒÂ³n Pinecone
 import jwt
 from pydantic import BaseModel
 import uvicorn
@@ -114,10 +114,10 @@ RAG_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """Eres OSE Copilot, el asistente experto de la Biblioteca RAG de OSE IA.
 
 REGLAS DE RESPUESTA:
-1. Responde ÃšNICAMENTE basÃ¡ndote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
+1. Responde ÃƒÅ¡NICAMENTE basÃƒÂ¡ndote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
 2. Si el contexto no tiene la respuesta o no hay documentos relevantes, responde obligatoriamente:
-   "Lo siento, no encontrÃ© informaciÃ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
-3. NO inventes datos ni asumas informaciÃ³n que no estÃ© escrita en el contexto.
+   "Lo siento, no encontrÃƒÂ© informaciÃƒÂ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
+3. NO inventes datos ni asumas informaciÃƒÂ³n que no estÃƒÂ© escrita en el contexto.
 4. Responde con un tono profesional y servicial.
 
 CONTEXTO DEL DOCUMENTO:
@@ -260,26 +260,26 @@ def format_docs(docs):
     return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
-    print(f"âš™ï¸ Iniciando Background Task OCR para: {filename}")
+    print(f"Ã¢Å¡â„¢Ã¯Â¸Â Iniciando Background Task OCR para: {filename}")
     extracted_text = ""
     
     try:
         import fitz
         from datetime import datetime
-        # Extraer texto de las primeras 20 pÃ¡ginas
+        # Extraer texto de las primeras 20 pÃƒÂ¡ginas
         fitz_doc = fitz.open(stream=content, filetype="pdf")
         pages_to_process = min(len(fitz_doc), 20)
         for i in range(pages_to_process):
-            extracted_text += f"\n--- PÃGINA {i+1} ---\n" + fitz_doc[i].get_text()
+            extracted_text += f"\n--- PÃƒÂGINA {i+1} ---\n" + fitz_doc[i].get_text()
         fitz_doc.close()
     except Exception as e:
-        print(f"âŒ Error leyendo archivo en segundo plano: {e}")
+        print(f"Ã¢ÂÅ’ Error leyendo archivo en segundo plano: {e}")
         supabase_client.table("rag_documents").update({
             "metadata": {"status": "error", "message": f"Error leyendo el archivo: {str(e)}"}
         }).eq("id", doc_id).execute()
         return
 
-    # Obtener el file_url y entidad_id actuales de la sesiÃ³n
+    # Obtener el file_url y entidad_id actuales de la sesiÃƒÂ³n
     file_url = None
     entidad_id = None
     try:
@@ -316,14 +316,14 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             "embedding": embedding_vector
         }).execute()
         
-        # Actualizar sesiÃ³n
+        # Actualizar sesiÃƒÂ³n
         supabase_client.table("rag_documents").update({
             "metadata": {**doc_metadata, "status": "success"}
         }).eq("id", doc_id).execute()
         
-        print(f"âœ… OCR exitoso para {filename}")
+        print(f"Ã¢Å“â€¦ OCR exitoso para {filename}")
     except Exception as e:
-        print(f"âŒ Error guardando OCR en RAG: {e}")
+        print(f"Ã¢ÂÅ’ Error guardando OCR en RAG: {e}")
 
 #  Endpoints 
 
@@ -511,14 +511,14 @@ async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: d
 @router.post("/chat")
 async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     if not supabase_client:
-        raise HTTPException(status_code=503, detail="Supabase no estÃ¡ configurado.")
+        raise HTTPException(status_code=503, detail="Supabase no estÃƒÂ¡ configurado.")
 
     print(f"\n --- CONSULTA DOCUMENCIO ---")
     print(f" Query: {request.query}")
     print(f" User Role: {user.get('role')}")
 
     if not embeddings or not llm:
-        return {"answer": "Lo siento, los servicios de IA no estÃ¡n configurados correctamente. Por favor verifica las credenciales.", "sources": []}
+        return {"answer": "Lo siento, los servicios de IA no estÃƒÂ¡n configurados correctamente. Por favor verifica las credenciales.", "sources": []}
 
     try:
         # 1. Generar embedding
@@ -530,11 +530,11 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             return {"answer": "Tuve un inconveniente tcnico al procesar el sentido de tu pregunta. Por favor intenta de nuevo.", "sources": []}
 
         if not query_vector:
-            return {"answer": "No pude procesar tu pregunta. Intenta redactarla de forma mÃ¡s sencilla.", "sources": []}
+            return {"answer": "No pude procesar tu pregunta. Intenta redactarla de forma mÃƒÂ¡s sencilla.", "sources": []}
 
         # 2. Determinar entidad para filtro
         # Si es superadmin, no aplicamos filtro de entidad por defecto (permite ver todo)
-        # excepto si se solicita una especÃ­fica.
+        # excepto si se solicita una especÃƒÂ­fica.
         rol = user.get("role")
         if rol == "superadmin":
             entidad_actual = request.entidadId if request.entidadId and request.entidadId != "e0" else None
@@ -543,7 +543,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         
         search_filter = {"entidad_id": entidad_actual} if entidad_actual else {}
         
-        # 3. BÃºsqueda RPC
+        # 3. BÃƒÂºsqueda RPC
         print(f" Buscando en Supabase (Filtro Entidad: {entidad_actual if entidad_actual else 'GLOBAL'})...")
         try:
             rpc_res = supabase_client.rpc("match_rag_documents", {
@@ -566,7 +566,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         
         if not source_docs:
             print(" No se encontraron documentos relevantes para esta entidad.")
-            return {"answer": "Lo siento, no encontrÃ© informaciÃ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa.", "sources": []}
+            return {"answer": "Lo siento, no encontrÃƒÂ© informaciÃƒÂ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa.", "sources": []}
 
         # 3. Respuesta LLM
         print(" Generando respuesta...")
@@ -828,7 +828,7 @@ async def send_activation(request: ActivationEmailRequest):
 
 @router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
-    """Genera un token de reseteo y envÃ­a el correo"""
+    """Genera un token de reseteo y envÃƒÂ­a el correo"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     target_email = request.email.strip().lower()
@@ -836,8 +836,8 @@ async def request_reset(request: PasswordResetRequest):
     # 1. Verificar si el usuario existe
     user_res = supabase_client.table("profiles").select("id, nombre").eq("email", target_email).execute()
     if not user_res.data:
-        # Por seguridad no revelamos si existe o no, pero retornamos Ã©xito simulado si no existe
-        return {"status": "ok", "message": "Si el correo estÃ¡ registrado, recibirÃ¡s un enlace de recuperaciÃ³n."}
+        # Por seguridad no revelamos si existe o no, pero retornamos ÃƒÂ©xito simulado si no existe
+        return {"status": "ok", "message": "Si el correo estÃƒÂ¡ registrado, recibirÃƒÂ¡s un enlace de recuperaciÃƒÂ³n."}
     
     user = user_res.data[0]
     token = str(uuid.uuid4())
@@ -856,15 +856,15 @@ async def request_reset(request: PasswordResetRequest):
         <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #00bfa5;">RecuperaciÃ³n de ContraseÃ±a</h2>
+                <h2 style="color: #00bfa5;">RecuperaciÃƒÂ³n de ContraseÃƒÂ±a</h2>
                 <p>Hola {user['nombre']},</p>
-                <p>Has solicitado restablecer tu contraseÃ±a en OSE IA. Haz clic en el siguiente botÃ³n para continuar:</p>
+                <p>Has solicitado restablecer tu contraseÃƒÂ±a en OSE IA. Haz clic en el siguiente botÃƒÂ³n para continuar:</p>
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer ContraseÃ±a</a>
+                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer ContraseÃƒÂ±a</a>
                 </div>
-                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducarÃ¡ en 1 hora.</p>
+                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducarÃƒÂ¡ en 1 hora.</p>
                 <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA â€¢ GestiÃ³n Documental Inteligente</p>
+                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA Ã¢â‚¬Â¢ GestiÃƒÂ³n Documental Inteligente</p>
             </div>
         </body>
         </html>
@@ -885,11 +885,11 @@ async def request_reset(request: PasswordResetRequest):
         except Exception as e:
             print(f"Error enviando correo de reset: {e}")
 
-    return {"status": "ok", "message": "Si el correo estÃ¡ registrado, recibirÃ¡s un enlace de recuperaciÃ³n."}
+    return {"status": "ok", "message": "Si el correo estÃƒÂ¡ registrado, recibirÃƒÂ¡s un enlace de recuperaciÃƒÂ³n."}
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
-    """Valida el token y actualiza la contraseÃ±a"""
+    """Valida el token y actualiza la contraseÃƒÂ±a"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     # 1. Buscar usuario por token
@@ -897,22 +897,22 @@ async def perform_reset(request: PerformResetRequest):
     res = supabase_client.table("profiles").select("*").eq("reset_token", request.token).execute()
     
     if not res.data:
-        raise HTTPException(400, "El enlace de recuperaciÃ³n no es vÃ¡lido.")
+        raise HTTPException(400, "El enlace de recuperaciÃƒÂ³n no es vÃƒÂ¡lido.")
     
     user = res.data[0]
     
-    # 2. Verificar expiraciÃ³n
+    # 2. Verificar expiraciÃƒÂ³n
     if user.get("reset_token_expiry") and user["reset_token_expiry"] < now:
-        raise HTTPException(400, "El enlace de recuperaciÃ³n ha expirado.")
+        raise HTTPException(400, "El enlace de recuperaciÃƒÂ³n ha expirado.")
         
-    # 3. Actualizar contraseÃ±a y limpiar token
+    # 3. Actualizar contraseÃƒÂ±a y limpiar token
     supabase_client.table("profiles").update({
         "password": request.new_password,
         "reset_token": None,
         "reset_token_expiry": None
     }).eq("id", user["id"]).execute()
     
-    return {"status": "success", "message": "Tu contraseÃ±a ha sido actualizada correctamente."}
+    return {"status": "success", "message": "Tu contraseÃƒÂ±a ha sido actualizada correctamente."}
 
 @router.post("/activate")
 async def activate_user(req: UserActivate):
@@ -957,7 +957,7 @@ async def login(req: LoginRequest):
     entidad_ids = [e["entity_id"] for e in entities_res.data]
     active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
     
-    # Obtener el rol especÃ­fico para esta entidad de la tabla de uniÃ³n
+    # Obtener el rol especÃƒÂ­fico para esta entidad de la tabla de uniÃƒÂ³n
     role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
     active_role = role_res.data[0]["role"] if role_res.data else user_data["perfil"]
 
@@ -992,7 +992,7 @@ async def google_auth(req: GoogleAuthRequest):
         user_data = res.data[0]
         print(f" Usuario Google encontrado: {req.email} (Rol actual: {user_data['perfil']})")
         
-        # Opcional: Si el email estÃ¡ en la whitelist y por alguna razÃ³n NO era superadmin, lo promovemos
+        # Opcional: Si el email estÃƒÂ¡ en la whitelist y por alguna razÃƒÂ³n NO era superadmin, lo promovemos
         if req.email.lower() in SUPERADMIN_EMAILS and user_data["perfil"] != SUPERADMIN_ROLE:
             print(f" Promoviendo usuario existente a SuperAdmin via Whitelist: {req.email}")
             update_res = supabase_client.table("profiles").update({"perfil": SUPERADMIN_ROLE}).eq("id", user_data["id"]).execute()
@@ -1032,7 +1032,7 @@ async def google_auth(req: GoogleAuthRequest):
             raise HTTPException(500, "Error al crear el perfil de usuario")
         user_data = create_res.data[0]
         
-        # Crear relacion con entidad por defecto tambiÃ©n en profile_entities
+        # Crear relacion con entidad por defecto tambiÃƒÂ©n en profile_entities
         supabase_client.table("profile_entities").insert({
             "profile_id": user_data["id"],
             "entity_id": "e0"
@@ -1123,8 +1123,8 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     # Validar permisos
     if current_user.get("role") != SUPERADMIN_ROLE and user_id != current_user.get("user_id"):
         # Si no es superadmin, solo puede editarse a s mismo (y no su rol)
-        # O si es admin de entidad podrÃ­a ser permitido pero con restricciones
-        # Por ahora: Solo superadmin o auto-ediciÃ³n bÃ¡sica
+        # O si es admin de entidad podrÃƒÂ­a ser permitido pero con restricciones
+        # Por ahora: Solo superadmin o auto-ediciÃƒÂ³n bÃƒÂ¡sica
         pass
 
     data = {}
@@ -1184,13 +1184,13 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     
     if role != SUPERADMIN_ROLE:
         if role != ADMIN_ROLE:
-            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acciÃ³n")
+            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acciÃƒÂ³n")
         if not admin_entity_id:
             raise HTTPException(403, "No perteneces a ninguna entidad activa")
         if str(target_user_entity) != str(admin_entity_id):
             raise HTTPException(403, "No puedes eliminar usuarios de otras entidades")
 
-    # 2. Limpiar dependencias (Claves ForÃ¡neas) de forma segura
+    # 2. Limpiar dependencias (Claves ForÃƒÂ¡neas) de forma segura
     cleanup_tables = [
         ("profile_entities", "profile_id"),
         ("activity_logs", "user_id"),
@@ -1201,7 +1201,7 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         try:
             supabase_client.table(table_name).delete().eq(column_name, user_id).execute()
         except Exception as e:
-            # Ignorar si la tabla no existe o hay error de cachÃ© de esquema
+            # Ignorar si la tabla no existe o hay error de cachÃƒÂ© de esquema
             print(f"  Aviso: No se pudo limpiar {table_name}: {e}")
 
     try:
@@ -1209,8 +1209,8 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
         
         if not res.data:
-             # Si llegamos aquÃ­ y no hay data, algo fallÃ³ en la query de borrado silenciosamente
-             raise HTTPException(500, "No se pudo confirmar la eliminaciÃ³n del usuario")
+             # Si llegamos aquÃƒÂ­ y no hay data, algo fallÃƒÂ³ en la query de borrado silenciosamente
+             raise HTTPException(500, "No se pudo confirmar la eliminaciÃƒÂ³n del usuario")
              
     except Exception as e:
         print(f" Error eliminando perfil {user_id}: {str(e)}")
@@ -1274,11 +1274,11 @@ async def get_rag_documents(entidad_id: str = None, user: dict = Depends(get_cur
                 current["file_url"] = meta["file_url"]
             if not current.get("entidad_id") and meta.get("entidad_id"):
                 current["entidad_id"] = meta["entidad_id"]
-            # Si el nuevo registro tiene Ã©xito, preferimos su status
+            # Si el nuevo registro tiene ÃƒÂ©xito, preferimos su status
             if meta.get("status") == "success":
                 current["status"] = "success"
         else:
-            # Documentos vÃ¡lidos para mostrar: success o sesiones activas para admins
+            # Documentos vÃƒÂ¡lidos para mostrar: success o sesiones activas para admins
             is_valid = meta.get("status") == "success" or (user.get("role") == "superadmin" and meta.get("type") == "temp_trd_session")
             if is_valid:
                 seen_sources[source] = {
@@ -1301,7 +1301,7 @@ async def delete_rag_document(doc_id: str):
     
 @router.post("/invitations")
 async def create_invitation(req: InvitationCreate, current_user: dict = Depends(get_current_user)):
-    """Crea una invitaciÃ³n para un usuario (existente o no) a una entidad"""
+    """Crea una invitaciÃƒÂ³n para un usuario (existente o no) a una entidad"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     # 1. Validar permisos: Solo admin de la entidad o superadmin
@@ -1309,7 +1309,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     target_entity_id = str(req.entity_id or "")
 
     if user_role != SUPERADMIN_ROLE:
-        # VerificaciÃ³n dinÃ¡mica: Â¿Es admin de esta entidad especÃ­fica?
+        # VerificaciÃƒÂ³n dinÃƒÂ¡mica: Ã‚Â¿Es admin de esta entidad especÃƒÂ­fica?
         admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
         if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
              raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
@@ -1323,21 +1323,21 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     if check_profile.data:
         p_id = check_profile.data[0]["id"]
-        # Si ya estÃ¡ en profile_entities para esta entidad, error
+        # Si ya estÃƒÂ¡ en profile_entities para esta entidad, error
         is_member = any(r["profile_id"] == p_id for r in check_member.data)
         if is_member:
             raise HTTPException(400, "El usuario ya es miembro de esta entidad")
 
-    # 3. Verificar si hay una invitaciÃ³n pendiente activa
+    # 3. Verificar si hay una invitaciÃƒÂ³n pendiente activa
     check_existing = supabase_client.table("invitations").select("*").eq("email", target_email).eq("entity_id", req.entity_id).eq("status", "pendiente").execute()
     if check_existing.data:
-        # Verificar expiraciÃ³n
+        # Verificar expiraciÃƒÂ³n
         inv = check_existing.data[0]
         expires_at_dt = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
         if expires_at_dt > datetime.now(timezone.utc):
-             raise HTTPException(400, "Ya existe una invitaciÃ³n pendiente y activa para este correo")
+             raise HTTPException(400, "Ya existe una invitaciÃƒÂ³n pendiente y activa para este correo")
 
-    # 4. Crear la invitaciÃ³n (expira en 1 dÃ­a)
+    # 4. Crear la invitaciÃƒÂ³n (expira en 1 dÃƒÂ­a)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     inviter_id = current_user.get("user_id")
     
@@ -1352,116 +1352,112 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     res = supabase_client.table("invitations").insert(new_inv).execute()
     if not res.data:
-        raise HTTPException(500, "No se pudo crear la invitaciÃ³n")
+        raise HTTPException(500, "No se pudo crear la invitaciÃƒÂ³n")
     
     invitation = res.data[0]
     
-    # 5. Intentar enviar correo real vÃ­a Resend
+    # 5. Intentar enviar correo real vÃƒÂ­a Resend
     entity_res = supabase_client.table("entities").select("razon_social").eq("id", req.entity_id).execute()
     entity_name = entity_res.data[0]["razon_social"] if entity_res.data else "una entidad de OSE IA"
     inviter_name = current_user.get("nombre", "Un administrador")
     invitation_id = invitation["id"]
     
-    # URL de la aplicaciÃ³n con contexto de invitaciÃ³n
+    # URL de la aplicaciÃƒÂ³n con contexto de invitaciÃƒÂ³n
     frontend_url = "https://ose-new.vercel.app" # Cambiar por variable de entorno si aplica
     invite_link = f"{frontend_url}/?invitation_id={invitation_id}&email={target_email}"
 
     if RESEND_API_KEY:
         try:
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Invitaci&#243;n a OSE IA</title>
-            </head>
-            <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
-                <tr>
-                  <td align="center" style="padding: 40px 20px;">
-                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-                      <!-- Header Color Bar -->
-                      <tr><td height="8" style="background: linear-gradient(90deg, #00bfa5, #009688); line-height: 8px; font-size: 8px;">&nbsp;</td></tr>
-                      
-                      <tr>
-                        <td style="padding: 40px 50px;">
-                          <div style="text-align: center; margin-bottom: 30px;">
-                             <h1 style="color: #0f172a; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 0; font-weight: 800;">OSE IA</h1>
-                          </div>
-                          
-                          <h2 style="color: #0f172a; font-size: 28px; font-weight: 800; line-height: 36px; margin: 0 0 20px 0; text-align: center; letter-spacing: -0.02em;">
-                            Colaboraci&#243;n Pendiente
-                          </h2>
-                          
-                          <p style="color: #64748b; font-size: 16px; line-height: 26px; margin: 0 0 30px 0; text-align: center;">
-                            Hola, <strong>{inviter_name}</strong> te ha invitado a formar parte de su equipo de trabajo en la plataforma oficial.
-                          </p>
-
-                          <!-- Invitation Card -->
-                          <div style="background-color: #f1f5f9; border-radius: 16px; padding: 25px; margin-bottom: 35px; border: 1px solid #e2e8f0;">
-                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                              <tr>
-                                <td style="padding-bottom: 15px;">
-                                  <span style="color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">Entidad</span><br>
-                                  <span style="color: #0f172a; font-size: 16px; font-weight: 700;">{entity_name}</span>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td>
-                                  <span style="color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">Tu Rol</span><br>
-                                  <span style="color: #0f172a; font-size: 16px; font-weight: 700;">{req.role.capitalize()}</span>
-                                </td>
-                              </tr>
-                            </table>
-                          </div>
-
-                          <div style="text-align: center; margin-bottom: 35px;">
-                            <a href="{invite_link}" style="background-color: #00bfa5; color: #ffffff; display: inline-block; font-size: 14px; font-weight: 800; line-height: 20px; padding: 18px 40px; text-align: center; text-decoration: none; border-radius: 14px; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 10px 15px rgba(0,191,165,0.2);">
-                              Aceptar Invitaci&#243;n
-                            </a>
-                          </div>
-
-                          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-                          
-                          <p style="color: #94a3b8; font-size: 12px; line-height: 20px; margin: 0; text-align: center;">
-                            <strong>Nota para usuarios nuevos:</strong> Si no tienes una cuenta, este enlace te guiar&#225; gratis al registro. Al terminar, tu invitaci&#243;n estar&#225; lista para ser aceptada.<br><br>
-                            Esta invitaci&#243;n es v&#225;lida por 24 horas.
-                          </p>
-                        </td>
-                      </tr>
-                      
-                      <tr>
-                        <td style="padding: 20px 50px 40px 50px; background-color: #f8fafc; text-align: center;">
-                          <p style="color: #94a3b8; font-size: 11px; margin: 0;">
-                            &#169; 2024 OSE IA &#8226; Gesti&#243;n Documental Inteligente<br>
-                            Este es un correo autom&#225;tico, por favor no respondas.
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </body>
-            </html>
-            """
+            html_content = (
+                '<!DOCTYPE html>'
+                '<html lang="es"><head>'
+                '<meta charset="UTF-8">'
+                '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+                '<title>Invitacion OSE IA</title>'
+                '</head>'
+                '<body style="margin:0;padding:0;background-color:#f0f4f8;font-family:Arial,Helvetica,sans-serif;">'
+                '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f4f8;padding:40px 0;">'
+                '<tr><td align="center">'
+                '<table width="600" cellpadding="0" cellspacing="0" border="0" '
+                'style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">'
+                '<tr><td height="6" style="background:linear-gradient(90deg,#00bfa5,#0078d4);font-size:0;line-height:0;">&nbsp;</td></tr>'
+                '<tr><td align="center" style="padding:32px 40px 12px;">'
+                '<p style="margin:0;font-size:11px;font-weight:900;letter-spacing:4px;text-transform:uppercase;color:#94a3b8;">OSE IA</p>'
+                '<p style="margin:4px 0 0;font-size:11px;color:#cbd5e1;">Gestion Documental Inteligente</p>'
+                '</td></tr>'
+                '<tr><td align="center" style="padding:16px 40px 8px;">'
+                '<h1 style="margin:0;font-size:24px;font-weight:800;color:#0f172a;">Tienes una nueva invitacion</h1>'
+                '</td></tr>'
+                '<tr><td align="center" style="padding:8px 40px 24px;">'
+                '<p style="margin:0;font-size:15px;color:#64748b;line-height:1.6;">'
+            ) + (
+                '<strong style="color:#0f172a;">' + inviter_name + '</strong>'
+                ' te ha invitado a unirte a su equipo de trabajo en la plataforma OSE IA.'
+                '</p></td></tr>'
+                '<tr><td style="padding:0 40px 24px;">'
+                '<table width="100%" cellpadding="0" cellspacing="0" border="0" '
+                'style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">'
+                '<tr><td style="padding:20px 24px;">'
+                '<table width="100%" cellpadding="0" cellspacing="0" border="0">'
+                '<tr>'
+                '<td width="50%" style="padding-bottom:14px;vertical-align:top;">'
+                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Entidad</p>'
+            ) + (
+                '<p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#0f172a;">' + entity_name + '</p>'
+                '</td>'
+                '<td width="50%" style="padding-bottom:14px;vertical-align:top;">'
+                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Tu Rol</p>'
+            ) + (
+                '<p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#00bfa5;">' + req.role.capitalize() + '</p>'
+                '</td></tr>'
+                '<tr><td colspan="2">'
+                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Invitado por</p>'
+            ) + (
+                '<p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#475569;">' + inviter_name + '</p>'
+                '</td></tr></table></td></tr></table></td></tr>'
+                '<tr><td align="center" style="padding:8px 40px 28px;">'
+            ) + (
+                '<a href="' + invite_link + '" '
+                'style="display:inline-block;background-color:#00bfa5;color:#ffffff;'
+                'font-size:13px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;'
+                'text-decoration:none;padding:16px 40px;border-radius:10px;">'
+                'Aceptar Invitacion'
+                '</a>'
+                '</td></tr>'
+                '<tr><td align="center" style="padding:0 40px 16px;">'
+                '<p style="margin:0;font-size:11px;color:#94a3b8;">Si el boton no funciona, copia este enlace:</p>'
+            ) + (
+                '<p style="margin:6px 0 0;font-size:11px;word-break:break-all;">'
+                '<a href="' + invite_link + '" style="color:#00bfa5;">' + invite_link + '</a>'
+                '</p></td></tr>'
+                '<tr><td style="padding:0 40px;"><hr style="border:0;border-top:1px solid #e2e8f0;margin:0;"></td></tr>'
+                '<tr><td align="center" style="padding:16px 40px;">'
+                '<p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.6;">'
+                '<strong>Usuarios nuevos:</strong> Si aun no tienes una cuenta, el enlace te guiara al registro. '
+                'La invitacion se vinculara automaticamente al completar el registro.'
+                '</p></td></tr>'
+                '<tr><td align="center" style="padding:16px 40px 28px;background:#f8fafc;">'
+                '<p style="margin:0;font-size:10px;color:#cbd5e1;">Esta invitacion vence en 24 horas &bull; No respondas este correo</p>'
+                '<p style="margin:4px 0 0;font-size:10px;color:#cbd5e1;">&copy; 2024 OSE IA &bull; Gestion Documental Inteligente</p>'
+                '</td></tr>'
+                '</table></td></tr></table>'
+                '</body></html>'
+            )
             async with httpx.AsyncClient() as client:
-                res = await client.post(
+                res_email = await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                     json={
-                        "from": "onboarding@resend.dev",
+                        "from": "OSE IA <onboarding@resend.dev>",
                         "to": [target_email],
-                        "subject": f"Invitacion a {entity_name}",
+                        "subject": f"Invitacion a {entity_name} - OSE IA",
                         "html": html_content
                     }
                 )
-                print(f"DEBUG Email Invitation status: {res.status_code}")
+                print(f"DEBUG Email Invitation status: {res_email.status_code} - {res_email.text[:200]}")
         except Exception as e:
-            print(f" Error enviando mail de invitaciÃ³n: {e}")
-
-    return {"status": "success", "message": "InvitaciÃ³n enviada", "invitation": invitation}
+            print(f"Error enviando mail de invitacion: {e}")
+    return {"status": "success", "message": "InvitaciÃƒÂ³n enviada", "invitation": invitation}
 
 @router.get("/invitations/my")
 async def get_my_invitations(current_user: dict = Depends(get_current_user)):

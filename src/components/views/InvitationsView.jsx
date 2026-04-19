@@ -18,9 +18,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   });
   const [isCreating, setIsCreating] = useState(false);
 
-  // Filtros
   const [filterEntity, setFilterEntity] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('active'); // 'active' = pendiente+aceptada por defecto
   
   // Resaltado de contexto
   const [highlightedId, setHighlightedId] = useState(null);
@@ -160,11 +159,20 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   const [viewDetailId, setViewDetailId] = useState(null);
   const detailInv = invitations.find(i => i.id === viewDetailId);
 
+  const INACTIVE_STATUSES = ['cancelada', 'rechazada', 'vencida'];
+
   const filteredInvites = invitations.filter(inv => {
     if (filterEntity !== 'all' && inv.entity_id !== filterEntity) return false;
-    if (filterStatus !== 'all' && inv.status !== filterStatus) return false;
+    if (filterStatus === 'active') {
+      // Modo por defecto: solo mostrar pendientes y aceptadas
+      if (INACTIVE_STATUSES.includes(inv.status)) return false;
+    } else if (filterStatus !== 'all') {
+      if (inv.status !== filterStatus) return false;
+    }
     return true;
   });
+
+  const hiddenCount = invitations.filter(inv => INACTIVE_STATUSES.includes(inv.status)).length;
 
   return (
     <div className="flex-1 p-6 lg:p-10 bg-[#f8fafc] min-h-screen overflow-y-auto w-full">
@@ -274,11 +282,12 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                     {entities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)}
                   </select>
                 )}
-                <select 
+                 <select 
                   value={filterStatus}
                   onChange={e => setFilterStatus(e.target.value)}
                   className="bg-slate-50 text-xs font-bold text-slate-700 px-4 py-2 rounded-xl focus:ring-primary focus:border-primary outline-none"
                 >
+                  <option value="active">Activas (pendiente + aceptada)</option>
                   <option value="all">Todos los Estados</option>
                   <option value="pendiente">Pendientes</option>
                   <option value="aceptada">Aceptadas</option>
@@ -286,6 +295,19 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   <option value="vencida">Vencidas</option>
                   <option value="cancelada">Canceladas</option>
                 </select>
+              </div>
+            )}
+
+            {/* Aviso de registros ocultos */}
+            {filterStatus === 'active' && hiddenCount > 0 && (
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-100 rounded-2xl border border-slate-200">
+                <p className="text-xs font-bold text-slate-500">
+                  {hiddenCount} invitación{hiddenCount !== 1 ? 'es' : ''} cancelada{hiddenCount !== 1 ? 's' : ''}/rechazada{hiddenCount !== 1 ? 's' : ''}/vencida{hiddenCount !== 1 ? 's' : ''} oculta{hiddenCount !== 1 ? 's' : ''}.
+                </p>
+                <button 
+                  onClick={() => setFilterStatus('all')}
+                  className="text-xs font-black text-primary hover:underline uppercase tracking-widest"
+                >Ver todas</button>
               </div>
             )}
 
