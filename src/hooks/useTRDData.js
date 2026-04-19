@@ -63,108 +63,133 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   const refreshData = () => loadData();
 
+  const safeApiCall = async (method, endpoint, payload = null) => {
+    const res = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/${endpoint}`, {
+      method,
+      headers: authHeaders(),
+      body: payload ? JSON.stringify(payload) : undefined
+    });
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error(`API Error [${method} ${endpoint}]:`, errData);
+        throw new Error(errData.detail || `Error en servidor: ${res.statusText}`);
+    }
+    return res.json();
+  };
+
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
-
-    // Optimistic Update
-    setDependencias(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
-    });
-
-    if (supabase) {
-      const { error } = await supabase.from('dependencias').upsert(mapDependenciaToDB(newRecord));
-      if (error) {
-        console.error('❌ Supabase error (dependencia):', error);
-        throw error;
-      }
+    try {
+      // 1. Guardar en Backend
+      const saved = await safeApiCall('POST', 'dependencias', mapDependenciaToDB(newRecord));
+      // 2. Actualizar estado SI la petición fue exitosa (Non-Optimistic safety)
+      setDependencias(prev => {
+        const exists = prev.find(x => x.id === newRecord.id);
+        return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      });
+      return newRecord;
+    } catch (error) {
+      console.error('❌ Error guardando dependencia:', error);
+      throw error;
     }
-    return newRecord;
   };
 
   const updateDependencia = async (id, data) => {
-     setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data, entidadId: entityId } : x));
-     if (supabase) {
-       const { error } = await supabase.from('dependencias').update(mapDependenciaToDB({ ...data, entidadId: entityId })).eq('id', id);
-       if (error) throw error;
+     try {
+       await safeApiCall('PUT', `dependencias/${id}`, mapDependenciaToDB({ ...data, entidadId: entityId }));
+       setDependencias(prev => prev.map(x => x.id === id ? { ...x, ...data, entidadId: entityId } : x));
+     } catch (error) {
+       console.error('❌ Error actualizando dependencia:', error);
+       throw error;
      }
   };
 
   const deleteDependencia = async (id) => {
-    setDependencias(prev => prev.filter(x => x.id !== id));
-    if (supabase) {
-      const { error } = await supabase.from('dependencias').delete().eq('id', id);
-      if (error) throw error;
+    try {
+      await safeApiCall('DELETE', `dependencias/${id}`);
+      setDependencias(prev => prev.filter(x => x.id !== id));
+    } catch (error) {
+      console.error('❌ Error borrando dependencia:', error);
+      throw error;
     }
   };
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
-    setSeries(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
-    });
-
-    if (supabase) {
-      const { error } = await supabase.from('series').upsert(mapSerieToDB(newRecord));
-      if (error) throw error;
+    try {
+      await safeApiCall('POST', 'series', mapSerieToDB(newRecord));
+      setSeries(prev => {
+        const exists = prev.find(x => x.id === newRecord.id);
+        return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      });
+      return newRecord;
+    } catch (error) {
+      console.error('❌ Error guardando serie:', error);
+      throw error;
     }
-    return newRecord;
   };
 
   const deleteSerie = async (id) => {
-    setSeries(prev => prev.filter(x => x.id !== id));
-    if (supabase) {
-      const { error } = await supabase.from('series').delete().eq('id', id);
-      if (error) throw error;
+    try {
+      await safeApiCall('DELETE', `series/${id}`);
+      setSeries(prev => prev.filter(x => x.id !== id));
+    } catch (error) {
+       console.error('❌ Error borrando serie:', error);
+       throw error;
     }
   };
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
-    setSubseries(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
-    });
-
-    if (supabase) {
-      const { error } = await supabase.from('subseries').upsert(mapSubserieToDB(newRecord));
-      if (error) throw error;
+    try {
+      await safeApiCall('POST', 'subseries', mapSubserieToDB(newRecord));
+      setSubseries(prev => {
+        const exists = prev.find(x => x.id === newRecord.id);
+        return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      });
+      return newRecord;
+    } catch (error) {
+      console.error('❌ Error guardando subserie:', error);
+      throw error;
     }
-    return newRecord;
   };
 
   const deleteSubserie = async (id) => {
-    setSubseries(prev => prev.filter(x => x.id !== id));
-    if (supabase) {
-      const { error } = await supabase.from('subseries').delete().eq('id', id);
-      if (error) throw error;
+    try {
+      await safeApiCall('DELETE', `subseries/${id}`);
+      setSubseries(prev => prev.filter(x => x.id !== id));
+    } catch (error) {
+       console.error('❌ Error borrando subserie:', error);
+       throw error;
     }
   };
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
-    setTrdRecords(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
-    });
-
-    if (supabase) {
-      const { error } = await supabase.from('trd_records').upsert(mapTRDToDB(newRecord));
-      if (error) throw error;
+    try {
+      await safeApiCall('POST', 'trd_records', mapTRDToDB(newRecord));
+      setTrdRecords(prev => {
+        const exists = prev.find(x => x.id === newRecord.id);
+        return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      });
+      return newRecord;
+    } catch (error) {
+       console.error('❌ Error guardando registro TRD:', error);
+       throw error;
     }
-    return newRecord;
   };
 
   const deleteTrdRecord = async (id) => {
-    setTrdRecords(prev => prev.filter(x => x.id !== id));
-    if (supabase) {
-      const { error } = await supabase.from('trd_records').delete().eq('id', id);
-      if (error) throw error;
+    try {
+      await safeApiCall('DELETE', `trd_records/${id}`);
+      setTrdRecords(prev => prev.filter(x => x.id !== id));
+    } catch (error) {
+       console.error('❌ Error borrando registro TRD:', error);
+       throw error;
     }
   };
 

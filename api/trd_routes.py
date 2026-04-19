@@ -13,6 +13,8 @@ router = APIRouter()
 
 # ---------- Pydantic models ----------
 class DependenciaCreate(BaseModel):
+    class Config:
+        extra = 'allow'
     nombre: str
     sigla: Optional[str] = None
     codigo: str
@@ -24,6 +26,8 @@ class DependenciaCreate(BaseModel):
     depende_de: Optional[str] = None
 
 class SerieCreate(BaseModel):
+    class Config:
+        extra = 'allow'
     nombre: str
     codigo: str
     tipo_documental: Optional[str] = None
@@ -31,6 +35,8 @@ class SerieCreate(BaseModel):
     dependencia_id: str
 
 class SubserieCreate(BaseModel):
+    class Config:
+        extra = 'allow'
     nombre: str
     codigo: str
     tipo_documental: Optional[str] = None
@@ -39,6 +45,8 @@ class SubserieCreate(BaseModel):
     dependencia_id: Optional[str] = None
 
 class TRDRecordCreate(BaseModel):
+    class Config:
+        extra = 'allow'
     dependencia_id: str
     serie_id: str
     subserie_id: Optional[str] = None
@@ -51,6 +59,8 @@ class TRDRecordCreate(BaseModel):
     # flags omitted for brevity
 
 class FuncionCreate(BaseModel):
+    class Config:
+        extra = 'allow'
     titulo: str
     codigo_funcion: Optional[str] = None
     descripcion: Optional[str] = None
@@ -488,3 +498,49 @@ async def admin_list_trd(user: dict = Depends(get_current_user)):
     return res.data
 
 # Additional admin CRUD (create, update, delete) can be added similarly.
+
+
+@router.put("/entity/{entity_id}/series/{record_id}", response_model=dict)
+async def update_serie_entity(entity_id: str, record_id: str, payload: SerieCreate, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("series").update(payload.dict()).eq("id", record_id).eq("entity_id", entity_id).execute()
+    if not res.data: raise HTTPException(status_code=404, detail="Not found")
+    return res.data[0]
+
+@router.delete("/entity/{entity_id}/series/{record_id}", response_model=dict)
+async def delete_serie_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "series", record_id)
+    except: pass
+    supabase_client.table("series").delete().eq("id", record_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted"}
+
+@router.put("/entity/{entity_id}/subseries/{record_id}", response_model=dict)
+async def update_subserie_entity(entity_id: str, record_id: str, payload: SubserieCreate, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("subseries").update(payload.dict()).eq("id", record_id).eq("entity_id", entity_id).execute()
+    if not res.data: raise HTTPException(status_code=404, detail="Not found")
+    return res.data[0]
+
+@router.delete("/entity/{entity_id}/subseries/{record_id}", response_model=dict)
+async def delete_subserie_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "subseries", record_id)
+    except: pass
+    supabase_client.table("subseries").delete().eq("id", record_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted"}
+
+@router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
+async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDRecordCreate, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("trd_records").update(payload.dict()).eq("id", record_id).eq("entity_id", entity_id).execute()
+    if not res.data: raise HTTPException(status_code=404, detail="Not found")
+    return res.data[0]
+
+@router.delete("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
+async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    try: delete_record(supabase_client, entity_id, "trd_records", record_id)
+    except: pass
+    supabase_client.table("trd_records").delete().eq("id", record_id).eq("entity_id", entity_id).execute()
+    return {"status": "deleted"}
