@@ -52,9 +52,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
              // Sólo queremos mostrar documentos de tipo 'temp_trd_session' o 'trd_upload' en esta vista.
              if (d.metadata?.type !== 'temp_trd_session' && d.metadata?.type !== 'trd_upload') continue;
 
-             const mappedStatus = d.status === 'success' ? 'success' : 
-                                  d.status === 'processing' ? 'analyzing' : 
-                                  d.status === 'error' ? 'error' : 'analyzing';
+             const statusValue = d.status || d.metadata?.status;
+             const mappedStatus = statusValue === 'success' ? 'success' : 
+                                  statusValue === 'processing' ? 'analyzing' : 
+                                  statusValue === 'error' ? 'error' : 'analyzing';
 
              const mappedImport = {
                 id: d.id,
