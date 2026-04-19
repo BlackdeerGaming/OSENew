@@ -70,7 +70,7 @@ class EntrevistaCreate(BaseModel):
     entrevistado: EntrevistadoSchema
 
 class GenerateManualRequest(BaseModel):
-    cargo: str  # Cargo name from entrevistados list
+    cargos: List[str]  # Cargo names from entrevistados list
     dependencia_id: str # To grab context
 
 # ---------- Helper functions ----------
@@ -429,7 +429,8 @@ async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: 
     funciones = func_res.data or []
     
     # Context format
-    ctx = f"Cargo a documentar: {payload.cargo}\n"
+    cargos_str = ", ".join(payload.cargos) if payload.cargos else "Desconocido"
+    ctx = f"Cargos a documentar: {cargos_str}\n"
     ctx += f"Dependencia (Sección): {dep_data.get('nombre')} (Cód {dep_data.get('codigo')})\n"
     ctx += "Funciones de la Dependencia:\n"
     for f in funciones:
@@ -437,12 +438,14 @@ async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: 
         
     prompt = ChatPromptTemplate.from_messages([
         ("system", "Eres un analista de talento humano experto en el sector público de Colombia y la ley 594. "
-         "Tu objetivo es redactar el 'Manual de Funciones' para un cargo específico dentro de una dependencia. "
-         "Deberás:\n"
-         "1. Establecer el Propósito Principal del Cargo basado en el nombre y las funciones de su área.\n"
-         "2. Extraer y formatear formalmente las Funciones Específicas del cargo, basándote en las funciones provistas.\n"
-         "3. Inferir las Relaciones e Interacciones con otras áreas.\n\n"
-         "RESPONDE ÚNICAMENTE EN FORMATO HTML bien estructurado estilo documento formal (<h1>, <h2>, <ul>) y sin macros markdown (sin ```html), para ser embebido en una vista. No expongas saludos informales."),
+         "Tu objetivo es redactar el 'Manual de Funciones' para un conjunto de cargos dentro de una dependencia. "
+         "Para CADA cargo provisto en la lista, deberás crear una sección que incluya:\n"
+         "1. Un encabezado <h2>Identificación del Cargo: [Nombre del cargo]</h2>.\n"
+         "2. El Propósito Principal del Cargo basado en el nombre y las funciones de su área.\n"
+         "3. Las Funciones Específicas del cargo formateadas formalmente (<ul>), extraídas de las funciones provistas.\n"
+         "4. Las Relaciones e Interacciones con otras áreas.\n"
+         "Si documentas MÁS DE UN CARGO, pon una etiqueta <hr style='margin: 32px 0; border-color: #ccc;' /> entre cada uno para separarlos visualmente.\n\n"
+         "RESPONDE ÚNICAMENTE EN FORMATO HTML bien estructurado estilo documento formal (<h1>, <h2>, <ul>) y sin macros markdown (sin ```html), para ser embebido en una vista. El documento general debe empezar con <h1>Manual de Funciones</h1>. No expongas saludos informales."),
         ("user", "{data}")
     ])
     
