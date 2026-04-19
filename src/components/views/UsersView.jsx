@@ -119,7 +119,10 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
        if (editingUserId) {
           fetch(`${API_BASE_URL}/users/${editingUserId}`, {
            method: 'PUT',
-           headers: { 'Content-Type': 'application/json' },
+           headers: { 
+             'Content-Type': 'application/json',
+             'Authorization': `Bearer ${currentUser?.token}`
+           },
            body: JSON.stringify({
              ...userBase,
              entidadIds: newUser.entidadIds
@@ -144,7 +147,10 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
          fetch(`${API_BASE_URL}/users`, {
            method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
+           headers: { 
+             'Content-Type': 'application/json',
+             'Authorization': `Bearer ${currentUser?.token}`
+           },
            body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
          }).then(async res => {
            if (res.ok) {

@@ -1108,7 +1108,7 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
     # Asegurar que nuevos usuarios no se creen con roles altos por defecto via API abierta
     # Solo superadmin puede crear otros superadmins
     final_perfil = user.perfil
-    if final_perfil in [SUPERADMIN_ROLE, ADMIN_ROLE] and current_user.get("role") != SUPERADMIN_ROLE:
+    if final_perfil == SUPERADMIN_ROLE and current_user.get("role") != SUPERADMIN_ROLE:
         final_perfil = DEFAULT_ROLE
 
     data = {
@@ -1127,22 +1127,37 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
 async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(400, "No Supabase")
     
+    # Obtener info actual del usuario destino para validar entidad
+    target_res = supabase_client.table("profiles").select("entidad_id").eq("id", user_id).execute()
+    if not target_res.data:
+        raise HTTPException(404, "Usuario no encontrado")
+    target_entity_id = target_res.data[0].get("entidad_id")
+    
     # Validar permisos
     if current_user.get("role") != SUPERADMIN_ROLE and user_id != current_user.get("user_id"):
-        # Si no es superadmin, solo puede editarse a s mismo (y no su rol)
-        # O si es admin de entidad podrÃƒÂ­a ser permitido pero con restricciones
-        # Por ahora: Solo superadmin o auto-ediciÃƒÂ³n bÃƒÂ¡sica
-        pass
+        if current_user.get("role") == ADMIN_ROLE:
+             # Admin solo puede editar usuarios de su propia entidad
+             if target_entity_id != current_user.get("entity_id"):
+                 raise HTTPException(403, "No autorizado para editar usuarios de otra entidad")
+        else:
+             raise HTTPException(403, "No autorizado para editar este usuario")
 
     data = {}
     if user.nombre is not None: data["nombre"] = user.nombre
     if user.apellido is not None: data["apellido"] = user.apellido
     if user.estado is not None: data["estado"] = user.estado
     
-    # SEGURIDAD: Solo superadmin puede cambiar el perfil (rol)
+    # SEGURIDAD: Superadmin asigna cualquier rol. Admin de entidad puede cambiar roles EXCEPTO a superadmin.
     if user.perfil is not None:
         if current_user.get("role") == SUPERADMIN_ROLE:
             data["perfil"] = user.perfil
+        elif current_user.get("role") == ADMIN_ROLE and user_id != current_user.get("user_id"):
+            if user.perfil != SUPERADMIN_ROLE:
+                data["perfil"] = user.perfil
+            else:
+                data["perfil"] = DEFAULT_ROLE
+        elif user_id == current_user.get("user_id") and user.perfil != current_user.get("role"):
+            print(f" Intento de auto-cambio de rol bloqueado para usuario: {user_id}")
         else:
             print(f" Intento de cambio de rol bloqueado para usuario: {current_user.get('user_id')}")
 
