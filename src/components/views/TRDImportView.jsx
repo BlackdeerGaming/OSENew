@@ -162,7 +162,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       // Logic to delete existing:
       setImports(prev => prev.filter(imp => imp.filename !== duplicateFile.name));
       try {
-        await fetch(`${API_BASE_URL}/imports/${existing.id}`, { 
+        await fetch(`${API_BASE_URL}/rag-documents/${existing.id}`, { 
           method: 'DELETE',
           headers: { "Authorization": `Bearer ${currentUser?.token}` }
         });
@@ -195,7 +195,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     setImports(prev => prev.filter(imp => imp.id !== id));
     // If it's a temp ID it won't exist in backend, otherwise delete explicitly
     try {
-      await fetch(`${API_BASE_URL}/imports/${id}`, { 
+      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
         method: 'DELETE',
         headers: { "Authorization": `Bearer ${currentUser?.token}` }
       });
@@ -247,14 +247,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       }
       
       // Update en backend a que la sesión está finalizada
-      await fetch(`${API_BASE_URL}/imports/${currentPreviewImport.id}`, {
+      await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
          method: 'PUT',
          headers: { 
            'Content-Type': 'application/json',
            'Authorization': `Bearer ${currentUser?.token}`
          },
          body: JSON.stringify({ status: 'success' })
-      });
+      }).catch(e => console.error("PUT rag_documents no existe", e));
       
       setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
       setPreviewImportId(null);
