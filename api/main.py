@@ -126,6 +126,44 @@ CONTEXTO DEL DOCUMENTO:
     ("human", "{question}")
 ])
 
+TRD_ARCHITECT_PROMPT = """Eres el Arquitecto TRD de OSE IA, experto en la Ley 594 de 2000 (Colombia) y normativas del AGN.
+Tu tarea es analizar el texto extraído (OCR) de una Tabla de Retención Documental y reconstruir su estructura jerárquica.
+
+DOCUMENTO A ANALIZAR:
+{text}
+
+REGLAS DE EXTRACCIÓN:
+1. Identifica las DEPENDENCIAS (Unidades Administrativas): Suelen tener códigos (ej: 100, 110) y nombres (ej: Secretaría General).
+2. Identifica las SERIES: Pertenecen a una dependencia. Tienen código (ej: 01, 10) y están asociadas a la dependencia.
+3. Identifica las SUBSERIES: Pertenecen a una serie.
+4. Identifica METADATOS: Tiempos de retención (Archivo de Gestión, Archivo Central) y Disposición Final (CT, E, S, MD).
+
+FORMATO DE SALIDA (JSON ESTRICTO):
+{{
+  "message": "He analizado el documento y encontré [X] dependencias y [Y] series documentales.",
+  "actions": [
+    {{
+      "type": "CREATE",
+      "entity": "dependencias",
+      "id": "t1",  // Usa IDs temporales t1, t2... para relacionar
+      "payload": {{ "nombre": "Nombre de Unidad", "codigo": "100" }}
+    }},
+    {{
+      "type": "CREATE",
+      "entity": "series",
+      "id": "s1",
+      "payload": {{ "nombre": "Nombre Serie", "codigo": "10", "dependenciaId": "t1" }}
+    }}
+  ]
+}}
+
+IMPORTANTE: 
+- Si el texto es confuso o parece no ser una TRD, deja "actions" como [] y explica en "message".
+- No inventes datos.
+- Solo retorna el JSON.
+"""
+
+
 #  Helpers 
 
 class ChatRequest(BaseModel):
@@ -259,18 +297,19 @@ def clean_text(text: str) -> str:
 def format_docs(docs):
     return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
+
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
-    print(f"Ã¢Å¡â„¢Ã¯Â¸Â Iniciando Background Task OCR para: {filename}")
+    print(f"⚙️ Iniciando Background Task OCR para: {filename}")
     extracted_text = ""
     
     try:
         import fitz
         from datetime import datetime
-        # Extraer texto de las primeras 20 pÃƒÂ¡ginas
+        # Extraer texto de las primeras 20 páginas
         fitz_doc = fitz.open(stream=content, filetype="pdf")
         pages_to_process = min(len(fitz_doc), 20)
         for i in range(pages_to_process):
-            extracted_text += f"\n--- PÃƒÂ GINA {i+1} ---\n" + fitz_doc[i].get_text()
+            extracted_text += f"\n--- PÁGINA {i+1} ---\n" + fitz_doc[i].get_text()
         fitz_doc.close()
     except Exception as e:
         print(f"❌ Error leyendo archivo en segundo plano: {e}")
@@ -286,7 +325,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
         }).eq("id", doc_id).execute()
         return
 
-    # Obtener el file_url y entidad_id actuales de la sesiÃƒÂ³n
+    # Obtener el file_url y entidad_id actuales de la sesión
     file_url = None
     entidad_id = None
     try:
@@ -316,21 +355,53 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                 embedding_vector = embeddings.embed_query(extracted_text[:4000])
             except: pass
 
-        # Insertar
+        # --- ANALISIS IA DE ESTRUCTURA TRD ---
+        print(f"🤖 Solicitando análisis TRD Architect para: {filename}")
+        
+        prompt_full = TRD_ARCHITECT_PROMPT.format(text=extracted_text[:6000])
+        parsed_actions = []
+        ai_message = "Análisis completado satisfactoriamente."
+        
+        try:
+            response_ai = llm.invoke([HumanMessage(content=prompt_full)])
+            content_ai = response_ai.content.strip()
+            
+            if "```json" in content_ai:
+                content_ai = content_ai.split("```json")[-1].split("```")[0].strip()
+            elif "```" in content_ai:
+                content_ai = content_ai.split("```")[-1].split("```")[0].strip()
+            
+            ai_data = json.loads(content_ai)
+            parsed_actions = ai_data.get("actions", [])
+            ai_message = ai_data.get("message", ai_message)
+        except Exception as ai_err:
+            print(f"⚠️ Error en análisis IA: {ai_err}")
+            ai_message = f"Error en análisis de estructura: {str(ai_err)}"
+
+        # Insertar documento RAG con texto para búsqueda
         supabase_client.table("rag_documents").insert({
             "content": extracted_text,
-            "metadata": doc_metadata,
+            "metadata": {**doc_metadata, "status": "success"},
             "embedding": embedding_vector
         }).execute()
         
-        # Actualizar sesiÃƒÂ³n
+        # Actualizar sesión original para que la UI muestre el botón de "Review"
+        final_meta = {
+            **doc_metadata,
+            "status": "reviewing",
+            "actions": parsed_actions,
+            "message": ai_message,
+            "ocr_engaged": True,
+            "type": "temp_trd_session"
+        }
+        
         supabase_client.table("rag_documents").update({
-            "metadata": {**doc_metadata, "status": "success"}
+            "metadata": final_meta
         }).eq("id", doc_id).execute()
         
-        print(f"Ã¢Å“â€¦ OCR exitoso para {filename}")
+        print(f"✅ Proceso OCR + Arquitectura completado para: {filename}")
     except Exception as e:
-        print(f"Ã¢ÂÅ’ Error guardando OCR en RAG: {e}")
+        print(f"❌ Error guardando OCR en RAG: {e}")
 
 #  Endpoints 
 
