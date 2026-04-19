@@ -1687,14 +1687,203 @@ async def signup(req: UserSignUp):
         "perfil": new_profile["perfil"],
         "estado": new_profile["estado"],
         "isActivated": new_profile["is_activated"],
+@router.get("/invitations/sent")
+async def get_sent_invitations(entity_id: str | None = None, current_user: dict = Depends(get_current_user)):
+    """Lista las invitaciones enviadas (Vista Administrador)"""
+    if not supabase_client: return []
+    if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
+        raise HTTPException(403, "Permisos insuficientes")
+    
+    query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
+    
+    if current_user.get("role") == SUPERADMIN_ROLE:
+        if entity_id:
+            query = query.eq("entity_id", entity_id)
+    else:
+        # Verificación dinámica: solo puede ver de entidades donde es admin
+        target_id = entity_id or current_user.get("entity_id")
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
+        query = query.eq("entity_id", target_id)
+    
+    res = query.order("created_at", desc=True).execute()
+    return [{
+        "id": inv["id"],
+        "email": inv["email"],
+        "entity_id": inv["entity_id"],
+        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad"),
+        "role": inv.get("role_invited", "usuario"),
+        "status": inv["status"],
+        "created_at": inv["created_at"],
+        "expires_at": inv["expires_at"],
+        "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}"
+    } for inv in res.data]
+
+@router.delete("/invitations/{inv_id}")
+async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(503)
+    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
+    if not inv_res.data: raise HTTPException(404, "No encontrada")
+    
+    target_entity_id = inv_res.data[0]["entity_id"]
+    
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
+             
+    # Cambiamos el estado a 'cancelada'
+    supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
+    return {"status": "success", "message": "Invitación cancelada"}
+
+@router.post("/invitations/{inv_id}/resend")
+async def resend_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(503)
+    
+    inv_res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
+    if not inv_res.data: raise HTTPException(404, "Invitación no encontrada")
+    inv = inv_res.data[0]
+    
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", inv["entity_id"]).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
+    
+    new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    supabase_client.table("invitations").update({
+        "expires_at": new_expiry,
+        "status": "pendiente" 
+    }).eq("id", inv_id).execute()
+    
+    return {"status": "success", "message": "Invitación reenviada correctamente"}
+
+@router.post("/invitations/{inv_id}/respond")
+async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
+    """Acepta o rechaza una invitación"""
+    if not supabase_client: raise HTTPException(500)
+    
+    # 1. Obtener la invitación y validar que pertenece al usuario
+    res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
+    if not res.data: raise HTTPException(404, "Invitación no encontrada")
+    
+    invitation = res.data[0]
+    if invitation["email"].lower() != current_user.get("email", "").lower():
+        raise HTTPException(403, "Esta invitación no es para ti")
+    
+    if invitation["status"] != "pendiente":
+        raise HTTPException(400, f"Esta invitación ya ha sido {invitation['status']}")
+
+    if resp.action == "accept":
+        # 2. Lógica de aceptación
+        # 2.1 Vincular en profile_entities con el ROL INVITADO
+        try:
+            supabase_client.table("profile_entities").upsert({
+                "profile_id": current_user.get("user_id"),
+                "entity_id": invitation["entity_id"],
+                "role": invitation.get("role_invited", "usuario")
+            }).execute()
+            
+            # 2.2 Actualizar el perfil del usuario para que esta sea su entidad principal si no tiene otra o por defecto
+            supabase_client.table("profiles").update({"entidad_id": invitation["entity_id"]}).eq("id", current_user.get("user_id")).execute()
+            
+            # 2.3 Marcar como aceptada
+            supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
+            
+            return {"status": "success", "message": "¡Invitación aceptada!"}
+        except Exception as e:
+            raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
+            
+    else:
+        # 3. Lógica de rechazo
+        supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
+        return {"status": "success", "message": "Invitación rechazada."}
+
+@router.post("/activity-logs")
+async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    new_log = {
+        "user_name": req.user_name,
+        "message": req.message
+    }
+    res = supabase_client.table("activity_logs").insert(new_log).execute()
+    return res.data
+
+@router.get("/activity-logs")
+async def get_activity_logs(current_user: dict = Depends(get_current_user)):
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    res = supabase_client.table("activity_logs").select("*").order("created_at", desc=True).limit(50).execute()
+    return res.data
+
+@router.post("/auth/signup")
+async def signup(req: UserSignUp):
+    """Crea un nuevo perfil y vincula invitaciones si existen."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    email = req.email.strip().lower()
+    username = req.username.strip().lower()
+    
+    # 1. Verificar si ya existe
+    existing = supabase_client.table("profiles").select("id").or_(f"email.eq.{email},username.eq.{username}").execute()
+    if existing.data:
+        raise HTTPException(400, "El correo electrónico o nombre de usuario ya está registrado.")
+    
+    # 2. Buscar invitaciones pendientes
+    inv_res = supabase_client.table("invitations").select("*").eq("email", email).eq("status", "pendiente").execute()
+    invitation = inv_res.data[0] if inv_res.data else None
+    
+    # 3. Datos base del perfil
+    new_profile = {
+        "nombre": req.nombre,
+        "apellido": req.apellido,
+        "email": email,
+        "username": username,
+        "password": req.password, # Nota: En producción hasear. Aquí mantenemos coherencia con el resto.
+        "perfil": "Consulta", # Rol global por defecto
+        "estado": "Activo" if invitation else "Inactivo",
+        "is_activated": True if invitation else False,
+        "entidad_id": invitation["entity_id"] if invitation else None
+    }
+    
+    # 4. Insertar Perfil
+    prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
+    if not prof_insert.data:
+        raise HTTPException(500, "Error al crear el perfil.")
+    
+    user_id = prof_insert.data[0]["id"]
+    
+    # 5. Si hay invitación, vincular a entidad y marcar como aceptada
+    user_entidades = []
+    if invitation:
+        role_invited = invitation.get("role_invited", "usuario")
+        # Crear la relación en profile_entities
+        supabase_client.table("profile_entities").insert({
+            "profile_id": user_id,
+            "entity_id": invitation["entity_id"],
+            "role": role_invited
+        }).execute()
+        
+        # Marcar invitación como aceptada
+        supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
+        
+        user_entidades.append(invitation["entity_id"])
+
+    # 6. Preparar respuesta tipo Login para Auto-Login
+    # Nota: Generamos un token temporal o simplemente retornamos los datos según se use en el frontend
+    return {
+        "id": user_id,
+        "nombre": req.nombre,
+        "apellido": req.apellido,
+        "email": email,
+        "username": username,
+        "perfil": new_profile["perfil"],
+        "estado": new_profile["estado"],
+        "isActivated": new_profile["is_activated"],
         "entidadId": new_profile["entidad_id"],
         "entidadIds": user_entidades,
         "token": f"USER-{user_id}" # Simulación de token JWT para el frontend actual
     }
 
-@router.get("/health-check")
-async def health_check():
-    return {"status": "ok", "message": "OSE Backend + Supabase ready"}
+app.include_router(router)
 
-if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
