@@ -479,7 +479,7 @@ router = APIRouter(prefix="/api")
 
 # Import dedicated TRD routes with cloud sync and role checks
 from .trd_routes import router as trd_router
-app.include_router(trd_router)
+router.include_router(trd_router, prefix="/trd")
 
 
 @router.get("/")
