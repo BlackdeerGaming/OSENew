@@ -11,36 +11,40 @@ export function useTRDData(currentUser = null, entityId = null) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
+  // ── Internal helpers ────────────────────────────────────────────────────────
+  const authHeaders = () => ({
+    'Authorization': `Bearer ${currentUser?.token || ''}`,
+    'Content-Type': 'application/json'
+  });
+
   const loadData = async () => {
-    if (!supabase || !currentUser?.token) {
+    const token  = currentUser?.token;
+    const entity = entityId;
+
+    if (!token || !entity) {
+      // No token or no entity → nothing to load
       setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
     try {
-      const trdScope = entityId || null;
+      // Use backend API (service-key access, RLS-bypassed, entity-scoped)
+      const base = `${API_BASE_URL}/trd/entity/${entity}`;
+      const headers = { 'Authorization': `Bearer ${token}` };
 
-      let depQ = supabase.from('dependencias').select('*').order('codigo');
-      let serQ = supabase.from('series').select('*').order('codigo');
-      let ssQ  = supabase.from('subseries').select('*').order('codigo');
-      let trdQ = supabase.from('trd_records').select('*');
+      const [dRes, sRes, ssRes, trdRes] = await Promise.all([
+        fetch(`${base}/dependencias`, { headers }),
+        fetch(`${base}/series`,       { headers }),
+        fetch(`${base}/subseries`,    { headers }),
+        fetch(`${base}/trd_records`,  { headers }),
+      ]);
 
-      if (trdScope) {
-        depQ = depQ.eq('entidad_id', trdScope);
-        serQ = serQ.eq('entidad_id', trdScope);
-        ssQ  = ssQ.eq('entidad_id', trdScope);
-        trdQ = trdQ.eq('entidad_id', trdScope);
-      }
+      if (dRes.ok)   setDependencias((await dRes.json()).map(mapDependenciaFromDB));
+      if (sRes.ok)   setSeries((await sRes.json()).map(mapSerieFromDB));
+      if (ssRes.ok)  setSubseries((await ssRes.json()).map(mapSubserieFromDB));
+      if (trdRes.ok) setTrdRecords((await trdRes.json()).map(mapTRDFromDB));
 
-      const [d, s, ss, trd] = await Promise.all([depQ, serQ, ssQ, trdQ]);
-
-      if (d.data) setDependencias(d.data.map(mapDependenciaFromDB));
-      if (s.data) setSeries(s.data.map(mapSerieFromDB));
-      if (ss.data) setSubseries(ss.data.map(mapSubserieFromDB));
-      if (trd.data) setTrdRecords(trd.data.map(mapTRDFromDB));
-      // Note: imports are loaded independently by TRDImportView, not here
-      
       setIsSynced(true);
     } catch (err) {
       console.error('Error loading TRD data:', err);
@@ -49,17 +53,20 @@ export function useTRDData(currentUser = null, entityId = null) {
     }
   };
 
-  // Load all data from Supabase when userId or entityId changes
+  // Stable primitive deps: only re-load when user id, token, or entityId change
+  const userId    = currentUser?.id    || null;
+  const userToken = currentUser?.token || null;
+
   useEffect(() => {
     loadData();
-  }, [currentUser, entityId]);
+  }, [userId, userToken, entityId]);
 
   const refreshData = () => loadData();
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString(), entidadId: entityId };
-    
+
     // Optimistic Update
     setDependencias(prev => {
       const exists = prev.find(x => x.id === newRecord.id);
@@ -187,7 +194,7 @@ function mapDependenciaFromDB(d) {
     direccion: d.direccion,
     telefono: d.telefono,
     dependeDe: d.depende_de,
-    entidadId: d.entidad_id // Match backend
+    entidadId: d.entidad_id || d.entity_id
   };
 }
 
@@ -203,7 +210,7 @@ function mapDependenciaToDB(d) {
     direccion: d.direccion,
     telefono: d.telefono,
     depende_de: (d.dependeDe === "ninguna" || !d.dependeDe) ? null : d.dependeDe,
-    entidad_id: d.entidadId || d.entityId || null // Match backend
+    entidad_id: d.entidadId || d.entityId || null
   };
 }
 
@@ -213,7 +220,7 @@ function mapSerieFromDB(s) {
     nombre: s.nombre,
     codigo: s.codigo,
     dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id,
+    entidadId: s.entidad_id || s.entity_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -236,7 +243,7 @@ function mapSubserieFromDB(s) {
     codigo: s.codigo,
     serieId: s.serie_id,
     dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id,
+    entidadId: s.entidad_id || s.entity_id,
     tipoDocumental: s.tipo_documental
   };
 }
@@ -259,7 +266,7 @@ function mapTRDFromDB(r) {
     dependenciaId: r.dependencia_id,
     serieId: r.serie_id,
     subserieId: r.subserie_id,
-    entidadId: r.entidad_id,
+    entidadId: r.entidad_id || r.entity_id,
     estadoConservacion: r.estado_conservacion,
     retencionGestion: r.retenci_gestion,
     retencionCentral: r.retenci_central,

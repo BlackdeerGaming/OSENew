@@ -181,6 +181,12 @@ async def create_serie_entity(
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
     return record
 
+@router.get("/entity/{entity_id}/series", response_model=List[dict])
+async def list_series_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("series").select("*").eq("entity_id", entity_id).order("codigo").execute()
+    return res.data or []
+
 # List, update, delete for series follow same pattern (omitted for brevity)
 
 # ---------- Subseries ----------
@@ -205,6 +211,12 @@ async def create_subserie_entity(
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
     return record
 
+@router.get("/entity/{entity_id}/subseries", response_model=List[dict])
+async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("subseries").select("*").eq("entity_id", entity_id).order("codigo").execute()
+    return res.data or []
+
 # ---------- TRD Records ----------
 @router.post("/entity/{entity_id}/trd_records", response_model=dict)
 async def create_trd_record_entity(
@@ -226,6 +238,12 @@ async def create_trd_record_entity(
         supabase_client.table("trd_records").delete().eq("id", record["id"]).execute()
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
     return record
+
+@router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
+async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("trd_records").select("*").eq("entity_id", entity_id).execute()
+    return res.data or []
 
 # ---------- Funciones ----------
 @router.post("/entity/{entity_id}/funciones", response_model=dict)
