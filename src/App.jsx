@@ -1017,11 +1017,19 @@ function App() {
   }, [currentEntity]);
 
   const handleExportTRD = (dependencyName) => {
-    if (dependencyName && dependencyName !== "TODAS") {
-       setSelectedDependencia(dependencyName);
-       // Limpiar selección de IDs específicos para exportar toda la dependencia
-       setSelectedTrdIds(new Set());
+    // Si se pasa un nombre específico, lo fijamos. Si no, usamos el actual.
+    // Verificamos que sea un string y no un evento de React Synthetic Event
+    const isValidName = typeof dependencyName === 'string' && dependencyName !== "TODAS";
+    const target = isValidName ? dependencyName : selectedDependencia;
+    
+    if (typeof target === 'string' && target !== "TODAS") {
+       setSelectedDependencia(target);
     }
+    
+    // 🔥 CRÍTICO: Limpiamos selecciones individuales para que la previsualización 
+    // muestre TODA la oficina por defecto, evitando tablas vacías por IDs huérfanos.
+    setSelectedTrdIds(new Set());
+    
     setIsPrinting(true);
   };
 
@@ -1310,43 +1318,40 @@ function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Selector de Orientación */}
-            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 mr-2">
-              <button 
-                onClick={() => setPrintOrientation('portrait')}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
-                  printOrientation === 'portrait' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
-                )}
-              >
-                VERTICAL
-              </button>
-              <button 
-                onClick={() => setPrintOrientation('landscape')}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
-                  printOrientation === 'landscape' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
-                )}
-              >
-                HORIZONTAL
-              </button>
-            </div>
+             <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 mr-2">
+               <button 
+                 onClick={() => setPrintOrientation('portrait')}
+                 className={cn(
+                   "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
+                   printOrientation === 'portrait' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
+                 )}
+               >
+                 VERTICAL
+               </button>
+               <button 
+                 onClick={() => setPrintOrientation('landscape')}
+                 className={cn(
+                   "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
+                   printOrientation === 'landscape' ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
+                 )}
+               >
+                 HORIZONTAL
+               </button>
+             </div>
 
             <button 
               onClick={() => {
-                const depName = selectedDependencia === "TODAS" ? "ReporteGeneral" : selectedDependencia.replace(/\s+/g, '');
+                const safeDepName = (selectedDependencia === "TODAS" || !selectedDependencia) 
+                  ? "ReporteGeneral" 
+                  : selectedDependencia.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
+                
                 const now = new Date();
                 const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
                 const randomId = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
                 
-                // Formato exacto solicitado: NombreDependencia_FechaNumerica_IDRandom
-                // Nota: Usamos _ en lugar de / para la fecha en el nombre del archivo real por compatibilidad de SO, 
-                // pero capturamos la esencia del requerimiento.
-                const customFilename = `${depName}_${dateStr}_${randomId}`;
+                const customFilename = `${safeDepName}_${dateStr}_${randomId}`;
                 
-                // REGISTRO DE ACTIVIDAD: Descarga TRD
                 addActivityLog(`Descarga TRD (${printOrientation}) - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
-
                 handleExportPDFGeneral('trd-final-report-area', customFilename, printOrientation);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"

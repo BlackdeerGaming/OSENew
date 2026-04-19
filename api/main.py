@@ -306,6 +306,57 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
+async def index_document_rag(doc_id: str, content: bytes, filename: str, entidad: str, file_url: str):
+    """
+    Background Task: Extrae texto, realiza chunking y envía vectores a Supabase PgVector.
+    Se ejecuta de forma asíncrona y captura todas las excepciones para no romper el proceso principal.
+    """
+    print(f"--- RAG BACKGROUND: Iniciando indexación semántica para {filename} ---")
+    if not supabase_client or not embeddings:
+        print("RAG BACKGROUND: Saltando, Supabase o Embeddings no están configurados.")
+        return
+
+    try:
+        import fitz
+        fitz_doc = fitz.open(stream=content, filetype="pdf")
+        full_text = ""
+        for page in fitz_doc:
+            full_text += page.get_text() + "\n"
+        fitz_doc.close()
+        
+        cleaned_text = clean_text(full_text)
+        if not cleaned_text:
+            print("RAG BACKGROUND: No se extrajo texto útil para vectorizar.")
+            return
+            
+        print(f"RAG BACKGROUND: Texto extraído correctamente. Troceando...")
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        docs = text_splitter.create_documents([cleaned_text])
+        
+        # Añadir metadata vital para la Búsqueda Vectorial por Entidad
+        for i, doc in enumerate(docs):
+            doc.metadata = {
+                "source": filename,
+                "chunk": i,
+                "entidad_id": entidad or "",
+                "file_url": file_url or "",
+                "type": "rag_chunk"
+            }
+            
+        print(f"RAG BACKGROUND: Insertando {len(docs)} chunks en PgVector...")
+        vector_store = SupabaseVectorStore(
+            embedding=embeddings,
+            client=supabase_client,
+            table_name="rag_documents",
+            query_name="match_rag_documents"
+        )
+        # Se ejecuta en un hilo separado para no bloquear el Event Loop de FastAPI
+        await asyncio.to_thread(vector_store.add_documents, docs)
+        
+        print(f"RAG BACKGROUND: ✨ Éxito indexando {filename} de manera asíncrona.")
+    except Exception as e:
+        print(f"RAG BACKGROUND ERROR: ⚠️ Falló la indexación silenciosamente -> {e}")
+
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
     """
     Proceso de segundo plano para extraer texto e imágenes para Visión IA.
@@ -466,7 +517,7 @@ async def debug_vars():
     }
 
 @router.post("/upload")
-async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
+async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
     """
     Sube un PDF, extrae texto, genera embeddings y los guarda en Supabase pgvector.
     Vision AI desactivada para evitar timeout de Vercel (10s lmite).
@@ -1294,11 +1345,11 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     doc_id = res.data[0]["id"]
     
     # Iniciar procesos paralelos en segundo plano
-    # 1. OCR para aprobación inmediata (Prioridad Máxima)
+    # 1. OCR para aprobación inmediata (Prioridad Máxima del Sistema)
     background_tasks.add_task(process_ocr_task, doc_id, content, file.filename)
     
-    # RAG INDEXING DESACTIVADO TEMPORALMENTE SEGUN SOLICITUD PARA SPEED
-    # background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
+    # 2. RAG Indexing en background (Proceso Secundario y no bloqueante)
+    background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
     
     return {"id": doc_id, "status": "processing", "import_id": doc_id}
 

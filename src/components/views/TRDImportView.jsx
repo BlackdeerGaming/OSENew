@@ -13,7 +13,7 @@ import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
 const STATUS_CONFIG = {
   uploading: { label: 'Subiendo...', color: 'bg-blue-500', icon: Loader2, animate: true },
-  analyzing: { label: 'Analizando con Visión IA...', color: 'bg-indigo-500', icon: BrainCircuit, animate: true },
+  analyzing: { label: 'Extrayendo TRD y Enriqueciendo IA...', color: 'bg-indigo-500', icon: BrainCircuit, animate: true },
   reviewing: { label: 'Esperando Aprobación', color: 'bg-amber-500', icon: Scan, animate: false },
   success: { label: 'Completado', color: 'bg-emerald-500', icon: CheckCircle2, animate: false },
   error: { label: 'Error de Análisis', color: 'bg-rose-500', icon: AlertCircle, animate: false },

@@ -7,7 +7,12 @@ import { Table, Check, Info, FileText } from "lucide-react";
 const BD = "1px solid #000000";
 
 export default function TRDGenerator({ rows = [], selectedIds = new Set(), currentEntity, logoBase64 }) {
-  if (rows.length === 0) {
+  // If we have selected IDs, we filter rows. If not, we show all provided rows.
+  const exportRows = (selectedIds instanceof Set && selectedIds.size > 0) 
+    ? rows.filter(r => selectedIds.has(r.id)) 
+    : rows;
+
+  if (exportRows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] p-12 text-muted-foreground bg-white rounded-2xl border border-dashed" style={{ borderColor: '#334155' }}>
         <div className="p-4 rounded-full mb-4">
@@ -22,10 +27,9 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), curre
     );
   }
 
-  const exportRows   = selectedIds.size > 0 ? rows.filter(r => selectedIds.has(r.id)) : rows;
-  const oficina      = rows[0]?.dependencia || "OFICINA PRODUCTORA";
-  const codOficina   = rows[0]?.codigo?.split('-')[0] || "1.1";
-  const entityName   = currentEntity?.nombre || currentEntity?.razonSocial || "OSE SISTEMA GLOBAL";
+  const oficina      = exportRows[0]?.dependencia || "OFICINA PRODUCTORA";
+  const codOficina   = exportRows[0]?.codigo?.split('-')[0] || "1.1";
+  const entityName   = currentEntity?.razonSocial || currentEntity?.nombre || "OSE SISTEMA GLOBAL";
   const logoSrc      = logoBase64 || currentEntity?.logoUrl;
   const fechaHoy     = new Date().toLocaleDateString('es-CO');
 
