@@ -327,7 +327,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
 #  Endpoints 
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # Import dedicated TRD routes with cloud sync and role checks
 from .trd_routes import router as trd_router
