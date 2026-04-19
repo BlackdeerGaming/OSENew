@@ -15,15 +15,16 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         
         # --- NORMALIZACIÓN DE ROLES CENTRALIZADA ---
-        raw_role = payload.get('role', 'usuario')
+        raw_role = str(payload.get('role', 'usuario')).lower().strip()
+        
         if raw_role in ('admin', 'administrador', 'administración'):
             payload['role'] = 'administrador'
-        elif raw_role in ('superadmin'):
+        elif raw_role == 'superadmin':
             payload['role'] = 'superadmin'
-        elif raw_role in ('user', 'usuario', 'Consulta', 'cliente'):
+        elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
             payload['role'] = 'usuario'
         else:
-            payload['role'] = raw_role # Por si hay otros roles
+            payload['role'] = raw_role # Mantener otros roles específicos
             
         return payload
     except jwt.PyJWTError as e:
