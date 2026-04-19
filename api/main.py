@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import base64
 from dotenv import load_dotenv
@@ -327,7 +327,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
 #  Endpoints 
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 # Import dedicated TRD routes with cloud sync and role checks
 from .trd_routes import router as trd_router
