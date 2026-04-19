@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import base64
 from dotenv import load_dotenv
@@ -18,7 +18,7 @@ DEFAULT_ROLE = "usuario"
 ADMIN_ROLE = "administrador"
 SUPERADMIN_ROLE = "superadmin"
 
-# Configuración Pinecone
+# ConfiguraciÃ³n Pinecone
 import jwt
 from pydantic import BaseModel
 import uvicorn
@@ -114,10 +114,10 @@ RAG_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """Eres OSE Copilot, el asistente experto de la Biblioteca RAG de OSE IA.
 
 REGLAS DE RESPUESTA:
-1. Responde ÚNICAMENTE basándote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
+1. Responde ÃšNICAMENTE basÃ¡ndote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
 2. Si el contexto no tiene la respuesta o no hay documentos relevantes, responde obligatoriamente:
-   "Lo siento, no encontré información cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
-3. NO inventes datos ni asumas información que no esté escrita en el contexto.
+   "Lo siento, no encontrÃ© informaciÃ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
+3. NO inventes datos ni asumas informaciÃ³n que no estÃ© escrita en el contexto.
 4. Responde con un tono profesional y servicial.
 
 CONTEXTO DEL DOCUMENTO:
@@ -260,26 +260,26 @@ def format_docs(docs):
     return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
-    print(f"⚙️ Iniciando Background Task OCR para: {filename}")
+    print(f"âš™ï¸ Iniciando Background Task OCR para: {filename}")
     extracted_text = ""
     
     try:
         import fitz
         from datetime import datetime
-        # Extraer texto de las primeras 20 páginas
+        # Extraer texto de las primeras 20 pÃ¡ginas
         fitz_doc = fitz.open(stream=content, filetype="pdf")
         pages_to_process = min(len(fitz_doc), 20)
         for i in range(pages_to_process):
-            extracted_text += f"\n--- PÁGINA {i+1} ---\n" + fitz_doc[i].get_text()
+            extracted_text += f"\n--- PÃGINA {i+1} ---\n" + fitz_doc[i].get_text()
         fitz_doc.close()
     except Exception as e:
-        print(f"❌ Error leyendo archivo en segundo plano: {e}")
+        print(f"âŒ Error leyendo archivo en segundo plano: {e}")
         supabase_client.table("rag_documents").update({
             "metadata": {"status": "error", "message": f"Error leyendo el archivo: {str(e)}"}
         }).eq("id", doc_id).execute()
         return
 
-    # Obtener el file_url y entidad_id actuales de la sesión
+    # Obtener el file_url y entidad_id actuales de la sesiÃ³n
     file_url = None
     entidad_id = None
     try:
@@ -316,14 +316,14 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             "embedding": embedding_vector
         }).execute()
         
-        # Actualizar sesión
+        # Actualizar sesiÃ³n
         supabase_client.table("rag_documents").update({
             "metadata": {**doc_metadata, "status": "success"}
         }).eq("id", doc_id).execute()
         
-        print(f"✅ OCR exitoso para {filename}")
+        print(f"âœ… OCR exitoso para {filename}")
     except Exception as e:
-        print(f"❌ Error guardando OCR en RAG: {e}")
+        print(f"âŒ Error guardando OCR en RAG: {e}")
 
 #  Endpoints 
 
@@ -511,14 +511,14 @@ async def upload_pdf(file: UploadFile = File(...), entidad_id: str = "", user: d
 @router.post("/chat")
 async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     if not supabase_client:
-        raise HTTPException(status_code=503, detail="Supabase no está configurado.")
+        raise HTTPException(status_code=503, detail="Supabase no estÃ¡ configurado.")
 
     print(f"\n --- CONSULTA DOCUMENCIO ---")
     print(f" Query: {request.query}")
     print(f" User Role: {user.get('role')}")
 
     if not embeddings or not llm:
-        return {"answer": "Lo siento, los servicios de IA no están configurados correctamente. Por favor verifica las credenciales.", "sources": []}
+        return {"answer": "Lo siento, los servicios de IA no estÃ¡n configurados correctamente. Por favor verifica las credenciales.", "sources": []}
 
     try:
         # 1. Generar embedding
@@ -530,11 +530,11 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             return {"answer": "Tuve un inconveniente tcnico al procesar el sentido de tu pregunta. Por favor intenta de nuevo.", "sources": []}
 
         if not query_vector:
-            return {"answer": "No pude procesar tu pregunta. Intenta redactarla de forma más sencilla.", "sources": []}
+            return {"answer": "No pude procesar tu pregunta. Intenta redactarla de forma mÃ¡s sencilla.", "sources": []}
 
         # 2. Determinar entidad para filtro
         # Si es superadmin, no aplicamos filtro de entidad por defecto (permite ver todo)
-        # excepto si se solicita una específica.
+        # excepto si se solicita una especÃ­fica.
         rol = user.get("role")
         if rol == "superadmin":
             entidad_actual = request.entidadId if request.entidadId and request.entidadId != "e0" else None
@@ -543,7 +543,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         
         search_filter = {"entidad_id": entidad_actual} if entidad_actual else {}
         
-        # 3. Búsqueda RPC
+        # 3. BÃºsqueda RPC
         print(f" Buscando en Supabase (Filtro Entidad: {entidad_actual if entidad_actual else 'GLOBAL'})...")
         try:
             rpc_res = supabase_client.rpc("match_rag_documents", {
@@ -566,7 +566,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         
         if not source_docs:
             print(" No se encontraron documentos relevantes para esta entidad.")
-            return {"answer": "Lo siento, no encontré información cargada en mi biblioteca que me permita responder esa pregunta de forma precisa.", "sources": []}
+            return {"answer": "Lo siento, no encontrÃ© informaciÃ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa.", "sources": []}
 
         # 3. Respuesta LLM
         print(" Generando respuesta...")
@@ -828,7 +828,7 @@ async def send_activation(request: ActivationEmailRequest):
 
 @router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
-    """Genera un token de reseteo y envía el correo"""
+    """Genera un token de reseteo y envÃ­a el correo"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     target_email = request.email.strip().lower()
@@ -836,8 +836,8 @@ async def request_reset(request: PasswordResetRequest):
     # 1. Verificar si el usuario existe
     user_res = supabase_client.table("profiles").select("id, nombre").eq("email", target_email).execute()
     if not user_res.data:
-        # Por seguridad no revelamos si existe o no, pero retornamos éxito simulado si no existe
-        return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
+        # Por seguridad no revelamos si existe o no, pero retornamos Ã©xito simulado si no existe
+        return {"status": "ok", "message": "Si el correo estÃ¡ registrado, recibirÃ¡s un enlace de recuperaciÃ³n."}
     
     user = user_res.data[0]
     token = str(uuid.uuid4())
@@ -856,15 +856,15 @@ async def request_reset(request: PasswordResetRequest):
         <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #00bfa5;">Recuperación de Contraseña</h2>
+                <h2 style="color: #00bfa5;">RecuperaciÃ³n de ContraseÃ±a</h2>
                 <p>Hola {user['nombre']},</p>
-                <p>Has solicitado restablecer tu contraseña en OSE IA. Haz clic en el siguiente botón para continuar:</p>
+                <p>Has solicitado restablecer tu contraseÃ±a en OSE IA. Haz clic en el siguiente botÃ³n para continuar:</p>
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer Contraseña</a>
+                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer ContraseÃ±a</a>
                 </div>
-                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducará en 1 hora.</p>
+                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducarÃ¡ en 1 hora.</p>
                 <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA • Gestión Documental Inteligente</p>
+                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA â€¢ GestiÃ³n Documental Inteligente</p>
             </div>
         </body>
         </html>
@@ -885,11 +885,11 @@ async def request_reset(request: PasswordResetRequest):
         except Exception as e:
             print(f"Error enviando correo de reset: {e}")
 
-    return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
+    return {"status": "ok", "message": "Si el correo estÃ¡ registrado, recibirÃ¡s un enlace de recuperaciÃ³n."}
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
-    """Valida el token y actualiza la contraseña"""
+    """Valida el token y actualiza la contraseÃ±a"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     # 1. Buscar usuario por token
@@ -897,22 +897,22 @@ async def perform_reset(request: PerformResetRequest):
     res = supabase_client.table("profiles").select("*").eq("reset_token", request.token).execute()
     
     if not res.data:
-        raise HTTPException(400, "El enlace de recuperación no es válido.")
+        raise HTTPException(400, "El enlace de recuperaciÃ³n no es vÃ¡lido.")
     
     user = res.data[0]
     
-    # 2. Verificar expiración
+    # 2. Verificar expiraciÃ³n
     if user.get("reset_token_expiry") and user["reset_token_expiry"] < now:
-        raise HTTPException(400, "El enlace de recuperación ha expirado.")
+        raise HTTPException(400, "El enlace de recuperaciÃ³n ha expirado.")
         
-    # 3. Actualizar contraseña y limpiar token
+    # 3. Actualizar contraseÃ±a y limpiar token
     supabase_client.table("profiles").update({
         "password": request.new_password,
         "reset_token": None,
         "reset_token_expiry": None
     }).eq("id", user["id"]).execute()
     
-    return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
+    return {"status": "success", "message": "Tu contraseÃ±a ha sido actualizada correctamente."}
 
 @router.post("/activate")
 async def activate_user(req: UserActivate):
@@ -957,7 +957,7 @@ async def login(req: LoginRequest):
     entidad_ids = [e["entity_id"] for e in entities_res.data]
     active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
     
-    # Obtener el rol específico para esta entidad de la tabla de unión
+    # Obtener el rol especÃ­fico para esta entidad de la tabla de uniÃ³n
     role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
     active_role = role_res.data[0]["role"] if role_res.data else user_data["perfil"]
 
@@ -992,7 +992,7 @@ async def google_auth(req: GoogleAuthRequest):
         user_data = res.data[0]
         print(f" Usuario Google encontrado: {req.email} (Rol actual: {user_data['perfil']})")
         
-        # Opcional: Si el email está en la whitelist y por alguna razón NO era superadmin, lo promovemos
+        # Opcional: Si el email estÃ¡ en la whitelist y por alguna razÃ³n NO era superadmin, lo promovemos
         if req.email.lower() in SUPERADMIN_EMAILS and user_data["perfil"] != SUPERADMIN_ROLE:
             print(f" Promoviendo usuario existente a SuperAdmin via Whitelist: {req.email}")
             update_res = supabase_client.table("profiles").update({"perfil": SUPERADMIN_ROLE}).eq("id", user_data["id"]).execute()
@@ -1032,7 +1032,7 @@ async def google_auth(req: GoogleAuthRequest):
             raise HTTPException(500, "Error al crear el perfil de usuario")
         user_data = create_res.data[0]
         
-        # Crear relacion con entidad por defecto también en profile_entities
+        # Crear relacion con entidad por defecto tambiÃ©n en profile_entities
         supabase_client.table("profile_entities").insert({
             "profile_id": user_data["id"],
             "entity_id": "e0"
@@ -1123,8 +1123,8 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     # Validar permisos
     if current_user.get("role") != SUPERADMIN_ROLE and user_id != current_user.get("user_id"):
         # Si no es superadmin, solo puede editarse a s mismo (y no su rol)
-        # O si es admin de entidad podría ser permitido pero con restricciones
-        # Por ahora: Solo superadmin o auto-edición básica
+        # O si es admin de entidad podrÃ­a ser permitido pero con restricciones
+        # Por ahora: Solo superadmin o auto-ediciÃ³n bÃ¡sica
         pass
 
     data = {}
@@ -1184,13 +1184,13 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     
     if role != SUPERADMIN_ROLE:
         if role != ADMIN_ROLE:
-            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acción")
+            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acciÃ³n")
         if not admin_entity_id:
             raise HTTPException(403, "No perteneces a ninguna entidad activa")
         if str(target_user_entity) != str(admin_entity_id):
             raise HTTPException(403, "No puedes eliminar usuarios de otras entidades")
 
-    # 2. Limpiar dependencias (Claves Foráneas) de forma segura
+    # 2. Limpiar dependencias (Claves ForÃ¡neas) de forma segura
     cleanup_tables = [
         ("profile_entities", "profile_id"),
         ("activity_logs", "user_id"),
@@ -1201,7 +1201,7 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         try:
             supabase_client.table(table_name).delete().eq(column_name, user_id).execute()
         except Exception as e:
-            # Ignorar si la tabla no existe o hay error de caché de esquema
+            # Ignorar si la tabla no existe o hay error de cachÃ© de esquema
             print(f"  Aviso: No se pudo limpiar {table_name}: {e}")
 
     try:
@@ -1209,8 +1209,8 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
         
         if not res.data:
-             # Si llegamos aquí y no hay data, algo falló en la query de borrado silenciosamente
-             raise HTTPException(500, "No se pudo confirmar la eliminación del usuario")
+             # Si llegamos aquÃ­ y no hay data, algo fallÃ³ en la query de borrado silenciosamente
+             raise HTTPException(500, "No se pudo confirmar la eliminaciÃ³n del usuario")
              
     except Exception as e:
         print(f" Error eliminando perfil {user_id}: {str(e)}")
@@ -1274,11 +1274,11 @@ async def get_rag_documents(entidad_id: str = None, user: dict = Depends(get_cur
                 current["file_url"] = meta["file_url"]
             if not current.get("entidad_id") and meta.get("entidad_id"):
                 current["entidad_id"] = meta["entidad_id"]
-            # Si el nuevo registro tiene éxito, preferimos su status
+            # Si el nuevo registro tiene Ã©xito, preferimos su status
             if meta.get("status") == "success":
                 current["status"] = "success"
         else:
-            # Documentos válidos para mostrar: success o sesiones activas para admins
+            # Documentos vÃ¡lidos para mostrar: success o sesiones activas para admins
             is_valid = meta.get("status") == "success" or (user.get("role") == "superadmin" and meta.get("type") == "temp_trd_session")
             if is_valid:
                 seen_sources[source] = {
@@ -1301,7 +1301,7 @@ async def delete_rag_document(doc_id: str):
     
 @router.post("/invitations")
 async def create_invitation(req: InvitationCreate, current_user: dict = Depends(get_current_user)):
-    """Crea una invitación para un usuario (existente o no) a una entidad"""
+    """Crea una invitaciÃ³n para un usuario (existente o no) a una entidad"""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     
     # 1. Validar permisos: Solo admin de la entidad o superadmin
@@ -1309,7 +1309,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     target_entity_id = str(req.entity_id or "")
 
     if user_role != SUPERADMIN_ROLE:
-        # Verificación dinámica: ¿Es admin de esta entidad específica?
+        # VerificaciÃ³n dinÃ¡mica: Â¿Es admin de esta entidad especÃ­fica?
         admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
         if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
              raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
@@ -1323,21 +1323,21 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     if check_profile.data:
         p_id = check_profile.data[0]["id"]
-        # Si ya está en profile_entities para esta entidad, error
+        # Si ya estÃ¡ en profile_entities para esta entidad, error
         is_member = any(r["profile_id"] == p_id for r in check_member.data)
         if is_member:
             raise HTTPException(400, "El usuario ya es miembro de esta entidad")
 
-    # 3. Verificar si hay una invitación pendiente activa
+    # 3. Verificar si hay una invitaciÃ³n pendiente activa
     check_existing = supabase_client.table("invitations").select("*").eq("email", target_email).eq("entity_id", req.entity_id).eq("status", "pendiente").execute()
     if check_existing.data:
-        # Verificar expiración
+        # Verificar expiraciÃ³n
         inv = check_existing.data[0]
         expires_at_dt = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
         if expires_at_dt > datetime.now(timezone.utc):
-             raise HTTPException(400, "Ya existe una invitación pendiente y activa para este correo")
+             raise HTTPException(400, "Ya existe una invitaciÃ³n pendiente y activa para este correo")
 
-    # 4. Crear la invitación (expira en 1 día)
+    # 4. Crear la invitaciÃ³n (expira en 1 dÃ­a)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     inviter_id = current_user.get("user_id")
     
@@ -1352,17 +1352,17 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     res = supabase_client.table("invitations").insert(new_inv).execute()
     if not res.data:
-        raise HTTPException(500, "No se pudo crear la invitación")
+        raise HTTPException(500, "No se pudo crear la invitaciÃ³n")
     
     invitation = res.data[0]
     
-    # 5. Intentar enviar correo real vía Resend
+    # 5. Intentar enviar correo real vÃ­a Resend
     entity_res = supabase_client.table("entities").select("razon_social").eq("id", req.entity_id).execute()
     entity_name = entity_res.data[0]["razon_social"] if entity_res.data else "una entidad de OSE IA"
     inviter_name = current_user.get("nombre", "Un administrador")
     invitation_id = invitation["id"]
     
-    # URL de la aplicación con contexto de invitación
+    # URL de la aplicaciÃ³n con contexto de invitaciÃ³n
     frontend_url = "https://ose-new.vercel.app" # Cambiar por variable de entorno si aplica
     invite_link = f"{frontend_url}/?invitation_id={invitation_id}&email={target_email}"
 
@@ -1459,9 +1459,9 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                 )
                 print(f"DEBUG Email Invitation status: {res.status_code}")
         except Exception as e:
-            print(f" Error enviando mail de invitación: {e}")
+            print(f" Error enviando mail de invitaciÃ³n: {e}")
 
-    return {"status": "success", "message": "Invitación enviada", "invitation": invitation}
+    return {"status": "success", "message": "InvitaciÃ³n enviada", "invitation": invitation}
 
 @router.get("/invitations/my")
 async def get_my_invitations(current_user: dict = Depends(get_current_user)):
@@ -1469,10 +1469,7 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     if not supabase_client: return []
     email = current_user.get("email", "").lower()
     if not email: return []
-    
     res = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)").eq("email", email).eq("status", "pendiente").execute()
-    
-    # Filtrar expiradas manualmente por ahora
     now = datetime.now(timezone.utc)
     valid_invitations = []
     for inv in res.data:
@@ -1487,10 +1484,8 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
                 "expires_at": inv["expires_at"]
             })
         else:
-            # Marcar como vencida silenciosamente solo si no lo est
             if inv.get("status") != "vencida":
                 supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
-            
     return valid_invitations
 
 @router.get("/invitations/sent")
@@ -1499,20 +1494,16 @@ async def get_sent_invitations(entity_id: str | None = None, current_user: dict 
     if not supabase_client: return []
     if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
         raise HTTPException(403, "Permisos insuficientes")
-    
     query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
-    
     if current_user.get("role") == SUPERADMIN_ROLE:
         if entity_id:
             query = query.eq("entity_id", entity_id)
     else:
-        # Verificación dinámica: solo puede ver de entidades donde es admin
         target_id = entity_id or current_user.get("entity_id")
         admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_id).execute()
         if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
+            raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
         query = query.eq("entity_id", target_id)
-    
     res = query.order("created_at", desc=True).execute()
     return [{
         "id": inv["id"],
@@ -1531,283 +1522,58 @@ async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_curren
     if not supabase_client: raise HTTPException(503)
     inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
     if not inv_res.data: raise HTTPException(404, "No encontrada")
-    
     target_entity_id = inv_res.data[0]["entity_id"]
-    
     if current_user.get("role") != SUPERADMIN_ROLE:
         admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
         if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
-             
-    # Cambiamos el estado a 'cancelada'
+            raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
     supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
-    return {"status": "success", "message": "Invitación cancelada"}
+    return {"status": "success", "message": "Invitacion cancelada"}
 
 @router.post("/invitations/{inv_id}/resend")
 async def resend_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
-    
     inv_res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not inv_res.data: raise HTTPException(404, "Invitación no encontrada")
+    if not inv_res.data: raise HTTPException(404, "Invitacion no encontrada")
     inv = inv_res.data[0]
-    
     if current_user.get("role") != SUPERADMIN_ROLE:
         admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", inv["entity_id"]).execute()
         if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
-    
+            raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
     new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    supabase_client.table("invitations").update({
-        "expires_at": new_expiry,
-        "status": "pendiente" 
-    }).eq("id", inv_id).execute()
-    
-    return {"status": "success", "message": "Invitación reenviada correctamente"}
+    supabase_client.table("invitations").update({"expires_at": new_expiry, "status": "pendiente"}).eq("id", inv_id).execute()
+    return {"status": "success", "message": "Invitacion reenviada correctamente"}
 
 @router.post("/invitations/{inv_id}/respond")
 async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
-    """Acepta o rechaza una invitación"""
     if not supabase_client: raise HTTPException(500)
-    
-    # 1. Obtener la invitación y validar que pertenece al usuario
     res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not res.data: raise HTTPException(404, "Invitación no encontrada")
-    
+    if not res.data: raise HTTPException(404, "Invitacion no encontrada")
     invitation = res.data[0]
     if invitation["email"].lower() != current_user.get("email", "").lower():
-        raise HTTPException(403, "Esta invitación no es para ti")
-    
+        raise HTTPException(403, "Esta invitacion no es para ti")
     if invitation["status"] != "pendiente":
-        raise HTTPException(400, f"Esta invitación ya ha sido {invitation['status']}")
-
+        raise HTTPException(400, f"Esta invitacion ya ha sido {invitation['status']}")
     if resp.action == "accept":
-        # 2. Lógica de aceptación
-        # 2.1 Vincular en profile_entities con el ROL INVITADO
         try:
             supabase_client.table("profile_entities").upsert({
                 "profile_id": current_user.get("user_id"),
                 "entity_id": invitation["entity_id"],
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
-            
-            # 2.2 Actualizar el perfil del usuario para que esta sea su entidad principal si no tiene otra o por defecto
             supabase_client.table("profiles").update({"entidad_id": invitation["entity_id"]}).eq("id", current_user.get("user_id")).execute()
-            
-            # 2.3 Marcar como aceptada
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
-            
-            return {"status": "success", "message": "¡Invitación aceptada!"}
+            return {"status": "success", "message": "Invitacion aceptada"}
         except Exception as e:
             raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
-            
     else:
-        # 3. Lógica de rechazo
         supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
-        return {"status": "success", "message": "Invitación rechazada."}
+        return {"status": "success", "message": "Invitacion rechazada."}
 
 @router.post("/activity-logs")
 async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    new_log = {
-        "user_name": req.user_name,
-        "message": req.message
-    }
-    res = supabase_client.table("activity_logs").insert(new_log).execute()
-    return res.data
-
-@router.get("/activity-logs")
-async def get_activity_logs(current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    res = supabase_client.table("activity_logs").select("*").order("created_at", desc=True).limit(50).execute()
-    return res.data
-
-app.include_router(router)
-
-@router.post("/auth/signup")
-async def signup(req: UserSignUp):
-    """Crea un nuevo perfil y vincula invitaciones si existen."""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    email = req.email.strip().lower()
-    username = req.username.strip().lower()
-    
-    # 1. Verificar si ya existe
-    existing = supabase_client.table("profiles").select("id").or_(f"email.eq.{email},username.eq.{username}").execute()
-    if existing.data:
-        raise HTTPException(400, "El correo electrónico o nombre de usuario ya está registrado.")
-    
-    # 2. Buscar invitaciones pendientes
-    inv_res = supabase_client.table("invitations").select("*").eq("email", email).eq("status", "pendiente").execute()
-    invitation = inv_res.data[0] if inv_res.data else None
-    
-    # 3. Datos base del perfil
-    new_profile = {
-        "nombre": req.nombre,
-        "apellido": req.apellido,
-        "email": email,
-        "username": username,
-        "password": req.password, # Nota: En producción hasear. Aquí mantenemos coherencia con el resto.
-        "perfil": "Consulta", # Rol global por defecto
-        "estado": "Activo" if invitation else "Inactivo",
-        "is_activated": True if invitation else False,
-        "entidad_id": invitation["entity_id"] if invitation else None
-    }
-    
-    # 4. Insertar Perfil
-    prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
-    if not prof_insert.data:
-        raise HTTPException(500, "Error al crear el perfil.")
-    
-    user_id = prof_insert.data[0]["id"]
-    
-    # 5. Si hay invitación, vincular a entidad y marcar como aceptada
-    user_entidades = []
-    if invitation:
-        role_invited = invitation.get("role_invited", "usuario")
-        # Crear la relación en profile_entities
-        supabase_client.table("profile_entities").insert({
-            "profile_id": user_id,
-            "entity_id": invitation["entity_id"],
-            "role": role_invited
-        }).execute()
-        
-        # Marcar invitación como aceptada
-        supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
-        
-        user_entidades.append(invitation["entity_id"])
-
-    # 6. Preparar respuesta tipo Login para Auto-Login
-    # Nota: Generamos un token temporal o simplemente retornamos los datos según se use en el frontend
-    return {
-                "expires_at": inv["expires_at"]
-            })
-        else:
-            # Marcar como vencida silenciosamente solo si no lo est
-            if inv.get("status") != "vencida":
-                supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
-            
-    return valid_invitations
-
-@router.get("/invitations/sent")
-async def get_sent_invitations(entity_id: str | None = None, current_user: dict = Depends(get_current_user)):
-    """Lista las invitaciones enviadas (Vista Administrador)"""
-    if not supabase_client: return []
-    if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
-        raise HTTPException(403, "Permisos insuficientes")
-    
-    query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
-    
-    if current_user.get("role") == SUPERADMIN_ROLE:
-        if entity_id:
-            query = query.eq("entity_id", entity_id)
-    else:
-        # Verificación dinámica: solo puede ver de entidades donde es admin
-        target_id = entity_id or current_user.get("entity_id")
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
-        query = query.eq("entity_id", target_id)
-    
-    res = query.order("created_at", desc=True).execute()
-    return [{
-        "id": inv["id"],
-        "email": inv["email"],
-        "entity_id": inv["entity_id"],
-        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad"),
-        "role": inv.get("role_invited", "usuario"),
-        "status": inv["status"],
-        "created_at": inv["created_at"],
-        "expires_at": inv["expires_at"],
-        "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}"
-    } for inv in res.data]
-
-@router.delete("/invitations/{inv_id}")
-async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(503)
-    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
-    if not inv_res.data: raise HTTPException(404, "No encontrada")
-    
-    target_entity_id = inv_res.data[0]["entity_id"]
-    
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
-             
-    # Cambiamos el estado a 'cancelada'
-    supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
-    return {"status": "success", "message": "Invitación cancelada"}
-
-@router.post("/invitations/{inv_id}/resend")
-async def resend_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(503)
-    
-    inv_res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not inv_res.data: raise HTTPException(404, "Invitación no encontrada")
-    inv = inv_res.data[0]
-    
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", inv["entity_id"]).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
-    
-    new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    supabase_client.table("invitations").update({
-        "expires_at": new_expiry,
-        "status": "pendiente" 
-    }).eq("id", inv_id).execute()
-    
-    return {"status": "success", "message": "Invitación reenviada correctamente"}
-
-@router.post("/invitations/{inv_id}/respond")
-async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
-    """Acepta o rechaza una invitación"""
-    if not supabase_client: raise HTTPException(500)
-    
-    # 1. Obtener la invitación y validar que pertenece al usuario
-    res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not res.data: raise HTTPException(404, "Invitación no encontrada")
-    
-    invitation = res.data[0]
-    if invitation["email"].lower() != current_user.get("email", "").lower():
-        raise HTTPException(403, "Esta invitación no es para ti")
-    
-    if invitation["status"] != "pendiente":
-        raise HTTPException(400, f"Esta invitación ya ha sido {invitation['status']}")
-
-    if resp.action == "accept":
-        # 2. Lógica de aceptación
-        # 2.1 Vincular en profile_entities con el ROL INVITADO
-        try:
-            supabase_client.table("profile_entities").upsert({
-                "profile_id": current_user.get("user_id"),
-                "entity_id": invitation["entity_id"],
-                "role": invitation.get("role_invited", "usuario")
-            }).execute()
-            
-            # 2.2 Actualizar el perfil del usuario para que esta sea su entidad principal si no tiene otra o por defecto
-            supabase_client.table("profiles").update({"entidad_id": invitation["entity_id"]}).eq("id", current_user.get("user_id")).execute()
-            
-            # 2.3 Marcar como aceptada
-            supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
-            
-            return {"status": "success", "message": "¡Invitación aceptada!"}
-        except Exception as e:
-            raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
-            
-    else:
-        # 3. Lógica de rechazo
-        supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
-        return {"status": "success", "message": "Invitación rechazada."}
-
-@router.post("/activity-logs")
-async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    new_log = {
-        "user_name": req.user_name,
-        "message": req.message
-    }
-    res = supabase_client.table("activity_logs").insert(new_log).execute()
+    res = supabase_client.table("activity_logs").insert({"user_name": req.user_name, "message": req.message}).execute()
     return res.data
 
 @router.get("/activity-logs")
@@ -1820,56 +1586,38 @@ async def get_activity_logs(current_user: dict = Depends(get_current_user)):
 async def signup(req: UserSignUp):
     """Crea un nuevo perfil y vincula invitaciones si existen."""
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
     email = req.email.strip().lower()
     username = req.username.strip().lower()
-    
-    # 1. Verificar si ya existe
     existing = supabase_client.table("profiles").select("id").or_(f"email.eq.{email},username.eq.{username}").execute()
     if existing.data:
-        raise HTTPException(400, "El correo electrónico o nombre de usuario ya está registrado.")
-    
-    # 2. Buscar invitaciones pendientes
+        raise HTTPException(400, "El correo electronico o nombre de usuario ya esta registrado.")
     inv_res = supabase_client.table("invitations").select("*").eq("email", email).eq("status", "pendiente").execute()
     invitation = inv_res.data[0] if inv_res.data else None
-    
-    # 3. Datos base del perfil
     new_profile = {
         "nombre": req.nombre,
         "apellido": req.apellido,
         "email": email,
         "username": username,
-        "password": req.password, # Nota: En producción hasear. Aquí mantenemos coherencia con el resto.
-        "perfil": "Consulta", # Rol global por defecto
+        "password": req.password,
+        "perfil": "Consulta",
         "estado": "Activo" if invitation else "Inactivo",
         "is_activated": True if invitation else False,
         "entidad_id": invitation["entity_id"] if invitation else None
     }
-    
-    # 4. Insertar Perfil
     prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
     if not prof_insert.data:
         raise HTTPException(500, "Error al crear el perfil.")
-    
     user_id = prof_insert.data[0]["id"]
-    
-    # 5. Si hay invitación, vincular a entidad y marcar como aceptada
     user_entidades = []
     if invitation:
         role_invited = invitation.get("role_invited", "usuario")
-        # Crear la relación en profile_entities
         supabase_client.table("profile_entities").insert({
             "profile_id": user_id,
             "entity_id": invitation["entity_id"],
             "role": role_invited
         }).execute()
-        
-        # Marcar invitación como aceptada
         supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
-        
         user_entidades.append(invitation["entity_id"])
-
-    # 6. Preparar respuesta tipo Login para Auto-Login
     return {
         "id": user_id,
         "nombre": req.nombre,
