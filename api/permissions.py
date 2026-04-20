@@ -17,7 +17,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         # --- NORMALIZACIÓN DE ROLES CENTRALIZADA ---
         raw_role = str(payload.get('role', 'usuario')).lower().strip()
         
-        if raw_role in ('admin', 'administrador', 'administración'):
+        if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
             payload['role'] = 'administrador'
         elif raw_role == 'superadmin':
             payload['role'] = 'superadmin'
@@ -39,10 +39,11 @@ def require_entity_admin(user: dict, entity_id: str):
         raise HTTPException(status_code=403, detail='Insufficient role for this operation')
     
     # Check if the user is attached to this entity
-    if str(user.get('entity_id')) != str(entity_id):
-        # Even if the JWT says one entity, the user might have others in profile_entities.
-        # However, for simplicity and security, we expect the frontend to be in the correct context
-        # or we verify in the DB.
+    # Use robust comparison (strip and stringify)
+    jwt_entity = str(user.get('entity_id', '')).strip()
+    target_entity = str(entity_id).strip()
+    
+    if jwt_entity != target_entity:
         raise HTTPException(status_code=403, detail='Cannot access other entity data')
     
     return True

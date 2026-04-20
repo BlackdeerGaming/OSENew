@@ -1024,9 +1024,17 @@ async def login(req: LoginRequest):
     entidad_ids = [e["entity_id"] for e in entities_res.data]
     active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
     
-    # Obtener el rol especÃƒÂ­fico para esta entidad de la tabla de uniÃƒÂ³n
+    # Obtener el rol especÃ­fico para esta entidad de la tabla de uniÃ³n
     role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
-    active_role = role_res.data[0]["role"] if role_res.data else user_data["perfil"]
+    entity_role = (role_res.data[0]["role"] if role_res.data else user_data["perfil"]) or "usuario"
+    
+    # --- LOGICA DE HERENCIA Y PRIORIDAD ---
+    # Si el perfil global es administrador o superadmin, debe prevalecer sobre el rol de la entidad si este es menor.
+    perfil_global = str(user_data.get("perfil", "usuario")).lower()
+    active_role = entity_role
+    
+    if perfil_global in ("superadmin", "administrador") and str(entity_role).lower() == "usuario":
+        active_role = perfil_global
 
     payload = {
         "user_id": str(user_data["id"]),
