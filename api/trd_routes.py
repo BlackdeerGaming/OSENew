@@ -128,8 +128,8 @@ async def create_dependencia_entity(
             record["id"],
             _record_to_dict(record),
         )
-        # Store cloud_key back in DB
-        supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # Store cloud_key back in DB (Column missing in production)
+        # supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         # Rollback DB entry
         supabase_client.table("dependencias").delete().eq("id", record["id"]).execute()
@@ -164,7 +164,7 @@ async def update_dependencia_entity(
             dep_id,
             _record_to_dict(record),
         )
-        supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", dep_id).execute()
+        # supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", dep_id).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
     return record
@@ -197,7 +197,7 @@ async def create_serie_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
-        supabase_client.table("series").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # supabase_client.table("series").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         supabase_client.table("series").delete().eq("id", record["id"]).execute()
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
@@ -224,7 +224,7 @@ async def update_serie_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "series", serie_id, _record_to_dict(record))
-        supabase_client.table("series").update({"cloud_key": path}).eq("id", serie_id).execute()
+        # supabase_client.table("series").update({"cloud_key": path}).eq("id", serie_id).execute()
     except Exception: pass
     return record
 
@@ -252,7 +252,7 @@ async def create_subserie_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
-        supabase_client.table("subseries").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # supabase_client.table("subseries").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         supabase_client.table("subseries").delete().eq("id", record["id"]).execute()
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
@@ -279,7 +279,7 @@ async def update_subserie_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "subseries", subserie_id, _record_to_dict(record))
-        supabase_client.table("subseries").update({"cloud_key": path}).eq("id", subserie_id).execute()
+        # supabase_client.table("subseries").update({"cloud_key": path}).eq("id", subserie_id).execute()
     except Exception: pass
     return record
 
@@ -307,7 +307,7 @@ async def create_trd_record_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
-        supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         supabase_client.table("trd_records").delete().eq("id", record["id"]).execute()
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
@@ -334,7 +334,7 @@ async def update_trd_record_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "trd_records", record_id, _record_to_dict(record))
-        supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record_id).execute()
+        # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record_id).execute()
     except Exception: pass
     return record
 
@@ -362,7 +362,7 @@ async def create_funcion_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
-        supabase_client.table("funciones").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # supabase_client.table("funciones").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         supabase_client.table("funciones").delete().eq("id", record["id"]).execute()
         raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
@@ -389,7 +389,7 @@ async def update_funcion_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "funciones", func_id, _record_to_dict(record))
-        supabase_client.table("funciones").update({"cloud_key": path}).eq("id", func_id).execute()
+        # supabase_client.table("funciones").update({"cloud_key": path}).eq("id", func_id).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
     return record
@@ -457,7 +457,7 @@ async def create_entrevista_entity(
     record = res.data[0]
     try:
         path = upload_record(supabase_client, entity_id, "entrevistas", record["id"], _record_to_dict(record))
-        supabase_client.table("entrevistas").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        # supabase_client.table("entrevistas").update({"cloud_key": path}).eq("id", record["id"]).execute()
     except Exception as e:
         pass # Ignore minor cloud sync upload error on create
     return record
