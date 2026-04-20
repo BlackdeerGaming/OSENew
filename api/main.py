@@ -1472,6 +1472,11 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     invitation = res.data[0]
     
+    # Asignar IA disponible si el usuario ya existe
+    if check_profile.data:
+        p_id = check_profile.data[0]["id"]
+        supabase_client.table("profiles").update({"ia_disponible": True}).eq("id", p_id).execute()
+    
     # 5. Intentar enviar correo real vÃƒÂ­a Resend
     entity_res = supabase_client.table("entities").select("razon_social").eq("id", req.entity_id).execute()
     entity_name = entity_res.data[0]["razon_social"] if entity_res.data else "una entidad de OSE IA"
@@ -1673,7 +1678,10 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
                 "entity_id": invitation["entity_id"],
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
-            supabase_client.table("profiles").update({"entidad_id": invitation["entity_id"]}).eq("id", current_user.get("user_id")).execute()
+            supabase_client.table("profiles").update({
+                "entidad_id": invitation["entity_id"],
+                "ia_disponible": True
+            }).eq("id", current_user.get("user_id")).execute()
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
             return {"status": "success", "message": "Invitacion aceptada"}
         except Exception as e:
@@ -1714,7 +1722,8 @@ async def signup(req: UserSignUp):
         "perfil": "Consulta",
         "estado": "Activo" if invitation else "Inactivo",
         "is_activated": True if invitation else False,
-        "entidad_id": invitation["entity_id"] if invitation else None
+        "entidad_id": invitation["entity_id"] if invitation else None,
+        "ia_disponible": True if invitation else False
     }
     prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
     if not prof_insert.data:

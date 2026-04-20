@@ -27,29 +27,10 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   });
   const [isCreating, setIsCreating] = useState(false);
 
-  const [filterEntity, setFilterEntity] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('active'); // 'active' = pendiente+aceptada por defecto
-  
-  // Resaltado de contexto
+  // Banner state
   const [highlightedId, setHighlightedId] = useState(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const invId = params.get('invitation_id');
-    if (invId) {
-      const dismissed = JSON.parse(localStorage.getItem('dismissed_invitations') || '[]');
-      if (!dismissed.includes(invId)) {
-        setHighlightedId(invId);
-      }
-      
-      // Limpiar URL sin recargar
-      params.delete('invitation_id');
-      const newQuery = params.toString();
-      const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '');
-      window.history.replaceState({}, document.title, newUrl);
-    }
-  }, []);
-
+  // Persisted dismiss handling
   const handleDismissBanner = () => {
     if (highlightedId) {
       const dismissed = JSON.parse(localStorage.getItem('dismissed_invitations') || '[]');
@@ -60,11 +41,19 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
     setHighlightedId(null);
   };
 
-  const isAdmin = currentUser?.role === 'superadmin' || entities.some(e => ['administrador', 'admin'].includes(e.role));
-
+  // Determine banner visibility after invitations load
   useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+    if (activeTab !== 'received') return;
+    const pending = invitations.find(inv => inv.status === 'pendiente' && inv.email === currentUser.email);
+    if (pending) {
+      const dismissed = JSON.parse(localStorage.getItem('dismissed_invitations') || '[]');
+      if (!dismissed.includes(pending.id)) {
+        setHighlightedId(pending.id);
+      }
+    }
+  }, [invitations, activeTab, currentUser.email]);
+
+
 
   const fetchData = async () => {
     setLoading(true);
