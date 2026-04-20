@@ -30,7 +30,9 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
   return (
     <div className="flex flex-col gap-6 p-6 bg-card rounded-xl border border-border shadow-sm max-w-4xl w-full mx-auto">
       <div className="border-b border-border pb-4 mb-2">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">Valoración TRD</h2>
+        <h2 className="text-xl font-bold tracking-tight text-foreground">
+          {data?.id ? "Editar Valoración TRD" : "Nueva Valoración TRD"}
+        </h2>
         <p className="text-sm text-muted-foreground">Formulario de registro de Tiempos de Retención y Disposición Documental.</p>
       </div>
 

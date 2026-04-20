@@ -106,11 +106,30 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   };
 
-  const userRole = (currentUser?.role || currentUser?.perfil || 'usuario').toLowerCase();
-  const showMetrics = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
-  const showAnalysis = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
-  const showActions = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
+  const showMetrics = role === 'superadmin' || role === 'administrador';
+  const showAnalysis = role === 'superadmin' || role === 'administrador';
+  const showActions = role === 'superadmin' || role === 'administrador';
   const iaAvailable = currentUser?.iaDisponible ?? true;
+
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr === "Invalid Date") return "Sin fecha";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "Sin fecha";
+    
+    try {
+      return new Intl.DateTimeFormat('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      }).format(date).toUpperCase();
+    } catch (e) {
+      console.error("Format error:", e);
+      return "Error formato";
+    }
+  };
 
   const handleExportCSV = () => {
     if (activityLogs.length === 0) return;
@@ -121,7 +140,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
         log.id.replace('act_', ''),
         `"${log.user || 'Sistema'}"`,
         `"${log.message}"`,
-        `"${new Date(log.timestamp).toLocaleString()}"`
+        `"${formatDate(log.timestamp)}"`
       ].join(","))
     ].join("\n");
 
@@ -308,7 +327,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             {/* Registro de Actividad */}
             <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden flex flex-col flex-1 animate-in zoom-in-95 duration-700">
               <div className="px-4 lg:px-5 py-3 lg:py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
-                 <h3 className="font-bold text-foreground text-sm lg:text-base">Registro de actividad</h3>
+                 <h3 className="font-bold text-foreground text-sm lg:text-base tracking-tighter uppercase italic">Historial de actividad (Sincronizado)</h3>
                  <div className="flex items-center gap-2">
                    <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">{activityLogs.length} registros</span>
                  </div>
@@ -333,7 +352,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                           <td className="px-5 py-3 text-slate-500 text-xs">
                             <div className="flex items-center gap-1.5">
                               <Clock className="w-3 h-3" />
-                              {new Date(log.timestamp).toLocaleString()}
+                              {formatDate(log.timestamp)}
                             </div>
                           </td>
                         </tr>

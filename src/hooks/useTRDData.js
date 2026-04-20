@@ -72,12 +72,12 @@ export function useTRDData(currentUser = null, entityId = null) {
 
     // Optimistic Update
     setDependencias(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(newRecord.id));
+      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !dependencias.find(x => x.id === newRecord.id);
+      const isCreate = !dependencias.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
       
@@ -118,12 +118,12 @@ export function useTRDData(currentUser = null, entityId = null) {
   const addSerie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     setSeries(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(newRecord.id));
+      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !series.find(x => x.id === newRecord.id);
+      const isCreate = !series.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
 
@@ -149,12 +149,12 @@ export function useTRDData(currentUser = null, entityId = null) {
   const addSubserie = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     setSubseries(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(newRecord.id));
+      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !subseries.find(x => x.id === newRecord.id);
+      const isCreate = !subseries.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
 
@@ -179,12 +179,12 @@ export function useTRDData(currentUser = null, entityId = null) {
   const addTrdRecord = async (data) => {
     const newRecord = { ...data, id: data.id || Date.now().toString() };
     setTrdRecords(prev => {
-      const exists = prev.find(x => x.id === newRecord.id);
-      return exists ? prev.map(x => x.id === newRecord.id ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(newRecord.id));
+      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !trdRecords.find(x => x.id === newRecord.id);
+      const isCreate = !trdRecords.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
 

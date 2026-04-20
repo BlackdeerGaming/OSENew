@@ -400,7 +400,22 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        setActivityLogs(data);
+        const mappedLogs = (data || []).map(log => {
+          // Normalización agresiva de fechas para compatibilidad universal
+          let ts = log.created_at || log.timestamp || null;
+          if (typeof ts === 'string' && ts.includes('+00:00')) {
+            ts = ts.replace('+00:00', 'Z');
+          }
+          
+          return {
+            ...log,
+            id: log.id || `act_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            user: log.user_name || log.user || 'Sistema',
+            message: log.message || 'Sin descripción',
+            timestamp: ts
+          };
+        });
+        setActivityLogs(mappedLogs);
       }
     } catch (e) {
       console.error("Error fetching logs:", e);
@@ -813,6 +828,7 @@ function App() {
       
       setActiveFormData({});
       setFlowStep(0);
+      await refreshData();
       setModalStatus({ isOpen: true, type: 'success', message: 'El registro se ha guardado y sincronizado exitosamente en la nube.' });
     } catch (err) {
       console.error(err);

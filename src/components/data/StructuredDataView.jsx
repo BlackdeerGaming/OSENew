@@ -178,8 +178,8 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
   const [serieFilter, setSerieFilter] = useState("all");
   const [subFilter, setSubFilter] = useState("all");
 
-  const userRole = (currentUser?.role || currentUser?.perfil || 'user').toLowerCase();
-  const canModify = userRole === 'superadmin' || userRole === 'admin' || userRole === 'administrador';
+  const role = currentUser?.role || currentUser?.perfil || 'user';
+  const canModify = ['superadmin', 'admin', 'administrador'].includes(role);
 
   // Opciones para los filtros
   const depOptions = useMemo(() => [...new Set((dependencias || []).map(d => d.nombre))].sort(), [dependencias]);
