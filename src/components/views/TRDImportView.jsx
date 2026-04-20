@@ -211,7 +211,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       }
 
       // 2. Marcar sesión como exitosa
-      await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
+      const resStatus = await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
          method: 'PUT',
          headers: { 
            'Content-Type': 'application/json',
@@ -219,6 +219,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
          },
          body: JSON.stringify({ status: 'success' })
       });
+
+      if (!resStatus.ok) {
+        const errorData = await resStatus.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Error del servidor: ${resStatus.status}`);
+      }
 
       if (addActivityLog) addActivityLog(`Importación TRD Exitosa: ${currentPreviewImport.filename}`);
       
