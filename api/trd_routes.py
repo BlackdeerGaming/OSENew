@@ -114,7 +114,7 @@ async def create_dependencia_entity(
     require_entity_admin(user, entity_id)
     # Insert into Supabase DB
     data = payload.dict()
-    data["entity_id"] = entity_id
+    data["entidad_id"] = entity_id
     res = supabase_client.table("dependencias").insert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create dependencia")
@@ -139,7 +139,7 @@ async def create_dependencia_entity(
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
 async def list_dependencias_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("dependencias").select("*").eq("entity_id", entity_id).execute()
+    res = supabase_client.table("dependencias").select("*").eq("entidad_id", entity_id).execute()
     return res.data
 
 @router.put("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
@@ -151,7 +151,7 @@ async def update_dependencia_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("dependencias").update(data).eq("id", dep_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("dependencias").update(data).eq("id", dep_id).eq("entidad_id", entity_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Dependencia not found")
     # Update cloud storage representation
@@ -178,7 +178,7 @@ async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = De
     except Exception:
         pass
     # Delete DB record
-    res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": dep_id}
 
 # ---------- Series ----------
@@ -190,7 +190,7 @@ async def create_serie_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
-    data["entity_id"] = entity_id
+    data["entidad_id"] = entity_id
     res = supabase_client.table("series").insert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create serie")
@@ -206,7 +206,7 @@ async def create_serie_entity(
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
 async def list_series_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("series").select("*").eq("entity_id", entity_id).order("codigo").execute()
+    res = supabase_client.table("series").select("*").eq("entidad_id", entity_id).order("codigo").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/series/{serie_id}", response_model=dict)
@@ -218,7 +218,7 @@ async def update_serie_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("series").update(data).eq("id", serie_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("series").update(data).eq("id", serie_id).eq("entidad_id", entity_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Serie not found")
     record = res.data[0]
@@ -233,7 +233,7 @@ async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depend
     require_entity_admin(user, entity_id)
     try: delete_record(supabase_client, entity_id, "series", serie_id)
     except: pass
-    supabase_client.table("series").delete().eq("id", serie_id).eq("entity_id", entity_id).execute()
+    supabase_client.table("series").delete().eq("id", serie_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": serie_id}
 
 # ---------- Subseries ----------
@@ -245,7 +245,7 @@ async def create_subserie_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
-    data["entity_id"] = entity_id
+    data["entidad_id"] = entity_id
     res = supabase_client.table("subseries").insert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create subserie")
@@ -261,7 +261,7 @@ async def create_subserie_entity(
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
 async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("subseries").select("*").eq("entity_id", entity_id).order("codigo").execute()
+    res = supabase_client.table("subseries").select("*").eq("entidad_id", entity_id).order("codigo").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/subseries/{subserie_id}", response_model=dict)
@@ -273,7 +273,7 @@ async def update_subserie_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("subseries").update(data).eq("id", subserie_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("subseries").update(data).eq("id", subserie_id).eq("entidad_id", entity_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Subserie not found")
     record = res.data[0]
@@ -288,7 +288,7 @@ async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = 
     require_entity_admin(user, entity_id)
     try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
     except: pass
-    supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entity_id", entity_id).execute()
+    supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": subserie_id}
 
 # ---------- TRD Records ----------
@@ -300,7 +300,7 @@ async def create_trd_record_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
-    data["entity_id"] = entity_id
+    data["entidad_id"] = entity_id
     res = supabase_client.table("trd_records").insert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create TRD record")
@@ -316,7 +316,7 @@ async def create_trd_record_entity(
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
 async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("trd_records").select("*").eq("entity_id", entity_id).execute()
+    res = supabase_client.table("trd_records").select("*").eq("entidad_id", entity_id).execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
@@ -328,7 +328,7 @@ async def update_trd_record_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("trd_records").update(data).eq("id", record_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("trd_records").update(data).eq("id", record_id).eq("entidad_id", entity_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="TRD Record not found")
     record = res.data[0]
@@ -343,7 +343,7 @@ async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = 
     require_entity_admin(user, entity_id)
     try: delete_record(supabase_client, entity_id, "trd_records", record_id)
     except: pass
-    supabase_client.table("trd_records").delete().eq("id", record_id).eq("entity_id", entity_id).execute()
+    supabase_client.table("trd_records").delete().eq("id", record_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": record_id}
 
 # ---------- Funciones ----------
@@ -355,7 +355,7 @@ async def create_funcion_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
-    data["entity_id"] = entity_id
+    data["entidad_id"] = entity_id
     res = supabase_client.table("funciones").insert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create funcion")
@@ -371,7 +371,7 @@ async def create_funcion_entity(
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])
 async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("funciones").select("*").eq("entity_id", entity_id).execute()
+    res = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
     return res.data
 
 @router.put("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
@@ -383,7 +383,7 @@ async def update_funcion_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("funciones").update(data).eq("id", func_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("funciones").update(data).eq("id", func_id).eq("entidad_id", entity_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Funcion not found")
     record = res.data[0]
@@ -401,7 +401,7 @@ async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depen
         delete_record(supabase_client, entity_id, "funciones", func_id)
     except Exception:
         pass
-    res = supabase_client.table("funciones").delete().eq("id", func_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("funciones").delete().eq("id", func_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": func_id}
 
 # ---------- Entrevistas y Entrevistados ----------
@@ -409,7 +409,7 @@ async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depen
 @router.get("/entity/{entity_id}/entrevistados", response_model=List[dict])
 async def list_entrevistados_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("entrevistados").select("*").eq("entity_id", entity_id).execute()
+    res = supabase_client.table("entrevistados").select("*").eq("entidad_id", entity_id).execute()
     return res.data
 
 @router.post("/entity/{entity_id}/entrevistas", response_model=dict)
@@ -430,11 +430,11 @@ async def create_entrevista_entity(
             "nombres": entrevistado_data["nombres"],
             "apellidos": entrevistado_data["apellidos"],
             "cargo": entrevistado_data["cargo"]
-        }).eq("id", entrevistado_id).eq("entity_id", entity_id).execute()
+        }).eq("id", entrevistado_id).eq("entidad_id", entity_id).execute()
     else:
         # Create new
         res_entrev_create = supabase_client.table("entrevistados").insert({
-            "entity_id": entity_id,
+            "entidad_id": entity_id,
             "nombres": entrevistado_data["nombres"],
             "apellidos": entrevistado_data["apellidos"],
             "cargo": entrevistado_data["cargo"]
@@ -445,7 +445,7 @@ async def create_entrevista_entity(
 
     # 2. Manage Entrevista
     entrevista_data = {
-        "entity_id": entity_id,
+        "entidad_id": entity_id,
         "dependencia_id": payload.dependencia_id,
         "entrevistado_id": entrevistado_id,
         "fecha_entrevista": payload.fecha_entrevista
@@ -467,7 +467,7 @@ async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_curre
     
     require_entity_admin(user, entity_id)
     # Using foreign key joins for easiest frontend use
-    res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entity_id", entity_id).execute()
+    res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entidad_id", entity_id).execute()
     return res.data
 
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
@@ -478,7 +478,7 @@ async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Dep
         delete_record(supabase_client, entity_id, "entrevistas", ent_id)
     except Exception:
         pass
-    res = supabase_client.table("entrevistas").delete().eq("id", ent_id).eq("entity_id", entity_id).execute()
+    res = supabase_client.table("entrevistas").delete().eq("id", ent_id).eq("entidad_id", entity_id).execute()
     return {"status": "deleted", "id": ent_id}
 
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
@@ -504,8 +504,8 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     
     # 1. Gather all dependencias and funciones
-    res_dep = supabase_client.table("dependencias").select("*").eq("entity_id", entity_id).execute()
-    res_fun = supabase_client.table("funciones").select("*").eq("entity_id", entity_id).execute()
+    res_dep = supabase_client.table("dependencias").select("*").eq("entidad_id", entity_id).execute()
+    res_fun = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
     
     deps = res_dep.data or []
     funs = res_fun.data or []

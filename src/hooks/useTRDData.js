@@ -123,16 +123,16 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/series`, {
-        method: 'POST',
+      const isCreate = !series.find(x => x.id === newRecord.id);
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isCreate ? '' : '/' + newRecord.id}`;
+      const method = isCreate ? 'POST' : 'PUT';
+
+      const res = await fetch(url, {
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapSerieToDB(newRecord))
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        console.error(`API Error [POST series]:`, errData);
-        throw new Error(errData.detail || 'Failed to save serie');
-      }
+      if (!res.ok) throw new Error(`API Error [${method} series]`);
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando serie:', err);
@@ -154,12 +154,16 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/subseries`, {
-        method: 'POST',
+      const isCreate = !subseries.find(x => x.id === newRecord.id);
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isCreate ? '' : '/' + newRecord.id}`;
+      const method = isCreate ? 'POST' : 'PUT';
+
+      const res = await fetch(url, {
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapSubserieToDB(newRecord))
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) throw new Error(`API Error [${method} subseries]`);
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando subserie:', err);
@@ -180,12 +184,16 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/trd_records`, {
-        method: 'POST',
+      const isCreate = !trdRecords.find(x => x.id === newRecord.id);
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isCreate ? '' : '/' + newRecord.id}`;
+      const method = isCreate ? 'POST' : 'PUT';
+
+      const res = await fetch(url, {
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapTRDToDB(newRecord))
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) throw new Error(`API Error [${method} trd_records]`);
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando TRD record:', err);
