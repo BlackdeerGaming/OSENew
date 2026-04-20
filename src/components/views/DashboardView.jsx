@@ -106,9 +106,10 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   };
 
-  const showMetrics = role === 'superadmin' || role === 'administrador';
-  const showAnalysis = role === 'superadmin' || role === 'administrador';
-  const showActions = role === 'superadmin' || role === 'administrador';
+  const userRole = (currentUser?.role || currentUser?.perfil || 'usuario').toLowerCase();
+  const showMetrics = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
+  const showAnalysis = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
+  const showActions = userRole === 'superadmin' || userRole === 'administrador' || userRole === 'admin';
   const iaAvailable = currentUser?.iaDisponible ?? true;
 
   const handleExportCSV = () => {

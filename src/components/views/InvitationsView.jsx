@@ -30,7 +30,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
     if (invId) setHighlightedId(invId);
   }, []);
 
-  const isAdmin = currentUser?.role === 'administrador' || currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+  const userRole = (currentUser?.role || currentUser?.perfil || '').toLowerCase();
+  const isAdmin = userRole === 'administrador' || userRole === 'superadmin' || userRole === 'admin';
 
   useEffect(() => {
     fetchData();

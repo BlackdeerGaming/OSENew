@@ -15,22 +15,22 @@ const MAIN_NAV = [
 ];
 
 export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity, isOpen, onClose, pendingInvitationsCount = 0 }) {
-  const role = currentUser?.role || 'user';
+  const userRole = (currentUser?.role || currentUser?.perfil || 'user').toLowerCase();
   const iaAvailable = currentUser?.iaDisponible ?? true;
   const [showIARestriction, setShowIARestriction] = React.useState(false);
 
   const filteredNav = MAIN_NAV.filter(item => {
     // Si es super admin ve todo
-    if (role === 'superadmin') return true;
+    if (userRole === 'superadmin') return true;
     
     // Si no es super admin, le bloqueamos Entidades explícitamente
     if (item.id === 'entities') return false;
 
-    if (role === 'admin' || role === 'administrador') {
+    if (userRole === 'admin' || userRole === 'administrador') {
       return true; // Admin ve todo excepto Entidades
     }
     
-    if (role === 'user' || role === 'usuario' || role === 'Consulta') {
+    if (['user', 'usuario', 'consulta'].includes(userRole)) {
       // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD, Configuración e Invitaciones
       return ['dashboard', 'rag', 'trd', 'settings', 'help', 'invitations'].includes(item.id);
     }
