@@ -16,10 +16,8 @@ def upload_record(supabase_client: Client, entity_id: str, module: str, record_i
     path = f"entity_{entity_id}/{module}/{record_id}.json"
     content = json.dumps(data, ensure_ascii=False, indent=2)
     # Supabase storage expects bytes. Set upsert=True to avoid conflict if retrying.
-    result = storage.upload(path, content.encode('utf-8'), file_options={"content-type": "application/json", "upsert": "true"})
-    if result.get('error'):
-        # Some versions of supabase-py return the error differently
-        raise Exception(f"Supabase storage upload error: {result['error']}")
+    # supabase-py raises on error or returns an object with path/full_path
+    storage.upload(path, content.encode('utf-8'), file_options={"content-type": "application/json", "upsert": "true"})
     return path
 
 def delete_record(supabase_client: Client, entity_id: str, module: str, record_id: str) -> None:

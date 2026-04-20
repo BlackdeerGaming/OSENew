@@ -534,9 +534,10 @@ function App() {
       if (entity === 'subserie') entity = 'subseries';
       if (entity === 'trd_records') entity = 'TRD';
 
+      const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
+      const name = action.payload?.nombre || action.payload?.name || "Registro";
+
       try {
-        const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
-        const name = action.payload?.nombre || action.payload?.name || "Registro";
 
         if (action.type === 'CREATE') {
           const rawPayload = { ...action.payload };
