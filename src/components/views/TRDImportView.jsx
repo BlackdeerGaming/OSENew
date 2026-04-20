@@ -603,6 +603,31 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                                 className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all"
                                               />
                                           </div>
+                                          <div className="space-y-2">
+                                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre de la Serie</label>
+                                              <input 
+                                                value={localActions[editingIndex].payload.serieNombre}
+                                                onChange={(e) => handleEditAction(editingIndex, 'serieNombre', e.target.value)}
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all uppercase"
+                                              />
+                                          </div>
+                                          <div className="space-y-2">
+                                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre de la Subserie (Opcional)</label>
+                                              <input 
+                                                value={localActions[editingIndex].payload.subserieNombre || ''}
+                                                onChange={(e) => handleEditAction(editingIndex, 'subserieNombre', e.target.value)}
+                                                placeholder="Dejar vacío si no aplica"
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all uppercase"
+                                              />
+                                          </div>
+                                          <div className="space-y-2">
+                                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Tipos Documentales</label>
+                                              <input 
+                                                value={localActions[editingIndex].payload.tipoDocumental || ''}
+                                                onChange={(e) => handleEditAction(editingIndex, 'tipoDocumental', e.target.value)}
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all"
+                                              />
+                                          </div>
                                           <div className="grid grid-cols-2 gap-4">
                                               <div className="space-y-2">
                                                   <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Retención Gestión (AG)</label>
