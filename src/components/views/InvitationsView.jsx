@@ -28,6 +28,9 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   });
   const [isCreating, setIsCreating] = useState(false);
 
+  const [filterEntity, setFilterEntity] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('active'); // 'active' = pendiente+aceptada por defecto
+
   // Banner state
   const [highlightedId, setHighlightedId] = useState(null);
 
@@ -54,7 +57,11 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
     }
   }, [invitations, activeTab, currentUser.email]);
 
+  const isAdmin = currentUser?.role === 'superadmin' || entities.some(e => ['administrador', 'admin'].includes(e.role));
 
+  useEffect(() => {
+    fetchData();
+  }, [activeTab]);
 
   const fetchData = async () => {
     setLoading(true);
