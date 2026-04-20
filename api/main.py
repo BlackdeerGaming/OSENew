@@ -50,32 +50,8 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 IMAGE_MIN_SIZE      = 8000  # bytes
 RESEND_API_KEY      = os.getenv("RESEND_API_KEY")
 
-#  Inicializar Supabase 
-
-supabase_client: Client = None
-if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-    try:
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        print(" Supabase conectado correctamente.")
-    except Exception as e:
-        print(f" Error conectando a Supabase: {e}")
-else:
-    print(" SUPABASE_URL o SUPABASE_SERVICE_KEY no configurados.")
-
-#  Embeddings usando OpenAI-compatible (Pinecone Embeddings  OpenAI ada) 
-# Usamos text-embedding-3-small de OpenAI via OpenRouter para los vectores
-# Dimensin: 1536 (compatible con pgvector)
-embeddings = None
-if OPENROUTER_API_KEY:
-    try:
-        embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            openai_api_key=OPENROUTER_API_KEY,
-            openai_api_base="https://openrouter.ai/api/v1",
-        )
-        print(" Embeddings (text-embedding-3-small via OpenRouter) listo.")
-    except Exception as e:
-        print(f" Error inicializando embeddings: {e}")
+#  Inicializar Servicios compartidos (Supabase, LLM, Embeddings)
+from .db import supabase_client, llm, embeddings
 
 #  FastAPI App 
 
@@ -96,20 +72,7 @@ async def log_requests(request, call_next):
     print(f" {response.status_code}")
     return response
 
-#  LLM 
-
-llm = ChatOpenAI(
-    model=OPENROUTER_MODEL,
-    openai_api_key=OPENROUTER_API_KEY,
-    openai_api_base="https://openrouter.ai/api/v1",
-    temperature=0.1,
-    max_tokens=4096,
-    request_timeout=65, # Evitar cuelgues de 10 min
-    default_headers={
-        "HTTP-Referer": "https://ose-ia.vercel.app",
-        "X-Title": "OSE Copilot RAG"
-    }
-)
+# LLM y Prompts inicializados en db.py
 
 RAG_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """Eres OSE Copilot, el asistente experto de la Biblioteca RAG de OSE IA.

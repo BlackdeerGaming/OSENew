@@ -5,6 +5,7 @@ import uuid
 
 from .permissions import get_current_user, require_entity_admin, require_super_admin
 from .cloud_storage import upload_record, delete_record
+from .db import supabase_client, llm
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -463,7 +464,7 @@ async def create_entrevista_entity(
 
 @router.get("/entity/{entity_id}/entrevistas", response_model=List[dict])
 async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_current_user)):
-    from .main import supabase_client
+    
     require_entity_admin(user, entity_id)
     # Using foreign key joins for easiest frontend use
     res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entity_id", entity_id).execute()
@@ -471,7 +472,7 @@ async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_curre
 
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
 async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):
-    from .main import supabase_client
+    
     require_entity_admin(user, entity_id)
     try:
         delete_record(supabase_client, entity_id, "entrevistas", ent_id)
@@ -483,14 +484,14 @@ async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Dep
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
 @router.get("/admin/dependencias", response_model=List[dict])
 async def admin_list_dependencias(user: dict = Depends(get_current_user)):
-    from .main import supabase_client
+    
     require_super_admin(user)
     res = supabase_client.table("dependencias").select("*").execute()
     return res.data
 
 @router.get("/admin/series", response_model=List[dict])
 async def admin_list_series(user: dict = Depends(get_current_user)):
-    from .main import supabase_client
+    
     require_super_admin(user)
     res = supabase_client.table("series").select("*").execute()
     return res.data
@@ -499,7 +500,7 @@ async def admin_list_series(user: dict = Depends(get_current_user)):
 
 @router.post("/entity/{entity_id}/generate/ccd")
 async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
-    from .main import supabase_client, llm
+    
     require_entity_admin(user, entity_id)
     
     # 1. Gather all dependencias and funciones
@@ -535,7 +536,7 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/entity/{entity_id}/generate/manual-funciones")
 async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: dict = Depends(get_current_user)):
-    from .main import supabase_client, llm
+    
     require_entity_admin(user, entity_id)
     
     # Query dependency
