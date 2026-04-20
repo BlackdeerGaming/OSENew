@@ -179,7 +179,7 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
   const [subFilter, setSubFilter] = useState("all");
 
   const role = currentUser?.role || 'user';
-  const canModify = role === 'superadmin' || role === 'admin';
+  const canModify = role === 'superadmin' || role === 'admin' || role === 'administrador';
 
   // Opciones para los filtros
   const depOptions = useMemo(() => [...new Set((dependencias || []).map(d => d.nombre))].sort(), [dependencias]);
