@@ -8,6 +8,15 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   const [message, setMessage] = useState(null);
+
+  const adminEntities = currentUser?.role === 'superadmin' 
+    ? entities 
+    : entities.filter(e => ['administrador', 'admin'].includes(e.role));
+
+  const isInvitationAdmin = (invEntityId) => {
+    if (currentUser?.role === 'superadmin') return true;
+    return adminEntities.some(e => e.id === invEntityId);
+  };
   
   // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -27,10 +36,31 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invId = params.get('invitation_id');
-    if (invId) setHighlightedId(invId);
+    if (invId) {
+      const dismissed = JSON.parse(localStorage.getItem('dismissed_invitations') || '[]');
+      if (!dismissed.includes(invId)) {
+        setHighlightedId(invId);
+      }
+      
+      // Limpiar URL sin recargar
+      params.delete('invitation_id');
+      const newQuery = params.toString();
+      const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '');
+      window.history.replaceState({}, document.title, newUrl);
+    }
   }, []);
 
-  const isAdmin = currentUser?.role === 'administrador' || currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+  const handleDismissBanner = () => {
+    if (highlightedId) {
+      const dismissed = JSON.parse(localStorage.getItem('dismissed_invitations') || '[]');
+      if (!dismissed.includes(highlightedId)) {
+        localStorage.setItem('dismissed_invitations', JSON.stringify([...dismissed, highlightedId]));
+      }
+    }
+    setHighlightedId(null);
+  };
+
+  const isAdmin = currentUser?.role === 'superadmin' || entities.some(e => ['administrador', 'admin'].includes(e.role));
 
   useEffect(() => {
     fetchData();
@@ -196,7 +226,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                 </p>
               </div>
               <button 
-                onClick={() => setHighlightedId(null)}
+                onClick={handleDismissBanner}
                 className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
               >
                 Entendido
@@ -272,14 +302,14 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   <Filter className="h-4 w-4" />
                   <span className="text-[10px] uppercase font-black tracking-tighter">Filtrar por:</span>
                 </div>
-                {(currentUser?.role === 'superadmin' || entities.length > 1) && (
+                {(currentUser?.role === 'superadmin' || adminEntities.length > 1) && (
                   <select 
                     value={filterEntity}
                     onChange={e => setFilterEntity(e.target.value)}
                     className="bg-slate-50 text-xs font-bold text-slate-700 px-4 py-2 rounded-xl focus:ring-primary focus:border-primary outline-none"
                   >
                     <option value="all">Todas las Entidades</option>
-                    {entities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)}
+                    {adminEntities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)}
                   </select>
                 )}
                  <select 
@@ -416,7 +446,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                              >
                                Detalle
                              </button>
-                             {inv.status !== 'aceptada' && (
+                             {inv.status !== 'aceptada' && isInvitationAdmin(inv.entity_id) && (
                                <button
                                  disabled={processingId === inv.id}
                                  onClick={() => handleResend(inv.id)}
@@ -576,15 +606,15 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 block px-1">Entidad Destino</label>
                       <select 
-                        disabled={currentUser.role !== 'superadmin' && entities.length <= 1}
+                        disabled={currentUser.role !== 'superadmin' && adminEntities.length <= 1}
                         value={newInvite.entity_id}
                         onChange={e => setNewInvite({...newInvite, entity_id: e.target.value})}
                         className="w-full px-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 outline-none focus:border-primary transition-all disabled:opacity-60"
                       >
-                         {(currentUser.role !== 'superadmin' && entities.length <= 1) ? (
+                         {(currentUser.role !== 'superadmin' && adminEntities.length <= 1) ? (
                             <option value={currentUser.entity_id}>{currentUser.entidadNombre || "Entidad actual"}</option>
                          ) : (
-                            entities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)
+                            adminEntities.map(e => <option key={e.id} value={e.id}>{e.razonSocial || e.nombre}</option>)
                          )}
                       </select>
                     </div>

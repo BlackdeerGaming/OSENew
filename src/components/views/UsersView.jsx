@@ -4,7 +4,9 @@ import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
 export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [], selectedEntityId }) {
-  const role = currentUser?.role || 'usuario';
+  const isSuperAdmin = currentUser?.role === 'superadmin';
+  const isEntityAdmin = isSuperAdmin || currentUser?.entities?.some(e => e.id === selectedEntityId && ['administrador', 'admin'].includes(e.role));
+  const role = isSuperAdmin ? 'superadmin' : (isEntityAdmin ? 'administrador' : 'usuario');
   const [showModal, setShowModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showManualInviteModal, setShowManualInviteModal] = useState(false);
@@ -198,8 +200,9 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
       perfil: role === 'administrador' ? 'usuario' : null, 
-      entidadId: role === 'administrador' ? currentUser?.entidadId : null, 
-      entidadIds: role === 'administrador' ? [currentUser?.entidadId].filter(Boolean) : [], 
+      perfil: role === 'administrador' ? 'usuario' : null, 
+      entidadId: isEntityAdmin ? selectedEntityId : null, 
+      entidadIds: isEntityAdmin ? [selectedEntityId].filter(Boolean) : [], 
       iaDisponible: false
     });
   };
@@ -226,14 +229,19 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
   // Los superadministradores ven todo. 
   // Los administradores solo ven los usuarios de su propia entidad.
   const filteredUsers = users.filter(u => {
-    if (currentUser?.role === 'superadmin') {
+    if (isSuperAdmin) {
       if (selectedEntityId) {
         return u.entidadId === selectedEntityId;
       }
       return true;
     }
-    if (currentUser?.role === 'administrador') {
-      return u.entidadId === currentUser.entidadId;
+    if (isEntityAdmin) {
+      // Si es admin de la entidad seleccionada, ver los de esa entidad
+      // O si no hay seleccionada, ver los de sus entidades donde es admin
+      if (selectedEntityId) {
+         return u.entidadId === selectedEntityId;
+      }
+      return currentUser?.entities?.some(e => e.id === u.entidadId && ['administrador', 'admin'].includes(e.role));
     }
     return false;
   });
@@ -260,7 +268,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
         </div>
         
         <div className="flex items-center gap-3">
-          {currentUser?.role === 'superadmin' && (
+          {(isSuperAdmin || isEntityAdmin) && (
             <button 
               onClick={() => setShowModal(true)}
               className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
@@ -549,7 +557,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
                 {activeTab === 'perfil' && (
                   <div className="space-y-4">
-                     {role === 'superadmin' && (
+                     {(isSuperAdmin || isEntityAdmin) && (
                        <label className="flex items-center gap-4 cursor-pointer p-4 rounded-xl border border-transparent hover:bg-slate-50 transition-all">
                           <div className={cn(
                              "h-6 w-6 rounded flex items-center justify-center border-2 transition-all",
@@ -571,7 +579,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                         </div>
                         <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'usuario'})} />
                         <span className={cn(newUser.perfil === 'usuario' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>
-                          Usuario {role === 'administrador' && "(Único perfil disponible)"}
+                          Usuario {(isEntityAdmin && !isSuperAdmin) && "(Rol estándar)"}
                         </span>
                      </label>
                   </div>
@@ -631,16 +639,44 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                             })
                           )
                         ) : (
-                           // CASE ADMIN: Only show current entity
-                           <div className="flex items-center gap-4 p-4 rounded-xl border-2 bg-[#e8f5f3] border-[#00bfa5]">
-                              <div className="h-6 w-6 rounded flex items-center justify-center bg-[#00bfa5] border-[#00bfa5] text-white">
-                                 <Check className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <span className="text-sm font-bold text-slate-800 block">{currentUser?.entidadNombre || "Tu Entidad"}</span>
-                                <span className="text-xs text-slate-500 uppercase font-bold tracking-tighter">Asignación Automática</span>
-                              </div>
-                           </div>
+                           // CASE ADMIN: Show only entities where user is admin
+                           currentUser?.entities?.filter(e => ['administrador', 'admin'].includes(e.role)).map(ent => {
+                             const isChecked = (newUser.entidadIds || []).includes(ent.id);
+                             const toggleEntity = () => {
+                               const current = newUser.entidadIds || [];
+                               const next = isChecked
+                                 ? current.filter(id => id !== ent.id)
+                                 : [...current, ent.id];
+                               setNewUser({
+                                 ...newUser,
+                                 entidadIds: next,
+                                 entidadId: next[0] || null
+                               });
+                             };
+                             return (
+                               <label
+                                 key={ent.id}
+                                 onClick={toggleEntity}
+                                 className={cn(
+                                   "flex items-center gap-4 cursor-pointer p-4 rounded-xl border-2 transition-all",
+                                   isChecked
+                                     ? "bg-[#e8f5f3] border-[#00bfa5]"
+                                     : "bg-[#f8fafc] border-slate-100 hover:bg-slate-50"
+                                 )}
+                               >
+                                  <div className={cn(
+                                     "h-6 w-6 rounded flex items-center justify-center border-2 transition-all flex-shrink-0",
+                                     isChecked ? "bg-[#00bfa5] border-[#00bfa5]" : "bg-white border-slate-200"
+                                  )}>
+                                     <Check className="h-4 w-4 text-white" />
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-semibold text-slate-700 block">{ent.razonSocial || ent.nombre}</span>
+                                    <span className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">Rol: {ent.role}</span>
+                                  </div>
+                               </label>
+                             );
+                           })
                         )}
                      </div>
                      {role === 'superadmin' && (newUser.entidadIds || []).length > 0 && (

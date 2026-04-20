@@ -1,13 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function ActivateAccount({ token, onActivate, onBackToLogin }) {
+  const [email, setEmail] = useState('');
+  const [invitedName, setInvitedName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
+  const [loadingInfo, setLoadingInfo] = useState(true);
+
+  useEffect(() => {
+    const fetchInfo = async () => {
+      try {
+        const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000/api' : '/api';
+        const res = await fetch(`${apiBase}/activation-info/${token}`);
+        if (res.ok) {
+           const data = await res.json();
+           setEmail(data.email);
+           setInvitedName(`${data.nombre || ''} ${data.apellido || ''}`.trim());
+        } else {
+           setStatus('error');
+           setErrorMsg('El código de activación no es válido, ha expirado o ya fue utilizado.');
+        }
+      } catch (err) {
+        console.error("Error fetching activation info:", err);
+      } finally {
+        setLoadingInfo(false);
+      }
+    };
+    fetchInfo();
+  }, [token]);
 
   const validatePassword = (pw) => {
     if (pw.length < 8) return "La contraseña debe tener al menos 8 caracteres.";

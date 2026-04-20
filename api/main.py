@@ -944,6 +944,14 @@ async def perform_reset(request: PerformResetRequest):
     
     return {"status": "success", "message": "Tu contraseÃƒÂ±a ha sido actualizada correctamente."}
 
+@router.get("/activation-info/{token}")
+async def get_activation_info(token: str):
+    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
+    res = supabase_client.table("profiles").select("email, nombre, apellido").eq("activation_token", token).execute()
+    if not res.data:
+        raise HTTPException(404, "El cdigo de activacin no es vlido o ya ha sido utilizado.")
+    return res.data[0]
+
 @router.post("/activate")
 async def activate_user(req: UserActivate):
     if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
@@ -1133,7 +1141,11 @@ async def get_users(entidad_id: str | None = None, user: dict = Depends(get_curr
 
 @router.post("/users")
 async def create_user(user: UserCreate, current_user: dict = Depends(get_current_user)):
-    require_entity_admin(current_user, user.entidadId or "e0")
+    # Validar permisos: Solo admin de la entidad o superadmin
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", user.entidadId).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
     if not supabase_client: raise HTTPException(400, "No Supabase")
     
     # Asegurar que nuevos usuarios no se creen con roles altos por defecto via API abierta
@@ -1166,12 +1178,10 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     
     # Validar permisos
     if current_user.get("role") != SUPERADMIN_ROLE and user_id != current_user.get("user_id"):
-        if current_user.get("role") == ADMIN_ROLE:
-             # Admin solo puede editar usuarios de su propia entidad
-             if target_entity_id != current_user.get("entity_id"):
-                 raise HTTPException(403, "No autorizado para editar usuarios de otra entidad")
-        else:
-             raise HTTPException(403, "No autorizado para editar este usuario")
+        # Admin solo puede editar usuarios de entidades donde sea administrador
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No autorizado para editar usuarios de esta entidad o perfil insuficiente")
 
     data = {}
     if user.nombre is not None: data["nombre"] = user.nombre
@@ -1236,12 +1246,10 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     target_user_entity = user_res.data[0].get("entidad_id")
     
     if role != SUPERADMIN_ROLE:
-        if role != ADMIN_ROLE:
-            raise HTTPException(403, "No tienes permisos suficentes para realizar esta acciÃƒÂ³n")
-        if not admin_entity_id:
-            raise HTTPException(403, "No perteneces a ninguna entidad activa")
-        if str(target_user_entity) != str(admin_entity_id):
-            raise HTTPException(403, "No puedes eliminar usuarios de otras entidades")
+        # Si no es superadmin, debe ser admin de la entidad del usuario destino
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_user_entity).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+             raise HTTPException(403, "No tienes permisos de administrador en la entidad del usuario destino")
 
     # 2. Limpiar dependencias (Claves ForÃƒÂ¡neas) de forma segura
     cleanup_tables = [
