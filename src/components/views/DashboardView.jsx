@@ -1,9 +1,9 @@
 import React from 'react';
-import { FileText, AlertTriangle, Activity, BrainCircuit, ChevronRight, Download, X, Clock } from 'lucide-react';
+import { FileText, AlertTriangle, Activity, BrainCircuit, ChevronRight, Download, X, Clock, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
-export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF }) {
+export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF, onRefresh, isRefreshing }) {
   const role = currentUser?.role || 'usuario';
   const [messages, setMessages] = React.useState([
     {
@@ -182,6 +182,28 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-4 md:gap-6">
       
+      {/* Dashboard Header with Refresh */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight uppercase italic h-fit">Dashboard Ejecutivo</h2>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none">Resumen de Gestión Documental Inteligente</p>
+        </div>
+        
+        {showMetrics && (
+          <button 
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 active:scale-95 shadow-sm",
+              isRefreshing ? "text-primary opacity-70 cursor-not-allowed" : "text-slate-500"
+            )}
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin text-primary")} />
+            {isRefreshing ? "Sincronizando..." : "Refrescar datos"}
+          </button>
+        )}
+      </div>
+
       {/* Top Cards Indicator */}
       {showMetrics && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
@@ -191,6 +213,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             subtitle={stats.trend}
             icon={FileText} 
             trend="up"
+            isRefreshing={isRefreshing}
           />
           <StatsCard 
             title="Documentos vencidos" 
@@ -199,6 +222,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             icon={AlertTriangle} 
             trend="down"
             alert={stats.expiredDocs > 0}
+            isRefreshing={isRefreshing}
           />
           {iaAvailable && (
             <StatsCard 
@@ -206,6 +230,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
               value={stats.tokensUsed} 
               subtitle="Consumo del plan IA"
               icon={BrainCircuit} 
+              isRefreshing={isRefreshing}
             />
           )}
         </div>
@@ -432,9 +457,12 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
 // Subcomponents
 
-function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusColor }) {
+function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusColor, isRefreshing }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div className={cn(
+      "bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group",
+      isRefreshing && "animate-pulse border-primary/30"
+    )}>
       <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
         <Icon className="w-16 h-16" />
       </div>

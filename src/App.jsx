@@ -366,8 +366,8 @@ function App() {
   const [ragCount, setRagCount] = useState(0);
   const [tokensUsed, setTokensUsed] = useState(() => parseInt(localStorage.getItem('ose_tokens_used')) || 0);
 
-  // Registro de Actividad (Backend)
   const [activityLogs, setActivityLogs] = useState([]);
+  const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
 
   const addActivityLog = useCallback(async (message) => {
     if (!currentUser?.token) return;
@@ -432,21 +432,42 @@ function App() {
     localStorage.setItem('ose_tokens_used', tokensUsed);
   }, [tokensUsed]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!currentUser?.token) return;
-      try {
-        const ragRes = await fetch(`${API_BASE_URL}/rag-documents`, {
-          headers: { "Authorization": `Bearer ${currentUser.token}` }
-        });
-        if (ragRes.ok) {
-          const data = await ragRes.json();
-          setRagCount(data.length);
-        }
-      } catch (e) { console.error("Error fetching stats:", e); }
-    };
-    if (currentUser) fetchData();
+  const fetchLibraryStats = useCallback(async () => {
+    if (!currentUser?.token) return;
+    try {
+      const ragRes = await fetch(`${API_BASE_URL}/rag-documents`, {
+        headers: { "Authorization": `Bearer ${currentUser.token}` }
+      });
+      if (ragRes.ok) {
+        const data = await ragRes.json();
+        setRagCount(data.length);
+      }
+    } catch (e) { console.error("Error fetching library stats:", e); }
   }, [currentUser]);
+
+  const refreshDashboardData = async () => {
+    if (isRefreshingDashboard) return;
+    setIsRefreshingDashboard(true);
+    try {
+      // Execute all refreshes in parallel if possible
+      await Promise.all([
+        refreshData(),           // From useTRDData hook
+        refreshActivityLogs(),   // Local activity logs
+        fetchLibraryStats()      // Library count
+      ]);
+    } catch (e) {
+      console.error("Error refreshing dashboard:", e);
+    } finally {
+      // Let the animation play a bit for UX
+      setTimeout(() => setIsRefreshingDashboard(false), 500);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchLibraryStats();
+    }
+  }, [currentUser, fetchLibraryStats]);
 
   // Track tokens on chat messages
   useEffect(() => {
@@ -1449,6 +1470,8 @@ function App() {
                   activityLogs={activityLogs} 
                   trdRecords={trdRecords}
                   onDownloadPDF={handleExportTRD}
+                  onRefresh={refreshDashboardData}
+                  isRefreshing={isRefreshingDashboard}
                 />
               )}
               {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
