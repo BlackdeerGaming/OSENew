@@ -686,6 +686,12 @@ function App() {
         }
       } catch (err) {
         console.error(`Error en acción ${action.type} sobre ${entity}:`, err);
+        setModalStatus({ 
+          isOpen: true, 
+          type: 'error', 
+          message: `La sincronización falló al procesar ${entityLabel}: ${name}. Por favor, refresca e intenta de nuevo.` 
+        });
+        return; // Detener todo el procesamiento si algo falla para mantener integridad
       }
     }
     

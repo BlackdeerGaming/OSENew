@@ -115,7 +115,7 @@ async def create_dependencia_entity(
     # Insert into Supabase DB
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("dependencias").insert(data).execute()
+    res = supabase_client.table("dependencias").upsert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create dependencia")
     record = res.data[0]
@@ -191,7 +191,7 @@ async def create_serie_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("series").insert(data).execute()
+    res = supabase_client.table("series").upsert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create serie")
     record = res.data[0]
@@ -246,7 +246,7 @@ async def create_subserie_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("subseries").insert(data).execute()
+    res = supabase_client.table("subseries").upsert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create subserie")
     record = res.data[0]
@@ -301,7 +301,7 @@ async def create_trd_record_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("trd_records").insert(data).execute()
+    res = supabase_client.table("trd_records").upsert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create TRD record")
     record = res.data[0]
@@ -356,7 +356,7 @@ async def create_funcion_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("funciones").insert(data).execute()
+    res = supabase_client.table("funciones").upsert(data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create funcion")
     record = res.data[0]
@@ -433,7 +433,7 @@ async def create_entrevista_entity(
         }).eq("id", entrevistado_id).eq("entidad_id", entity_id).execute()
     else:
         # Create new
-        res_entrev_create = supabase_client.table("entrevistados").insert({
+        res_entrev_create = supabase_client.table("entrevistados").upsert({
             "entidad_id": entity_id,
             "nombres": entrevistado_data["nombres"],
             "apellidos": entrevistado_data["apellidos"],
@@ -450,7 +450,7 @@ async def create_entrevista_entity(
         "entrevistado_id": entrevistado_id,
         "fecha_entrevista": payload.fecha_entrevista
     }
-    res = supabase_client.table("entrevistas").insert(entrevista_data).execute()
+    res = supabase_client.table("entrevistas").upsert(entrevista_data).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create entrevista")
     
