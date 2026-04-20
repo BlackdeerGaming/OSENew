@@ -1382,20 +1382,28 @@ async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user
 async def update_rag_document_status(doc_id: str, payload: dict, user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
     
+    print(f" [RAG] Actualizando estado de documento {doc_id} a {payload.get('status')}")
+    
     # Obtener metadata actual
     res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-    if not res.data: raise HTTPException(404, "Documento no encontrado")
+    if not res.data: 
+        print(f" [RAG] Documento {doc_id} no encontrado en DB.")
+        raise HTTPException(404, "Documento no encontrado o ID invÃ¡lido")
     
-    meta = res.data[0]["metadata"]
-    new_status = payload.get("status", meta.get("status"))
+    meta = res.data[0].get("metadata") or {}
+    new_status = payload.get("status", meta.get("status", "pending"))
     meta["status"] = new_status
     
-    # Si se marca como éxito, cambiamos el tipo de sesión temporal a carga persistente
+    # Si se marca como Ã©xito, cambiamos el tipo de sesiÃ³n temporal a carga persistente
     if new_status == "success":
         meta["type"] = "trd_upload"
         
-    supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
-    return {"status": "success", "new_status": new_status}
+    try:
+        supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
+        return {"status": "success", "new_status": new_status}
+    except Exception as e:
+        print(f" [RAG] Error actualizando DB: {e}")
+        raise HTTPException(500, f"Error DB: {str(e)}")
 
 
     

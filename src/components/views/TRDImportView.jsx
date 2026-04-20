@@ -226,7 +226,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       fetchImports();
     } catch (err) {
       console.error("Error al integrar:", err);
-      alert("Hubo un error al guardar los datos estructurados.");
+      const detail = err.message || "Error desconocido";
+      alert(`Hubo un error al guardar los datos estructurados.\nDetalle técnico: ${detail}`);
     } finally {
       setIsProcessingNew(false);
     }
