@@ -23,7 +23,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   const [newInvite, setNewInvite] = useState({
     email: '',
     entity_id: currentUser?.entidadId || '',
-    role: 'usuario'
+    role: 'usuario',
+    ia_disponible: false
   });
   const [isCreating, setIsCreating] = useState(false);
 
@@ -96,7 +97,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       if (res.ok) {
         setMessage({ type: 'success', text: "Invitación enviada con éxito." });
         setShowCreateModal(false);
-        setNewInvite({ email: '', entity_id: currentUser?.entidadId || '', role: 'usuario' });
+        setNewInvite({ email: '', entity_id: currentUser?.entidadId || '', role: 'usuario', ia_disponible: false });
         if (activeTab === 'sent') fetchData();
       } else {
         alert(data.detail || "Error al enviar invitación");
@@ -609,7 +610,30 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                     </div>
                  </div>
 
-                 <div className="bg-indigo-50/50 p-4 border border-indigo-100 rounded-3xl flex gap-3">
+                 {/* Checkbox para IA Disponible */}
+                 <div className="flex items-center gap-3 bg-slate-50 p-4 border-2 border-slate-100 rounded-2xl group hover:border-slate-200 transition-all cursor-pointer" onClick={() => setNewInvite({...newInvite, ia_disponible: !newInvite.ia_disponible})}>
+                   <div className="relative flex items-center justify-center">
+                     <input
+                       type="checkbox"
+                       id="ia_disponible"
+                       checked={newInvite.ia_disponible}
+                       onChange={e => setNewInvite({...newInvite, ia_disponible: e.target.checked})}
+                       className="peer h-6 w-6 cursor-pointer appearance-none rounded-lg border-2 border-slate-200 checked:border-primary checked:bg-primary transition-all"
+                       onClick={(e) => e.stopPropagation()}
+                     />
+                     <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-4 w-4 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                     </svg>
+                   </div>
+                   <div className="flex flex-col">
+                     <label htmlFor="ia_disponible" className="text-sm font-bold text-slate-800 cursor-pointer select-none" onClick={(e) => e.preventDefault()}>
+                       Módulo de Inteligencia Artificial
+                     </label>
+                     <span className="text-[10px] text-slate-400 font-medium tracking-wide">Otorga acceso a la consulta documental por IA.</span>
+                   </div>
+                 </div>
+
+                 <div className="bg-indigo-50/50 p-4 border border-indigo-100 rounded-3xl flex gap-3 mt-4">
                     <Clock className="h-5 w-5 text-indigo-400 shrink-0" />
                     <p className="text-[10px] text-indigo-800 font-bold leading-relaxed italic">
                       Se enviará un correo de notificación. La invitación caducará automáticamente en exactamente 24 horas si no es aceptada.
