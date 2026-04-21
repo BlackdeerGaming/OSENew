@@ -223,11 +223,21 @@ function App() {
     // Invitaciones Manuales (Flujo externo)
     const invId = params.get('invitation_id');
     const invEmail = params.get('email');
+    
+    let processedAny = !!(actToken || rstToken || (invId && invEmail));
+
     if (invId && invEmail) {
       const context = { id: invId, email: invEmail };
       setInvitationContext(context);
       localStorage.setItem('invitation_context', JSON.stringify(context));
       if (!currentUser) setAuthView('signup');
+    }
+
+    // 🔥 Limpiar la URL una vez procesados los parámetros para evitar bucles en re-renders o logout
+    if (processedAny) {
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      console.log("🧹 URL limpiada de parámetros de autenticación/invitación");
     }
     
     // Cargar usuarios y entidades iniciales desde el backend
@@ -991,18 +1001,28 @@ function App() {
     if (invitationContext) {
       setMainView('invitations');
       localStorage.removeItem('invitation_context');
+      setInvitationContext(null);
     } else {
       setMainView('dashboard');
     }
+    
+    // Limpiar otros estados de flujo para asegurar que no vuelvan a aparecer al desloguear
+    setActivationToken(null);
+    setResetToken(null);
   };
   
   const handleLogout = async () => {
     if (supabase) await supabase.auth.signOut();
-    setAuthView('login');
     setCurrentUser(null);
+    setAuthView('login');
+    setMainView('dashboard');
+    setInvitationContext(null);
+    setActivationToken(null);
+    setResetToken(null);
     setSelectedDependencia("TODAS");
     setSelectedTrdIds(new Set());
     localStorage.removeItem('ose_user');
+    localStorage.removeItem('invitation_context');
   };
 
   // Restore session from localStorage if present
