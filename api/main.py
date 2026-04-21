@@ -49,6 +49,7 @@ SUPABASE_URL        = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 IMAGE_MIN_SIZE      = 8000  # bytes
 RESEND_API_KEY      = os.getenv("RESEND_API_KEY")
+RESEND_FROM_EMAIL   = os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>")
 
 #  Inicializar Servicios compartidos (Supabase, LLM, Embeddings)
 from .db import supabase_client, llm, embeddings
@@ -185,6 +186,7 @@ class InvitationCreate(BaseModel):
     email: str
     entity_id: str
     role: str = "usuario"
+    ia_disponible: bool = False
 
 class ActivityLogCreate(BaseModel):
     message: str
@@ -840,7 +842,7 @@ async def send_activation(request: ActivationEmailRequest):
                         "User-Agent": "python-httpx/1.0"
                     },
                     json={
-                        "from": "onboarding@resend.dev",
+                        "from": RESEND_FROM_EMAIL,
                         "to": [request.email],
                         "subject": "Activa tu cuenta en OSE IA",
                         "html": html_content
@@ -905,7 +907,7 @@ async def request_reset(request: PasswordResetRequest):
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                     json={
-                        "from": "OSE IA <onboarding@resend.dev>",
+                        "from": RESEND_FROM_EMAIL,
                         "to": [target_email],
                         "subject": "Recuperar contrasena - OSE IA",
                         "html": html_content
@@ -1463,7 +1465,8 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
         "inviter_id": inviter_id,
         "role_invited": req.role,
         "status": "pendiente",
-        "expires_at": expires_at
+        "expires_at": expires_at,
+        "ia_disponible": req.ia_disponible
     }
     
     res = supabase_client.table("invitations").insert(new_inv).execute()
@@ -1472,8 +1475,8 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     
     invitation = res.data[0]
     
-    # Asignar IA disponible si el usuario ya existe
-    if check_profile.data:
+    # Asignar IA disponible si el usuario ya existe y se concedio en la invitacion
+    if check_profile.data and req.ia_disponible:
         p_id = check_profile.data[0]["id"]
         supabase_client.table("profiles").update({"ia_disponible": True}).eq("id", p_id).execute()
     
@@ -1569,7 +1572,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                     json={
-                        "from": "OSE IA <onboarding@resend.dev>",
+                        "from": RESEND_FROM_EMAIL,
                         "to": [target_email],
                         "subject": f"Invitacion a {entity_name} - OSE IA",
                         "html": html_content
@@ -1678,10 +1681,10 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
                 "entity_id": invitation["entity_id"],
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
-            supabase_client.table("profiles").update({
-                "entidad_id": invitation["entity_id"],
-                "ia_disponible": True
-            }).eq("id", current_user.get("user_id")).execute()
+            update_data = {"entidad_id": invitation["entity_id"]}
+            if invitation.get("ia_disponible"):
+                update_data["ia_disponible"] = True
+            supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
             return {"status": "success", "message": "Invitacion aceptada"}
         except Exception as e:
@@ -1723,7 +1726,7 @@ async def signup(req: UserSignUp):
         "estado": "Activo" if invitation else "Inactivo",
         "is_activated": True if invitation else False,
         "entidad_id": invitation["entity_id"] if invitation else None,
-        "ia_disponible": True if invitation else False
+        "ia_disponible": invitation.get("ia_disponible", False) if invitation else False
     }
     prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
     if not prof_insert.data:
