@@ -230,7 +230,20 @@ function App() {
       const context = { id: invId, email: invEmail };
       setInvitationContext(context);
       localStorage.setItem('invitation_context', JSON.stringify(context));
-      if (!currentUser) setAuthView('signup');
+      
+      // 🔥 CRÍTICO: Si el usuario ya tiene cuenta (marcado por ose_has_account), NO lo mandamos a registro.
+      // Lo mandamos a LOGIN para que entre con su cuenta existente.
+      const hasAccount = localStorage.getItem('ose_has_account') === 'true';
+      
+      if (!currentUser) {
+        if (hasAccount) {
+          setAuthView('login');
+          console.log("👋 Usuario existente detectado. Redirigiendo a Login en lugar de Registro.");
+        } else {
+          setAuthView('signup');
+          console.log("✨ Nuevo usuario invitado detectado. Redirigiendo a Registro.");
+        }
+      }
     }
 
     // 🔥 Limpiar la URL una vez procesados los parámetros para evitar bucles en re-renders o logout
@@ -239,11 +252,10 @@ function App() {
       window.history.replaceState({}, document.title, cleanUrl);
       console.log("🧹 URL limpiada de parámetros de autenticación/invitación");
     }
-    
-    // Cargar usuarios y entidades iniciales desde el backend
-    // Cargar usuarios y entidades iniciales si no hay usuario logueado (público o cache)
-    // Pero si el API está protegido, esto fallará. En ese caso, mejor cargarlos después del login o permitir GET público si es necesario.
-    // OPTION: Move this inside a conditional if currentUser is present.
+  }, []); // 🔥 Corregido: Solo se ejecuta una vez al montar la aplicación
+
+  // Cargar usuarios y entidades iniciales desde el backend cuando el usuario cambia
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
@@ -997,6 +1009,10 @@ function App() {
     if (rememberMe) {
       localStorage.setItem('ose_user', JSON.stringify(user));
     }
+    
+    // Marcar de forma persistente que este navegador ya tiene un usuario registrado
+    // Esto evita que las invitaciones vuelvan a abrir el formulario de "Crear Cuenta" en el futuro
+    localStorage.setItem('ose_has_account', 'true');
 
     if (invitationContext) {
       setMainView('invitations');
