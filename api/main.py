@@ -196,6 +196,13 @@ class ActivityLogCreate(BaseModel):
 class InvitationRespond(BaseModel):
     action: str # 'accept' o 'reject'
 
+class InvitationArchive(BaseModel):
+    archived: bool
+
+class InvitationBulkArchive(BaseModel):
+    ids: list[str]
+    archived: bool = True
+
 class UserActivate(BaseModel):
     token: str
     password: str
@@ -869,7 +876,7 @@ async def request_reset(request: PasswordResetRequest):
     user_res = supabase_client.table("profiles").select("id, nombre").eq("email", target_email).execute()
     if not user_res.data:
         # Por seguridad no revelamos si existe o no, pero retornamos ÃƒÂ©xito simulado si no existe
-        return {"status": "ok", "message": "Si el correo estÃƒÂ¡ registrado, recibirÃƒÂ¡s un enlace de recuperaciÃƒÂ³n."}
+        return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
     
     user = user_res.data[0]
     token = str(uuid.uuid4())
@@ -888,15 +895,15 @@ async def request_reset(request: PasswordResetRequest):
         <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #00bfa5;">RecuperaciÃƒÂ³n de ContraseÃƒÂ±a</h2>
+                <h2 style="color: #00bfa5;">Recuperación de Contraseña</h2>
                 <p>Hola {user['nombre']},</p>
-                <p>Has solicitado restablecer tu contraseÃƒÂ±a en OSE IA. Haz clic en el siguiente botÃƒÂ³n para continuar:</p>
+                <p>Has solicitado restablecer tu contraseña en OSE IA. Haz clic en el siguiente botón para continuar:</p>
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer ContraseÃƒÂ±a</a>
+                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer Contraseña</a>
                 </div>
-                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducarÃƒÂ¡ en 1 hora.</p>
+                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducará en 1 hora.</p>
                 <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA Ã¢â‚¬Â¢ GestiÃƒÂ³n Documental Inteligente</p>
+                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA • Gestión Documental Inteligente</p>
             </div>
         </body>
         </html>
@@ -917,7 +924,7 @@ async def request_reset(request: PasswordResetRequest):
         except Exception as e:
             print(f"Error enviando correo de reset: {e}")
 
-    return {"status": "ok", "message": "Si el correo estÃƒÂ¡ registrado, recibirÃƒÂ¡s un enlace de recuperaciÃƒÂ³n."}
+    return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
@@ -929,13 +936,13 @@ async def perform_reset(request: PerformResetRequest):
     res = supabase_client.table("profiles").select("*").eq("reset_token", request.token).execute()
     
     if not res.data:
-        raise HTTPException(400, "El enlace de recuperaciÃƒÂ³n no es vÃƒÂ¡lido.")
+        raise HTTPException(400, "El enlace de recuperación no es válido.")
     
     user = res.data[0]
     
     # 2. Verificar expiraciÃƒÂ³n
     if user.get("reset_token_expiry") and user["reset_token_expiry"] < now:
-        raise HTTPException(400, "El enlace de recuperaciÃƒÂ³n ha expirado.")
+        raise HTTPException(400, "El enlace de recuperación ha expirado.")
         
     # 3. Actualizar contraseÃƒÂ±a y limpiar token
     supabase_client.table("profiles").update({
@@ -944,7 +951,7 @@ async def perform_reset(request: PerformResetRequest):
         "reset_token_expiry": None
     }).eq("id", user["id"]).execute()
     
-    return {"status": "success", "message": "Tu contraseÃƒÂ±a ha sido actualizada correctamente."}
+    return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
 @router.get("/activation-info/{token}")
 async def get_activation_info(token: str):
@@ -1581,7 +1588,7 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
                 print(f"DEBUG Email Invitation status: {res_email.status_code} - {res_email.text[:200]}")
         except Exception as e:
             print(f"Error enviando mail de invitacion: {e}")
-    return {"status": "success", "message": "InvitaciÃƒÂ³n enviada", "invitation": invitation}
+    return {"status": "success", "message": "Invitación enviada", "invitation": invitation}
 
 @router.get("/invitations/my")
 async def get_my_invitations(current_user: dict = Depends(get_current_user)):
@@ -1609,12 +1616,16 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     return valid_invitations
 
 @router.get("/invitations/sent")
-async def get_sent_invitations(entity_id: str | None = None, current_user: dict = Depends(get_current_user)):
+async def get_sent_invitations(entity_id: str | None = None, archived: bool = False, current_user: dict = Depends(get_current_user)):
     """Lista las invitaciones enviadas (Vista Administrador)"""
     if not supabase_client: return []
     if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
         raise HTTPException(403, "Permisos insuficientes")
     query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
+    
+    # Aplicar filtro de archivado
+    query = query.eq("archived", archived)
+
     if current_user.get("role") == SUPERADMIN_ROLE:
         if entity_id:
             query = query.eq("entity_id", entity_id)
@@ -1632,6 +1643,7 @@ async def get_sent_invitations(entity_id: str | None = None, current_user: dict 
         "entity_name": inv.get("entities", {}).get("razon_social", "Entidad"),
         "role": inv.get("role_invited", "usuario"),
         "status": inv["status"],
+        "archived": inv.get("archived", False),
         "created_at": inv["created_at"],
         "expires_at": inv["expires_at"],
         "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}"
@@ -1698,6 +1710,47 @@ async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depen
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
     res = supabase_client.table("activity_logs").insert({"user_name": req.user_name, "message": req.message}).execute()
     return res.data
+
+@router.patch("/invitations/{inv_id}/archive")
+async def archive_invitation(inv_id: str, req: InvitationArchive, current_user: dict = Depends(get_current_user)):
+    """Archiva o desarchiva una invitación específica."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    # Verificar permiso sobre la invitación
+    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
+    if not inv_res.data:
+        raise HTTPException(404, "Invitación no encontrada")
+    
+    entity_id = inv_res.data[0]["entity_id"]
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", entity_id).execute()
+        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+            raise HTTPException(403, "No tienes permisos para gestionar invitaciones de esta entidad")
+
+    res = supabase_client.table("invitations").update({"archived": req.archived}).eq("id", inv_id).execute()
+    return {"status": "ok", "archived": req.archived}
+
+@router.post("/invitations/bulk-archive")
+async def bulk_archive_invitations(req: InvitationBulkArchive, current_user: dict = Depends(get_current_user)):
+    """Archiva múltiples invitaciones a la vez."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    if not req.ids:
+        return {"status": "ok", "count": 0}
+
+    # Si no es superadmin, verificar permisos para cada invitación (seguridad estricta)
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        invs = supabase_client.table("invitations").select("entity_id").in_("id", req.ids).execute()
+        if not invs.data:
+            return {"status": "ok", "count": 0}
+            
+        entities_involved = set(i["entity_id"] for i in invs.data)
+        for eid in entities_involved:
+            admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", eid).execute()
+            if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
+                raise HTTPException(403, f"No tienes permisos sobre la entidad {eid}")
+
+    res = supabase_client.table("invitations").update({"archived": req.archived}).in_("id", req.ids).execute()
+    return {"status": "ok", "count": len(res.data or [])}
 
 @router.get("/activity-logs")
 async def get_activity_logs(current_user: dict = Depends(get_current_user)):
