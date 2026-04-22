@@ -154,7 +154,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     document.body.removeChild(link);
   };
 
-  // Lógica de Recomendaciones Reales
+  // L\u00f3gica de Recomendaciones Reales
   const recommendations = React.useMemo(() => {
     const recs = [];
     if (!stats) return [{ title: "Cargando", desc: "Preparando recomendaciones...", type: "neutral" }];
@@ -164,7 +164,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     if (stats.totalDocs > 100) recs.push({ title: "Transferencia", desc: "Programar transferencia documental al Archivo Central", type: "info" });
     
     // Default if nothing critical
-    if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retención", type: "neutral" });
+    if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retenci\u00f3n", type: "neutral" });
     return recs;
   }, [stats]);
 
@@ -180,35 +180,39 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   }, [trdRecords]);
 
   return (
-    <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto w-full h-full flex flex-col gap-4 md:gap-6">
+    <div className="flex-1 p-5 md:p-8 overflow-y-auto w-full h-full flex flex-col gap-7 bg-background">
       
-      {/* Dashboard Header with Refresh */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight uppercase italic h-fit">Dashboard Ejecutivo</h2>
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none">Resumen de Gestión Documental Inteligente</p>
+      {/* Header */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 text-[10px] font-semibold text-primary uppercase tracking-[0.15em]">
+            <Activity className="h-3 w-3" /> Sistema Activo
+          </div>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">
+            Dashboard <span className="text-primary">Ejecutivo</span>
+          </h1>
         </div>
-        
+
         {showMetrics && (
-          <button 
+          <button
             onClick={onRefresh}
             disabled={isRefreshing}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 active:scale-95 shadow-sm",
-              isRefreshing ? "text-primary opacity-70 cursor-not-allowed" : "text-slate-500"
+              "flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-lg text-[12px] font-medium transition-all hover:border-primary/30 active:scale-95",
+              isRefreshing ? "text-primary opacity-70 cursor-not-allowed" : "text-muted-foreground hover:text-primary"
             )}
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin text-primary")} />
-            {isRefreshing ? "Sincronizando..." : "Refrescar datos"}
+            <RefreshCw className={cn("w-3.5 h-3.5 transition-transform duration-500", isRefreshing ? "animate-spin" : "")} />
+            {isRefreshing ? "Sincronizando..." : "Actualizar"}
           </button>
         )}
-      </div>
+      </header>
 
       {/* Top Cards Indicator */}
       {showMetrics && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-700">
           <StatsCard 
-            title="Documentos totales" 
+            title="Documentos" 
             value={stats.totalDocs} 
             subtitle={stats.trend}
             icon={FileText} 
@@ -216,9 +220,9 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             isRefreshing={isRefreshing}
           />
           <StatsCard 
-            title="Documentos vencidos" 
+            title="Alertas Vencimiento" 
             value={stats.expiredDocs} 
-            subtitle="Basado en tiempo de retención"
+            subtitle="Tablas de Retenci\u00f3n"
             icon={AlertTriangle} 
             trend="down"
             alert={stats.expiredDocs > 0}
@@ -226,9 +230,9 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
           />
           {iaAvailable && (
             <StatsCard 
-              title="Tokens usados" 
+              title="Consumo IA" 
               value={stats.tokensUsed} 
-              subtitle="Consumo del plan IA"
+              subtitle="Tokens procesados"
               icon={BrainCircuit} 
               isRefreshing={isRefreshing}
             />
@@ -238,144 +242,139 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
       <div className="flex flex-col gap-6 flex-1 min-h-0">
         
-        {role === 'usuario' ? (
-          /* VISTA SIMPLIFICADA PARA CONSULTA */
-          <div className="flex-1 flex flex-col gap-6 animate-in fade-in duration-700">
-             <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
-                <div className="flex items-center justify-between mb-8">
-                   <div>
-                      <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">Tablas de Retención (TRD) Disponibles</h2>
-                      <p className="text-slate-500 font-medium">Visualiza y descarga los reportes oficiales de tu entidad.</p>
-                   </div>
-                   <div className="p-3 bg-primary/5 rounded-2xl text-primary">
-                      <FileText className="w-8 h-8" />
-                   </div>
+        {role === 'usuario' && (
+          <div className="flex-1 flex flex-col gap-6 animate-in fade-in duration-500">
+            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div>
+                  <h2 className="text-[14px] font-semibold text-foreground">Consulta de Tablas Oficiales</h2>
+                  <p className="text-[11.5px] text-muted-foreground mt-0.5">Reportes TRD vigentes para descarga y auditoría.</p>
                 </div>
-
-                <div className="overflow-x-auto border border-slate-100 rounded-2xl">
-                   <table className="w-full min-w-[500px] text-left">
-                      <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                         <tr>
-                            <th className="px-4 lg:px-6 py-4">Nombre del Reporte / Dependencia</th>
-                            <th className="px-4 lg:px-6 py-4 hidden sm:table-cell">Entidad</th>
-                            <th className="px-4 lg:px-6 py-4 hidden md:table-cell">Fecha base</th>
-                            <th className="px-4 lg:px-6 py-4 text-center">Acciones</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                         {trdsByOficina.length > 0 ? trdsByOficina.map((trd, idx) => (
-                           <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-6 py-5">
-                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                                       <FileText className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                       <span className="font-bold text-slate-900 block uppercase text-xs">{trd.name}</span>
-                                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{trd.count} registros vinculados</span>
-                                    </div>
-                                 </div>
-                              </td>
-                              <td className="px-6 py-5 font-bold text-slate-700 text-xs uppercase">
-                                 {currentUser?.entidadNombre || currentEntity?.razonSocial || "OSE SISTEMA GLOBAL"}
-                              </td>
-                              <td className="px-6 py-5 text-slate-500 text-xs font-medium">
-                                 {new Date().toLocaleDateString('es-CO')}
-                              </td>
-                              <td className="px-6 py-5">
-                                 <div className="flex justify-center">
-                                    <button 
-                                      onClick={() => onDownloadPDF && onDownloadPDF(trd.name)}
-                                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg hover:bg-slate-800 transition-all active:scale-95 uppercase tracking-wider"
-                                    >
-                                       <Download className="w-4 h-4" />
-                                       Descargar PDF
-                                    </button>
-                                 </div>
-                              </td>
-                           </tr>
-                         )) : (
-                           <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold uppercase text-[10px] tracking-widest">
-                                 No hay registros TRD disponibles para consulta actualmente.
-                              </td>
-                           </tr>
-                         )}
-                      </tbody>
-                   </table>
+                <div className="h-8 w-8 bg-primary/8 rounded-lg text-primary flex items-center justify-center border border-primary/10">
+                  <FileText className="w-4 h-4" />
                 </div>
-
-                <div className="mt-8 p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center gap-4">
-                   <div className="p-2 bg-white rounded-lg shadow-sm">
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
-                   </div>
-                   <p className="text-xs text-slate-500 leading-relaxed">
-                      Este portal es únicamente para **consulta y descarga**. Para realizar modificaciones, carga de datos o análisis mediante IA, ponte en contacto con el administrador de tu entidad.
-                   </p>
-                </div>
-             </div>
-          </div>
-        ) : (
-          /* VISTA ADMINISTRATIVA (SIDEBAR IZQUIERDA EN DASHBOARD) */
-          <div className="flex flex-col gap-6 h-full col-span-1">
-            
-            {/* Analysis Cards */}
-            {showAnalysis && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 animate-in fade-in duration-700">
-                <AnalysisWidget title="Detectar Series" desc={`${stats.totalDocs > 0 ? seriesCount : 0} series identificadas`} type="info" />
-                <AnalysisWidget title="Análisis" desc={stats.expiredDocs > 0 ? "Requiere revisión de retención" : "Estado funcional óptimo"} type="neutral" />
-                <AnalysisWidget title="TRD no aprobadas" desc={`${stats.unapprovedTRDs} registros pendientes`} type="warning" />
-                <AnalysisWidget title="Recomendación" desc={recommendations[0].desc} type="success" />
               </div>
-            )}
-
-            {/* Action Buttons */}
-            {showActions && (
-              <div className="flex items-center gap-3 overflow-x-auto pb-2 animate-in fade-in slide-in-from-left-4 duration-500">
-                <button 
-                  onClick={() => {
-                     console.log("♻️ Actualizando registro de actividad...");
-                  }}
-                  className="shrink-0 flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
-                >
-                  <Activity className="w-4 h-4" /> Actualizar
-                </button>
-                <button 
-                  onClick={handleExportCSV}
-                  className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm hover:bg-slate-50 transition-colors"
-                >
-                  <Download className="w-4 h-4" /> Exportar Excel
-                </button>
-              </div>
-            )}
-
-            {/* Registro de Actividad */}
-            <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden flex flex-col flex-1 animate-in zoom-in-95 duration-700">
-              <div className="px-4 lg:px-5 py-3 lg:py-4 border-b border-border flex items-center justify-between bg-slate-50/50 shrink-0">
-                 <h3 className="font-bold text-foreground text-sm lg:text-base tracking-tighter uppercase italic">Historial de actividad (Sincronizado)</h3>
-                 <div className="flex items-center gap-2">
-                   <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-md font-medium">{activityLogs.length} registros</span>
-                 </div>
-              </div>
-              <div className="overflow-auto flex-1">
-                <table className="w-full min-w-[520px] text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-medium">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px] text-left">
+                  <thead className="bg-secondary/50 border-b border-border">
                     <tr>
-                      <th className="px-5 py-3">ID Acción</th>
-                      <th className="px-5 py-3">Usuario</th>
-                      <th className="px-5 py-3">Actividad</th>
-                      <th className="px-5 py-3">Fecha y Hora</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dependencia</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Entidad</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">Actualizado</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-border">
+                    {trdsByOficina.length > 0 ? (
+                      trdsByOficina.map((trd, idx) => (
+                        <tr key={idx} className="hover:bg-secondary/30 transition-colors group">
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="h-7 w-7 bg-secondary text-muted-foreground rounded-md flex items-center justify-center group-hover:bg-primary/8 group-hover:text-primary transition-colors border border-border shrink-0">
+                                <FileText className="w-3.5 h-3.5" />
+                              </div>
+                              <div>
+                                <span className="font-medium text-foreground text-[13px] block">{trd.name}</span>
+                                <span className="text-[10px] text-muted-foreground">{trd.count} registros</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 text-[12.5px] text-muted-foreground">
+                            {currentUser?.entidadNombre || currentEntity?.razonSocial || "OSE"}
+                          </td>
+                          <td className="px-5 py-3.5 text-[12px] text-muted-foreground">
+                            {new Date().toLocaleDateString('es-CO')}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex justify-center">
+                              <button
+                                onClick={() => onDownloadPDF && onDownloadPDF(trd.name)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background rounded-md text-[11.5px] font-medium hover:bg-primary transition-all active:scale-95"
+                              >
+                                <Download className="w-3 h-3" /> Descargar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-12 text-center text-muted-foreground text-[12.5px]">
+                          No hay registros TRD disponibles para consulta.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-5 py-3 border-t border-border bg-primary/[0.02] flex items-center gap-3">
+                <AlertTriangle className="w-3.5 h-3.5 text-primary shrink-0" />
+                <p className="text-[11.5px] text-muted-foreground">
+                  Portal de <strong className="text-primary">Sólo Consulta</strong>. Las modificaciones requieren perfil administrador.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {role !== 'usuario' && (
+          <div className="flex-1 flex flex-col gap-6 h-full">
+
+            {showAnalysis && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 animate-in fade-in duration-700">
+                <AnalysisWidget title="Series" desc={`${stats.totalDocs > 0 ? seriesCount : 0}`} type="info" />
+                <AnalysisWidget title="Estado" desc={stats.expiredDocs > 0 ? "Cr\u00edtico" : "\u00d3ptimo"} type="neutral" />
+                <AnalysisWidget title="Pendientes" desc={`${stats.unapprovedTRDs}`} type="warning" />
+                <AnalysisWidget title="Insight" desc={recommendations[0].desc} type="success" />
+              </div>
+            )}
+
+            {showActions && (
+              <div className="flex items-center gap-2 overflow-x-auto animate-in fade-in duration-500">
+                <button
+                  onClick={() => console.log("Refrescando...")}
+                  className="shrink-0 flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-[12px] font-semibold hover:bg-primary/90 transition-all active:scale-95"
+                >
+                  <Activity className="w-3.5 h-3.5" /> Actualizar Logs
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="shrink-0 flex items-center gap-2 bg-card border border-border text-muted-foreground px-4 py-2 rounded-lg text-[12px] font-medium hover:text-foreground hover:border-border/80 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" /> Exportar Registro
+                </button>
+              </div>
+            )}
+
+            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm flex flex-col flex-1 animate-in fade-in duration-500">
+              <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-secondary/30 shrink-0">
+                <div>
+                  <h3 className="font-semibold text-foreground text-[13.5px]">Trazabilidad del Sistema</h3>
+                  <span className="text-[11px] text-muted-foreground">Monitoreo de acciones en tiempo real</span>
+                </div>
+                <div className="px-3 py-1 bg-card border border-border rounded-md text-[11px] font-medium text-primary">
+                  {activityLogs.length} registros
+                </div>
+              </div>
+              <div className="overflow-auto flex-1">
+                <table className="w-full min-w-[600px] text-sm text-left">
+                  <thead className="bg-secondary/50 border-b border-border sticky top-0 z-10">
+                    <tr>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">ID</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Usuario</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Actividad</th>
+                      <th className="px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
                     {activityLogs.length > 0 ? (
                       activityLogs.map((log) => (
-                        <tr key={log.id} className="border-b border-border/50 hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-3 font-mono text-[10px] text-slate-400 capitalize">{log.id.replace('act_', '')}</td>
-                          <td className="px-5 py-3 font-bold text-slate-900">{log.user || 'Sistema'}</td>
-                          <td className="px-5 py-3 font-medium text-slate-700">{log.message}</td>
-                          <td className="px-5 py-3 text-slate-500 text-xs">
-                            <div className="flex items-center gap-1.5">
+                        <tr key={log.id} className="hover:bg-secondary/30 transition-colors">
+                          <td className="px-5 py-3 font-mono text-[11px] text-muted-foreground">#{log.id.substring(log.id.length - 6)}</td>
+                          <td className="px-5 py-3 font-medium text-foreground text-[12.5px]">{log.user || 'Sistema'}</td>
+                          <td className="px-5 py-3 text-muted-foreground text-[12.5px]">{log.message}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                               <Clock className="w-3 h-3" />
                               {formatDate(log.timestamp)}
                             </div>
@@ -384,10 +383,10 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="4" className="px-5 py-12 text-center text-slate-400">
-                          <div className="flex flex-col items-center justify-center gap-2">
-                            <Activity className="w-8 h-8 opacity-20" />
-                            <p>No hay registros de actividad actualmente.</p>
+                        <td colSpan="4" className="px-5 py-16 text-center">
+                          <div className="flex flex-col items-center justify-center gap-3 opacity-30">
+                            <Activity className="w-10 h-10 text-muted-foreground" />
+                            <p className="text-[12px] text-muted-foreground">Sin actividad registrada</p>
                           </div>
                         </td>
                       </tr>
@@ -399,7 +398,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
           </div>
         )}
       </div>
-      {/* Propuesta de Flujo de Acta */}
+      
       {showActProposal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setShowActProposal(false)} />
@@ -457,55 +456,72 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
 // Subcomponents
 
-function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, statusColor, isRefreshing }) {
+function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, isRefreshing }) {
   return (
     <div className={cn(
-      "bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group",
-      isRefreshing && "animate-pulse border-primary/30"
+      "bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all relative overflow-hidden group",
+      alert && "border-l-4 border-l-destructive",
+      isRefreshing && "animate-pulse opacity-70"
     )}>
-      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+      <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
         <Icon className="w-16 h-16" />
       </div>
-      <div className="flex items-start justify-between relative z-10">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <h4 className={cn("text-xl md:text-2xl font-bold mt-1", statusColor || "text-slate-800")}>{value}</h4>
+      
+      <div className="flex flex-col gap-3 relative z-10">
+        <div className="flex items-center justify-between">
+           <div className={cn("p-2 rounded-lg border", alert ? "bg-destructive/10 border-destructive/10 text-destructive" : "bg-primary/10 border-primary/10 text-primary")}>
+             <Icon className="w-4 h-4" />
+           </div>
+           {trend && (
+             <div className={cn("px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5", 
+               trend === 'up' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+             )}>
+               <div className={cn("h-1.5 w-1.5 rounded-full", trend === 'up' ? "bg-emerald-500" : "bg-rose-500")} />
+               {trend === 'up' ? 'Alza' : 'Baja'}
+             </div>
+           )}
         </div>
-        <div className={cn("p-2.5 rounded-lg", alert ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
-          <Icon className="w-5 h-5" />
+
+        <div className="space-y-0.5">
+          <h4 className="text-2xl font-bold text-foreground tracking-tight leading-none">{value}</h4>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{title}</p>
         </div>
-      </div>
-      <div className="mt-4 flex items-center gap-1.5">
-        {!statusColor && (
-          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", trend === 'up' ? "bg-success/10 text-success" : trend === 'down' ? "bg-warning/10 text-warning" : "bg-slate-100 text-slate-600")}>
-            {subtitle.split(" ")[0]}
-          </span>
-        )}
-        <span className="text-xs text-slate-500">{statusColor ? subtitle : subtitle.substring(subtitle.indexOf(" ") + 1)}</span>
+
+        <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground bg-secondary/50 p-2 rounded-md border border-border">
+           <span className="w-1.5 h-1.5 rounded-full bg-border" />
+           <span className="line-clamp-1">{subtitle}</span>
+        </div>
       </div>
     </div>
   );
 }
 
 function AnalysisWidget({ title, desc, type }) {
-  const styles = {
-    neutral: "border-slate-200 bg-white",
-    info: "border-primary/20 bg-primary/5",
-    warning: "border-warning/30 bg-warning/10",
-    success: "border-success/30 bg-success/10"
+  const borderStyles = {
+    neutral: "border-border",
+    info: "border-primary/20",
+    warning: "border-amber-200",
+    success: "border-emerald-200"
   };
-
+  const dotStyles = {
+    neutral: "bg-muted-foreground",
+    info: "bg-primary",
+    warning: "bg-amber-500",
+    success: "bg-emerald-500"
+  };
   const textStyles = {
-    neutral: "text-slate-800",
+    neutral: "text-foreground",
     info: "text-primary",
-    warning: "text-warning-foreground",
-    success: "text-success"
+    warning: "text-amber-700",
+    success: "text-emerald-700"
   };
-
   return (
-    <div className={cn("rounded-xl border p-4 shadow-sm", styles[type])}>
-       <p className="text-xs font-semibold text-slate-500 mb-1">{title}</p>
-       <p className={cn("text-sm font-bold leading-tight", textStyles[type])}>{desc}</p>
+    <div className={cn("rounded-xl border bg-card p-3 transition-all hover:shadow-sm", borderStyles[type])}>
+      <div className="flex items-center gap-2 mb-1">
+        <div className={cn("h-1.5 w-1.5 rounded-full", dotStyles[type])} />
+        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{title}</p>
+      </div>
+      <p className={cn("text-[12.5px] font-bold line-clamp-1", textStyles[type])}>{desc}</p>
     </div>
   );
 }
@@ -513,16 +529,19 @@ function AnalysisWidget({ title, desc, type }) {
 function StepItem({ num, title, desc, active }) {
   return (
     <div className={cn(
-      "p-3 rounded-2xl border transition-all",
-      active ? "border-primary/20 bg-primary/[0.03] shadow-sm" : "border-slate-100 bg-slate-50/50 grayscale opacity-60"
+      "p-4 rounded-lg border transition-all",
+      active ? "border-primary/20 bg-primary/[0.03]" : "border-border bg-secondary/30 opacity-50"
     )}>
-       <div className="flex items-center gap-2 mb-1.5 focus:outline-none">
-         <span className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black", active ? "bg-primary text-white" : "bg-slate-200 text-slate-500")}>
-           {num}
-         </span>
-         <h5 className="font-bold text-slate-800 text-xs italic tracking-tight">{title}</h5>
-       </div>
-       <p className="text-[10px] text-slate-500 leading-tight font-medium">{desc}</p>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={cn(
+          "w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold",
+          active ? "bg-primary text-white" : "bg-border text-muted-foreground"
+        )}>
+          {num}
+        </span>
+        <h5 className="font-semibold text-foreground text-[12.5px]">{title}</h5>
+      </div>
+      <p className="text-[11.5px] text-muted-foreground leading-relaxed pl-7">{desc}</p>
     </div>
   );
 }

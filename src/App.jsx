@@ -32,8 +32,10 @@ import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 import StatusModal from './components/ui/StatusModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
+import { exportTRDToExcel } from './utils/excelUtils';
 import { normalizeText } from './utils/stringUtils';
 import { supabase } from './lib/supabase';
 
@@ -1214,7 +1216,7 @@ function App() {
       />
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
-      {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart'].includes(activeModule) && isAgentOpen && currentUser?.role !== 'user' && currentUser?.role !== 'Consulta' && (
+      {['dependencias', 'series', 'subseries', 'trdform', 'trd', 'datos', 'orgchart', 'ai-result', 'funciones', 'entrevistas', 'generador_ia', 'generador_manual'].includes(activeModule) && isAgentOpen && currentUser?.role !== 'user' && currentUser?.role !== 'Consulta' && (
         <section className="w-full lg:w-[350px] h-80 lg:h-full shrink-0 border-b lg:border-b-0 lg:border-r border-border shadow-lg z-10 bg-card transition-all duration-300 relative">
           <AgentChat 
             messages={messages} 
@@ -1427,6 +1429,26 @@ function App() {
                 
                 const now = new Date();
                 const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+                
+                const customFilename = `${safeDepName}_${dateStr}`;
+                
+                addActivityLog(`Descarga Excel TRD - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
+                exportTRDToExcel(filteredTrdRows, customFilename);
+              }}
+              className="flex items-center gap-2 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95 border border-slate-300"
+            >
+              <Download className="h-4 w-4" />
+              DESCARGAR EXCEL
+            </button>
+
+            <button 
+              onClick={() => {
+                const safeDepName = (selectedDependencia === "TODAS" || !selectedDependencia) 
+                  ? "ReporteGeneral" 
+                  : selectedDependencia.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
+                
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
                 const randomId = Math.floor(Math.random() * 99999999).toString().padStart(8, '0');
                 
                 const customFilename = `${safeDepName}_${dateStr}_${randomId}`;
@@ -1496,48 +1518,50 @@ function App() {
                onMenuToggle={() => setIsMobileMenuOpen(prev => !prev)}
             />
 
-            <div className="flex-1 overflow-y-auto relative flex">
-              {mainView === 'dashboard' && (
-                <DashboardView 
-                  stats={realStats} 
-                  searchQuery={globalSearchQuery} 
-                  currentUser={currentUser} 
-                  seriesCount={(series || []).length} 
-                  activityLogs={activityLogs} 
-                  trdRecords={trdRecords}
-                  onDownloadPDF={handleExportTRD}
-                  onRefresh={refreshDashboardData}
-                  isRefreshing={isRefreshingDashboard}
-                />
-              )}
-              {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
-              {mainView === 'import' && (
-                <TRDImportView 
-                  onImportComplete={executeAgentActions} 
-                  currentUser={currentUser} 
-                  currentEntity={currentEntity} 
-                  logoBase64={entidadLogoBase64} 
-                  imports={imports}
-                  setImports={setImports}
-                  addActivityLog={addActivityLog}
-                />
-              )}
-              {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
-              {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
-              {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
-              {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
-              
-              {mainView === 'invitations' && (
-                <InvitationsView 
-                  currentUser={currentUser}
-                  API_BASE_URL={API_BASE_URL}
-                  onNavigate={setMainView}
-                  entities={entities}
-                />
-              )}
-              
-              {/* TRD Módulo (Layout Anterior embebido) */}
-              {mainView === 'trd' && renderLegacyTRDLayout()}
+            <div className="flex-1 overflow-y-auto relative flex flex-col w-full">
+              <ErrorBoundary key={mainView}>
+                {mainView === 'dashboard' && (
+                  <DashboardView 
+                    stats={realStats} 
+                    searchQuery={globalSearchQuery} 
+                    currentUser={currentUser} 
+                    seriesCount={(series || []).length} 
+                    activityLogs={activityLogs} 
+                    trdRecords={trdRecords}
+                    onDownloadPDF={handleExportTRD}
+                    onRefresh={refreshDashboardData}
+                    isRefreshing={isRefreshingDashboard}
+                  />
+                )}
+                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
+                {mainView === 'import' && (
+                  <TRDImportView 
+                    onImportComplete={executeAgentActions} 
+                    currentUser={currentUser} 
+                    currentEntity={currentEntity} 
+                    logoBase64={entidadLogoBase64} 
+                    imports={imports}
+                    setImports={setImports}
+                    addActivityLog={addActivityLog}
+                  />
+                )}
+                {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
+                {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} onSearchQueryChange={setGlobalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
+                {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
+                {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
+                
+                {mainView === 'invitations' && (
+                  <InvitationsView 
+                    currentUser={currentUser}
+                    API_BASE_URL={API_BASE_URL}
+                    onNavigate={setMainView}
+                    entities={entities}
+                  />
+                )}
+                
+                {/* TRD Módulo (Layout Anterior embebido) */}
+                {mainView === 'trd' && renderLegacyTRDLayout()}
+              </ErrorBoundary>
             </div>
          </div>
       

@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils';
 
 const MAIN_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'entities', label: 'Empresas / Entidades', icon: Building2 },
-  { id: 'import', label: 'Importación TRD', icon: FileUp },
-  { id: 'rag', label: 'Biblioteca', icon: BrainCircuit, badge: 'RAG' },
-  { id: 'trd', label: 'TRD', icon: FileSpreadsheet, badge: 'IA' },
+  { id: 'entities', label: 'Entidades', icon: Building2 },
+  { id: 'import', label: 'Importación', icon: FileUp },
+  { id: 'rag', label: 'Biblioteca RAG', icon: BrainCircuit, badge: 'Neural' },
+  { id: 'trd', label: 'Estructura TRD', icon: FileSpreadsheet, badge: 'Core' },
   { id: 'invitations', label: 'Invitaciones', icon: Mail },
   { id: 'users', label: 'Usuarios', icon: Users },
-  { id: 'settings', label: 'Configuración', icon: Settings },
-  { id: 'help', label: 'Ayuda y Soporte', icon: HelpCircle },
+  { id: 'settings', label: 'Preferencias', icon: Settings },
+  { id: 'help', label: 'Centro Ayuda', icon: HelpCircle },
 ];
 
 export default function MainSidebar({ activeView, onNavigate, searchQuery, onSearchQueryChange, currentUser, currentEntity, isOpen, onClose, pendingInvitationsCount = 0 }) {
@@ -20,30 +20,18 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
   const [showIARestriction, setShowIARestriction] = React.useState(false);
 
   const filteredNav = MAIN_NAV.filter(item => {
-    // Si es super admin ve todo
     if (role === 'superadmin') return true;
-    
-    // Si no es super admin, le bloqueamos Entidades explícitamente
     if (item.id === 'entities') return false;
-
-    if (role === 'admin' || role === 'administrador') {
-      return true; // Admin ve todo excepto Entidades
-    }
-    
+    if (role === 'admin' || role === 'administrador') return true;
     if (role === 'user' || role === 'usuario' || role === 'Consulta') {
-      // Usuario de consulta solo ve: Dashboard, Biblioteca, TRD, Configuración e Invitaciones
       return ['dashboard', 'rag', 'trd', 'settings', 'help', 'invitations'].includes(item.id);
     }
-    
     return false;
   });
 
   const handleNavClick = (itemId) => {
     const isIAModule = itemId === 'import' || itemId === 'rag';
-    if (isIAModule && !iaAvailable) {
-      setShowIARestriction(true);
-      return;
-    }
+    if (isIAModule && !iaAvailable) { setShowIARestriction(true); return; }
     onNavigate(itemId);
     if (onClose && window.innerWidth < 1024) onClose();
   };
@@ -51,126 +39,140 @@ export default function MainSidebar({ activeView, onNavigate, searchQuery, onSea
   return (
     <>
       {/* Mobile Backdrop */}
-      <div 
+      <div
         className={cn(
-          "fixed inset-0 bg-slate-900/60 z-[60] lg:hidden transition-opacity backdrop-blur-sm", 
+          "fixed inset-0 bg-slate-900/50 z-[60] lg:hidden transition-opacity backdrop-blur-[2px]",
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        )} 
-        onClick={onClose} 
+        )}
+        onClick={onClose}
       />
 
-      <aside 
+      <aside
         className={cn(
-          "w-64 bg-[#0a1128] text-slate-300 flex flex-col h-full shadow-2xl lg:shadow-xl shrink-0 transition-transform duration-300 z-[70] print:hidden",
+          "w-64 bg-slate-900 text-slate-300 flex flex-col h-full shrink-0 transition-all duration-300 z-[70] print:hidden border-r border-white/[0.04]",
           "fixed lg:relative inset-y-0 left-0",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="p-6 border-b border-white/10 flex items-center gap-3">
+        {/* Brand */}
+        <div className="px-5 py-5 border-b border-white/[0.05] flex items-center gap-3">
           {currentEntity ? (
-             currentEntity.logoUrl ? (
-                <img src={currentEntity.logoUrl} alt="Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
-             ) : (
-                <div className="h-10 w-10 bg-primary/20 rounded-lg flex items-center justify-center shadow-lg border border-primary/50 shrink-0">
-                   <span className="text-white font-bold text-sm uppercase">{currentEntity.razonSocial?.substring(0,2)}</span>
-                </div>
-             )
+            currentEntity.logoUrl ? (
+              <div className="h-9 w-9 rounded-lg bg-white/10 p-1.5 flex items-center justify-center shrink-0">
+                <img src={currentEntity.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className="h-9 w-9 bg-primary/15 rounded-lg flex items-center justify-center border border-primary/20 shrink-0">
+                <span className="text-primary font-bold text-sm uppercase">{currentEntity.razonSocial?.substring(0,2)}</span>
+              </div>
+            )
           ) : (
-            <div className="h-10 w-10 bg-primary rounded-lg flex items-center justify-center shadow-lg shrink-0">
-              <FileSignature className="h-6 w-6 text-white" />
+            <div className="h-9 w-9 bg-primary/20 rounded-lg flex items-center justify-center border border-primary/25 shrink-0">
+              <FileSignature className="h-4 w-4 text-primary" />
             </div>
           )}
           <div className="flex-1 min-w-0">
             {currentEntity ? (
-              <h1 className="text-white font-bold text-sm leading-tight truncate" title={currentEntity.razonSocial}>
-                 {currentEntity.razonSocial}
-              </h1>
+              <p className="text-white font-semibold text-[13px] leading-tight truncate" title={currentEntity.razonSocial}>
+                {currentEntity.razonSocial}
+              </p>
             ) : (
-               <h1 className="text-white font-bold text-lg leading-tight">OSE</h1>
+              <p className="text-white font-bold text-[15px] leading-tight tracking-tight">
+                OSE <span className="text-primary">IA</span>
+              </p>
             )}
-            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate">
-               {currentEntity ? 'Portal Cliente' : 'Gestión Inteligente'}
+            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-[0.15em] mt-0.5">
+              {currentEntity ? 'Sistema Documental' : 'Neural Archival'}
             </p>
           </div>
         </div>
 
-        <div className="p-4">
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 transition-colors group-focus-within:text-primary" />
-            <input 
-              type="text" 
-              placeholder="Buscar módulo..." 
+        {/* Search */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Buscar..."
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
-              className="w-full bg-[#111d40] border border-white/5 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all shadow-inner"
+              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-lg py-2 pl-9 pr-3 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/30 focus:bg-white/[0.06] transition-all"
             />
           </div>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1 mt-2">
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto px-3 pt-1 pb-4 space-y-0.5">
           {filteredNav.map((item) => {
             const isActive = activeView === item.id;
             const Icon = item.icon;
-            const isIAModule = item.id === 'import' || item.id === 'rag';
-            const isLocked = isIAModule && !iaAvailable;
-
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
-                  isActive 
-                    ? "bg-primary text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] font-semibold" 
-                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
-                  isLocked && "opacity-40 grayscale-[0.5]"
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative text-left",
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
                 )}
               >
-                <Icon className={cn("h-5 w-5 shrink-0 transition-colors", isActive ? "text-white" : "text-slate-500")} />
-                <span className="flex-1 text-left">{item.label}</span>
-                {isLocked ? (
-                  <span className="text-[8px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md bg-amber-400 text-black shadow-[0_0_10px_rgba(251,191,36,0.4)]">
-                    BLOQUEADO
+                {isActive && <div className="absolute left-0 w-0.5 h-4 bg-primary rounded-full" />}
+                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary" : "text-slate-500 group-hover:text-slate-300")} />
+                <span className={cn("text-[12.5px] font-medium flex-1", isActive && "font-semibold")}>
+                  {item.label}
+                </span>
+
+                {(item.badge || (item.id === 'invitations' && pendingInvitationsCount > 0)) && (
+                  <span className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide",
+                    isActive
+                      ? "bg-primary/20 text-primary"
+                      : "bg-white/5 text-slate-500"
+                  )}>
+                    {item.id === 'invitations' && pendingInvitationsCount > 0 ? pendingInvitationsCount : item.badge}
                   </span>
-                ) : (
-                  <>
-                    {item.badge && (
-                      <span className={cn(
-                        "text-[10px] font-black px-1.5 py-0.5 rounded-md",
-                        item.badge === 'RAG' ? "bg-primary/20 text-primary" : "bg-purple-500/20 text-purple-400"
-                      )}>
-                        {item.badge}
-                      </span>
-                    )}
-                    {item.id === 'invitations' && pendingInvitationsCount > 0 && (
-                      <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white animate-bounce shadow-lg shadow-rose-500/50">
-                        {pendingInvitationsCount}
-                      </span>
-                    )}
-                  </>
                 )}
-                {isLocked && <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse ml-1" />}
               </button>
             );
           })}
         </nav>
+
+        {/* User footer */}
+        {currentUser && (
+          <div className="px-4 py-4 border-t border-white/[0.05]">
+            <div className="flex items-center gap-3">
+              <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <span className="text-primary text-[10px] font-bold uppercase">
+                  {currentUser.nombre?.charAt(0) || currentUser.email?.charAt(0) || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium text-slate-200 truncate">
+                  {currentUser.nombre || currentUser.email}
+                </p>
+                <p className="text-[10px] text-slate-500 capitalize">{currentUser.role || 'usuario'}</p>
+              </div>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* IA Restriction Modal */}
       {showIARestriction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowIARestriction(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
-            <div className="h-16 w-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-2">
-              <BrainCircuit className="h-8 w-8" />
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowIARestriction(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center flex flex-col items-center gap-4">
+            <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center">
+              <BrainCircuit className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-black text-slate-900 leading-tight">Servicio restringido</h3>
-            <p className="text-slate-500 text-sm font-medium leading-relaxed">
+            <h3 className="text-base font-bold text-slate-900">Servicio restringido</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">
               Si quieres este servicio, mejora tu plan o habla con tu administrador.
             </p>
-            <button 
+            <button
               onClick={() => setShowIARestriction(false)}
-              className="mt-2 w-full py-3 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:bg-slate-800 transition-all active:scale-95 text-xs uppercase tracking-widest"
+              className="mt-1 w-full py-2.5 bg-slate-900 text-white rounded-xl font-semibold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all"
             >
               Entendido
             </button>

@@ -8,15 +8,16 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from "@/lib/utils";
 import API_BASE_URL from '../../config/api';
+import ViewHeader from '../ui/ViewHeader';
 import TRDExportPreview from '../trd/TRDGenerator';
 import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
 const STATUS_CONFIG = {
-  uploading: { label: 'Subiendo...', color: 'bg-blue-500', icon: Loader2, animate: true },
-  analyzing: { label: 'Extrayendo TRD y Enriqueciendo IA...', color: 'bg-indigo-500', icon: BrainCircuit, animate: true },
-  reviewing: { label: 'Esperando Aprobación', color: 'bg-amber-500', icon: Scan, animate: false },
-  success: { label: 'Completado', color: 'bg-emerald-500', icon: CheckCircle2, animate: false },
-  error: { label: 'Error de Análisis', color: 'bg-rose-500', icon: AlertCircle, animate: false },
+  uploading: { label: 'Preparando...', color: 'bg-primary/10 text-primary', icon: Loader2, animate: true },
+  analyzing: { label: 'Extrayendo Datos...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  reviewing: { label: 'Pendiente de Revisión', color: 'bg-amber-50 text-amber-600', icon: Scan, animate: false },
+  success: { label: 'Integrado', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
+  error: { label: 'Error', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
 };
 
 const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
@@ -70,6 +71,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
              const mappedStatus = statusValue === 'success' ? 'success' : 
                                   statusValue === 'reviewing' ? 'reviewing' :
                                   statusValue === 'processing' ? 'analyzing' : 
+                                  statusValue === 'uploading' ? 'uploading' :
                                   statusValue === 'error' ? 'error' : 'analyzing';
 
              const mappedImport = {
@@ -144,15 +146,45 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   });
 
   const handleDeleteImport = async (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm("¿Descartar importación?")) return;
-    setImports(prev => prev.filter(imp => imp.id !== id));
+    if (e) e.stopPropagation();
+    const imp = imports.find(i => i.id === id);
+    if (!imp) return;
+    
+    const isProcessing = ['uploading', 'analyzing', 'reviewing'].includes(imp.status);
+    const msg = isProcessing 
+      ? "¿Estás seguro de cancelar este proceso activo?" 
+      : "¿Eliminar este registro del historial?";
+      
+    if (!window.confirm(msg)) return;
+
+    setImports(prev => prev.filter(item => item.id !== id));
     try {
       await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
         method: 'DELETE',
         headers: { "Authorization": `Bearer ${currentUser?.token}` }
       });
-    } catch {}
+    } catch (err) {
+      console.error("Error deleting import:", err);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    const historyItems = imports.filter(i => i.status === 'success');
+    if (historyItems.length === 0) return;
+    
+    if (!window.confirm(`¿Deseas limpiar todos los registros integrados (${historyItems.length})?`)) return;
+
+    setImports(prev => prev.filter(i => i.status !== 'success'));
+    try {
+      await Promise.all(historyItems.map(item => 
+        fetch(`${API_BASE_URL}/rag-documents/${item.id}`, { 
+          method: 'DELETE',
+          headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        })
+      ));
+    } catch (err) {
+      console.error("Error clearing history:", err);
+    }
   };
 
   const openReview = (imp) => {
@@ -205,6 +237,9 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       setIsProcessingNew(true);
       
+      // Update local state immediately for responsiveness
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+
       // 1. Ejecutar acciones en App state / Database
       if (onImportComplete) {
         await onImportComplete(finalActionsToRun);
@@ -228,7 +263,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       if (addActivityLog) addActivityLog(`Importación TRD Exitosa: ${currentPreviewImport.filename}`);
       
       setPreviewImportId(null);
-      fetchImports();
+      // No forzamos un fetch inmediato pesado para evitar mostrar estados de RAG
+      // Simplemente dejamos que el estado local se mantenga en 'success'
     } catch (err) {
       console.error("Error al integrar:", err);
       const detail = err.message || "Error desconocido";
@@ -262,128 +298,177 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   }, [localActions, selectedIndices]);
 
   return (
-    <div className="w-full h-full flex flex-col gap-8 p-2 md:p-4 pb-32">
-      {/* Page Title */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-[0.2em] text-[10px]">
-             <BrainCircuit className="h-4 w-4" />
-             AI Vision Importer v2.0
-          </div>
-          <h1 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase italic">
-            Importación <span className="text-indigo-600">Archivística</span>
-          </h1>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left: Upload Zone */}
-        <div className="lg:col-span-4 space-y-6">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      <ViewHeader
+        icon={BrainCircuit}
+        title="Importación TRD"
+        subtitle="Conversión de documentos a estructuras oficiales"
+      />
+      
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+          
+          {/* Column 1: Injection & Rules (3 cols) */}
+          <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-6">
             <div
-                {...getRootProps()}
-                className={cn(
-                    "relative group cursor-pointer overflow-hidden rounded-[2.5rem] border-2 border-dashed transition-all duration-500 p-10 flex flex-col items-center justify-center gap-6 text-center bg-white shadow-sm",
-                    isDragActive ? "border-indigo-500 bg-indigo-50/50 scale-[0.98]" : "border-slate-200 hover:border-indigo-400 hover:shadow-2xl hover:shadow-indigo-500/10"
-                )}
+              {...getRootProps()}
+              className={cn(
+                "relative group cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all duration-300 p-8 flex flex-col items-center justify-center gap-4 text-center bg-card shadow-sm hover:border-primary/40",
+                isDragActive ? "border-primary bg-primary/5" : "border-border"
+              )}
             >
-                 <div className="h-20 w-20 rounded-2xl bg-slate-900 flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
-                    <FileUp className="h-10 w-10 text-white" />
-                 </div>
-                 <div className="space-y-1">
-                    <h3 className="text-xl font-black text-slate-900">Subir Tablas TRD</h3>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-relaxed">PDF o Imagen Escaneada</p>
-                 </div>
-                 <button className="px-8 py-3 bg-indigo-600 text-white text-[10px] font-black rounded-full shadow-lg shadow-indigo-200 uppercase tracking-widest">
-                    Seleccionar Archivo
-                 </button>
+              <div className="h-14 w-14 rounded-xl bg-primary flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform border-4 border-background">
+                <FileUp className="h-7 w-7 text-white" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-[13px] font-bold text-foreground uppercase tracking-tight">Inyectar Tablas</h3>
+                <p className="text-[10px] text-muted-foreground font-medium uppercase">PDF · PNG · JPG</p>
+              </div>
+              <button className="px-6 py-2 bg-foreground text-background text-[10px] font-bold rounded-md hover:bg-primary transition-all uppercase tracking-widest">
+                Explorar
+              </button>
             </div>
 
-            <div className="bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden group">
-                <Scan className="absolute -bottom-8 -right-8 h-40 w-40 text-white/5 opacity-20 pointer-events-none" />
-                <h4 className="text-[10px] font-black text-indigo-400 tracking-[0.3em] uppercase mb-6 flex items-center gap-2">
-                   <div className="h-1 w-1 rounded-full bg-indigo-400" />
+            <div className="bg-slate-900 rounded-xl p-6 text-white relative overflow-hidden group shadow-md shrink-0">
+                <h4 className="text-[9px] font-bold text-primary tracking-[0.2em] uppercase mb-4 flex items-center gap-2">
+                   <div className="h-1 w-1 rounded-full bg-primary animate-pulse" />
                    Guía de Proceso
                 </h4>
-                <div className="space-y-6">
+                <div className="space-y-4">
                     {[
-                      { t: 'Visión IA', d: 'El motor detecta tablas sin importar si están escaneadas o digitalizadas.' },
-                      { t: 'Revisión Humana', d: 'Tú eres el validador final. Corrige cualquier dato antes de aprobar.' },
-                      { t: 'Integración', d: 'Los datos aprobados se convierten automáticamente en tu catálogo oficial.' }
+                      { t: 'Visión Neuronal', d: 'Detección de jerarquías.' },
+                      { t: 'Limpieza IA', d: 'Normalización de datos.' },
+                      { t: 'Integración', d: 'Aprobación final.' }
                     ].map((step, i) => (
-                      <div key={i} className="flex gap-4">
-                        <div className="h-6 w-6 rounded-lg bg-white/10 flex items-center justify-center shrink-0 text-[10px] font-bold border border-white/10">{i+1}</div>
+                      <div key={i} className="flex gap-3 items-start relative">
+                        <div className="h-6 w-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-[9px] font-bold text-primary">
+                          {i+1}
+                        </div>
                         <div className="space-y-0.5">
-                           <div className="text-[11px] font-black uppercase text-white">{step.t}</div>
-                           <div className="text-[10px] text-slate-400 leading-normal">{step.d}</div>
+                           <div className="text-[10px] font-bold uppercase text-white">{step.t}</div>
+                           <div className="text-[9px] text-slate-400 font-medium">{step.d}</div>
                         </div>
                       </div>
                     ))}
                 </div>
             </div>
-        </div>
+          </div>
 
-        {/* Right: History & List */}
-        <div className="lg:col-span-8 space-y-4">
-            <div className="flex items-center justify-between px-2">
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                   <History className="h-3.5 w-3.5" />
-                   Sesiones de Importación
-                </div>
-            </div>
+          {/* Column 2: Active Tasks (4 cols) */}
+          <div className="lg:col-span-8 xl:col-span-4 flex flex-col gap-4">
+              <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                     <History className="h-3 w-3 text-primary" />
+                     Tareas en Curso ({imports.filter(i => i.status !== 'success').length})
+                  </div>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <AnimatePresence mode="popLayout">
-                    {imports.length === 0 ? (
-                        <motion.div className="col-span-full h-80 border-2 border-slate-100 border-dashed rounded-[2.5rem] flex flex-col items-center justify-center text-slate-300 gap-3">
-                            <Database className="h-12 w-12 opacity-30" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Sin actividad reciente</span>
-                        </motion.div>
+              <div className="space-y-3 min-h-[200px]">
+                  <AnimatePresence mode="popLayout">
+                      {imports.filter(i => i.status !== 'success').length === 0 ? (
+                          <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
+                              <Database className="h-6 w-6 opacity-20" />
+                              <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">No hay tareas activas</span>
+                          </motion.div>
+                      ) : (
+                          imports.filter(i => i.status !== 'success').map((imp) => {
+                              const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
+                              return (
+                                  <motion.div
+                                      key={imp.id}
+                                      layout
+                                      className="bg-card border border-border shadow-sm rounded-lg p-3.5 hover:shadow-md transition-all flex items-center justify-between gap-4 relative group"
+                                  >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                          <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", config.color)}>
+                                              <config.icon className={cn("h-4 w-4", config.animate && "animate-spin")} />
+                                          </div>
+                                          <div className="flex flex-col gap-0.5 min-w-0">
+                                              <span className="text-[12px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
+                                              <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
+                                                  {config.label}
+                                              </span>
+                                          </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                          {imp.status === 'reviewing' && (
+                                              <button 
+                                                  onClick={() => openReview(imp)}
+                                                  className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-[9px] font-bold tracking-wider transition-all uppercase flex items-center gap-1.5 shadow-sm"
+                                              >
+                                                  Verificar
+                                                  <ArrowRight className="h-3 w-3" />
+                                              </button>
+                                          )}
+                                          <button 
+                                              onClick={(e) => handleDeleteImport(imp.id, e)} 
+                                              className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-all"
+                                          >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                      </div>
+                                  </motion.div>
+                              );
+                          })
+                      )}
+                  </AnimatePresence>
+              </div>
+          </div>
+
+          {/* Column 3: History (5 cols) */}
+          <div className="lg:col-span-12 xl:col-span-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
+                     <ClipboardCheck className="h-3.5 w-3.5" />
+                     Historial de Integración ({imports.filter(i => i.status === 'success').length})
+                  </div>
+                  {imports.filter(i => i.status === 'success').length > 0 && (
+                    <button 
+                      onClick={handleClearHistory}
+                      className="text-[9px] font-bold text-muted-foreground hover:text-destructive uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" /> Limpiar Historial
+                    </button>
+                  )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2.5 min-h-[200px]">
+                  <AnimatePresence mode="popLayout">
+                    {imports.filter(i => i.status === 'success').length === 0 ? (
+                        <div className="sm:col-span-2 xl:col-span-1 h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
+                            <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
+                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros integrados</span>
+                        </div>
                     ) : (
-                        imports.filter(i => i.status !== 'success').map((imp) => {
-                            const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
-                            return (
-                                <motion.div
-                                    key={imp.id}
-                                    layout
-                                    className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-6 hover:shadow-xl hover:shadow-slate-200/40 transition-all flex flex-col gap-5 relative group"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-white shadow-lg", config.color)}>
-                                                <config.icon className={cn("h-6 w-6", config.animate && "animate-pulse")} />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-black text-slate-900 line-clamp-1">{imp.filename}</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{config.label}</span>
-                                            </div>
-                                        </div>
-                                        <button onClick={(e) => handleDeleteImport(imp.id, e)} className="p-2 text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100">
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                        imports.filter(i => i.status === 'success').map(imp => (
+                            <motion.div 
+                              key={imp.id} 
+                              layout
+                              className="flex items-center justify-between p-3 bg-emerald-50/40 border border-emerald-100/50 rounded-lg group hover:shadow-sm transition-all"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-8 w-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
                                     </div>
-
-                                    {imp.status === 'reviewing' && (
-                                        <button 
-                                            onClick={() => openReview(imp)}
-                                            className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white rounded-2xl text-[10px] font-black tracking-[0.2em] transition-all uppercase flex items-center justify-center gap-2"
-                                        >
-                                            Verificar Extracción
-                                            <ArrowRight className="h-4 w-4" />
-                                        </button>
-                                    )}
-
-                                    {imp.status === 'success' && (
-                                        <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 py-2.5 px-4 rounded-xl border border-emerald-100">
-                                            <ClipboardCheck className="h-4 w-4" />
-                                            Importado con Éxito
-                                        </div>
-                                    )}
-                                </motion.div>
-                            );
-                        })
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight truncate">{imp.filename}</span>
+                                        <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-widest">Integrado con éxito</span>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={(e) => handleDeleteImport(imp.id, e)}
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-md hover:bg-rose-50"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            </motion.div>
+                        ))
                     )}
-                </AnimatePresence>
-            </div>
+                  </AnimatePresence>
+              </div>
+          </div>
+
         </div>
       </div>
 
@@ -395,41 +480,44 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
             className="fixed inset-0 z-[100] flex flex-col bg-slate-100"
           >
               {/* Review Header */}
-              <div className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 shadow-sm relative z-50">
-                  <div className="flex items-center gap-5">
-                      <div className="h-10 w-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-indigo-100">
-                          <Scan className="h-6 w-6" />
+              <div className="h-28 bg-white border-b border-slate-100 px-12 flex items-center justify-between shrink-0 shadow-2xl shadow-primary/[0.03] relative z-50">
+                  <div className="flex items-center gap-8">
+                      <div className="h-14 w-14 bg-primary rounded-2xl flex items-center justify-center text-white shadow-xl shadow-primary/20 border-4 border-white">
+                          <Scan className="h-8 w-8" />
                       </div>
                       <div className="flex flex-col">
-                          <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">Verificación de Visión TRD</h2>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">{currentPreviewImport.filename}</span>
+                          <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">Verificación <span className="text-primary">Neural</span></h2>
+                          <div className="flex items-center gap-3 mt-2">
+                             <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{currentPreviewImport.filename}</span>
+                          </div>
                       </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-8">
                       {/* Mode Toggles */}
-                      <div className="flex bg-slate-100 rounded-xl p-1 border border-slate-200">
+                      <div className="flex bg-slate-50 rounded-2xl p-1.5 border border-slate-100 shadow-inner">
                           {[
-                            { id: 'data', label: 'Editor de Datos', icon: Database },
-                            { id: 'split', label: 'Previsualizar PDF', icon: ImageIcon }
+                            { id: 'data', label: 'Editor Neural', icon: Database },
+                            { id: 'split', label: 'Proyección Final', icon: ImageIcon }
                           ].map(btn => (
                             <button 
                               key={btn.id}
                               onClick={() => setReviewMode(btn.id)}
                               className={cn(
-                                "flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                                reviewMode === btn.id ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                                "flex items-center gap-4 px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                reviewMode === btn.id ? "bg-white text-primary shadow-xl border border-primary/5" : "text-slate-400 hover:text-slate-600"
                               )}
                             >
-                              <btn.icon className="h-3.5 w-3.5" />
+                              <btn.icon className="h-4 w-4" />
                               {btn.label}
                             </button>
                           ))}
                       </div>
 
-                      <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                      <div className="h-10 w-px bg-slate-100" />
 
-                      <button onClick={() => setPreviewImportId(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-300 hover:text-slate-900 transition-colors">
+                      <button onClick={() => setPreviewImportId(null)} className="h-14 w-14 flex items-center justify-center bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-rose-500 hover:border-rose-100 transition-all active:scale-90 shadow-sm hover:shadow-xl">
                           <X className="h-6 w-6" />
                       </button>
                   </div>
@@ -454,19 +542,19 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                   {/* Main Editor Table */}
                   <div className="flex-1 overflow-y-auto bg-slate-50 relative">
                      <div className={cn("p-8 transition-all h-full", editingIndex !== null ? "blur-sm grayscale bg-white/50" : "")}>
-                        <div className="max-w-7xl mx-auto flex flex-col h-full">
-                           <div className="flex items-center justify-between mb-8">
+                        <div className="w-full flex flex-col h-full">
+                           <div className="flex items-center justify-between mb-10">
                                <div className="space-y-1">
-                                  <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
-                                     <div className="h-2 w-2 rounded-full bg-indigo-600 animate-pulse" />
-                                     Resultados del Motor IA
+                                  <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.4em] flex items-center gap-3">
+                                     <div className="h-2 w-2 rounded-full bg-primary animate-ping" />
+                                     Motor Vision Output
                                   </h3>
-                                  <div className="text-sm font-black text-slate-900 uppercase">Revisa y ajusta los campos detectados</div>
+                                  <div className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Validación de Registros Estructurados</div>
                                </div>
                                
-                               <div className="flex items-center gap-3">
-                                  <div className="px-4 py-2 bg-white rounded-xl border border-slate-200 text-[10px] font-black text-slate-500 uppercase">
-                                     Total: {localActions.length} registros
+                               <div className="flex items-center gap-4">
+                                  <div className="px-8 py-4 bg-white rounded-[1.5rem] border border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest shadow-2xl shadow-primary/[0.02]">
+                                     Indexados: <span className="text-primary font-black ml-2">{localActions.length}</span>
                                   </div>
                                </div>
                            </div>
@@ -490,13 +578,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                         const isSelected = selectedIndices.has(idx);
                                         const p = action.payload;
                                         return (
-                                          <tr key={idx} className={cn("group transition-all", isSelected ? "bg-indigo-50/20" : "hover:bg-slate-50")}>
+                                          <tr key={idx} className={cn("group transition-all", isSelected ? "bg-primary/5" : "hover:bg-slate-50")}>
                                               <td className="px-6 py-4">
                                                  <button 
                                                    onClick={() => toggleSelection(idx)}
-                                                   className={cn("h-6 w-6 rounded-lg border-2 transition-all flex items-center justify-center", isSelected ? "bg-indigo-600 border-indigo-600 scale-110" : "bg-white border-slate-200 hover:border-indigo-400")}
+                                                   className={cn("h-7 w-7 rounded-xl border-2 transition-all flex items-center justify-center shadow-sm", isSelected ? "bg-primary border-primary scale-110 rotate-3" : "bg-white border-slate-200 hover:border-primary/40")}
                                                  >
-                                                    {isSelected && <CheckCircle2 className="h-4 w-4 text-white" />}
+                                                    {isSelected && <CheckCircle2 className="h-5 w-5 text-white" />}
                                                  </button>
                                               </td>
                                               <td className="px-6 py-4">
@@ -512,7 +600,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                                  <div className="flex flex-col">
                                                     <span className="text-[11px] font-black text-slate-700 uppercase line-clamp-1">{p.serieNombre}</span>
                                                     {p.subserieNombre && (
-                                                      <span className="text-[10px] font-bold text-indigo-500 italic"> \ {p.subserieNombre}</span>
+                                                      <span className="text-[10px] font-bold text-primary italic"> \ {p.subserieNombre}</span>
                                                     )}
                                                  </div>
                                               </td>
@@ -541,7 +629,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                               <td className="px-6 py-4">
                                                  <button 
                                                    onClick={() => setEditingIndex(idx)}
-                                                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                   className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-primary hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm group-hover:scale-105"
                                                  >
                                                     <Pencil className="h-3 w-3" />
                                                     Corregir
@@ -571,7 +659,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                               className="absolute top-0 right-0 bottom-0 w-[450px] bg-white shadow-[-20px_0_50px_rgba(0,0,0,0.1)] z-[70] p-10 flex flex-col gap-8"
                             >
                                 <div className="flex items-center justify-between">
-                                   <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner">
+                                   <div className="p-3 bg-primary/10 rounded-2xl text-primary shadow-inner">
                                        <Pencil className="h-6 w-6" />
                                    </div>
                                    <button onClick={() => setEditingIndex(null)} className="p-2 hover:bg-slate-50 rounded-xl text-slate-300 hover:text-slate-900 transition-colors">
@@ -592,7 +680,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                               <input 
                                                 value={localActions[editingIndex].payload.dependenciaNombre}
                                                 onChange={(e) => handleEditAction(editingIndex, 'dependenciaNombre', e.target.value)}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all uppercase"
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all uppercase"
                                               />
                                           </div>
                                           <div className="space-y-2">
@@ -600,7 +688,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                               <input 
                                                 value={localActions[editingIndex].payload.codigo}
                                                 onChange={(e) => handleEditAction(editingIndex, 'codigo', e.target.value)}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all"
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all"
                                               />
                                           </div>
                                           <div className="grid grid-cols-2 gap-4">
@@ -651,10 +739,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
                                 <button 
                                   onClick={() => setEditingIndex(null)}
-                                  className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-200 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
+                                  className="w-full py-5 bg-primary text-white rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
                                 >
                                    <Save className="h-4 w-4" />
-                                   Guardar Corrección
+                                   Guardar Cambios
                                 </button>
                             </motion.div>
                           </>
@@ -672,8 +760,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                      </div>
                      <div className="w-[1px] h-8 bg-slate-100 my-auto" />
                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Entidad Destino</span>
-                        <span className="text-sm font-black text-indigo-900 leading-none">{currentEntity?.razonSocial || 'Oficina OSE'}</span>
+                        <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] leading-none mb-1.5">Entidad Destino</span>
+                        <span className="text-sm font-black text-slate-900 leading-none">{currentEntity?.razonSocial || 'Oficina OSE'}</span>
                      </div>
                   </div>
 
@@ -688,11 +776,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                         disabled={isProcessingNew}
                         onClick={handleCommit}
                         className={cn(
-                          "flex items-center gap-4 px-12 py-4 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.3em] transition-all shadow-2xl shadow-indigo-200",
-                          isProcessingNew ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-slate-900 hover:shadow-indigo-500/20 active:scale-95"
+                          "flex items-center gap-5 px-14 py-5 rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] transition-all shadow-2xl shadow-primary/20",
+                          isProcessingNew ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-primary text-white hover:bg-slate-900 hover:shadow-primary/30 active:scale-95"
                         )}
                       >
-                         {isProcessingNew ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                         {isProcessingNew ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
                          Integrar a Datos Oficiales
                       </button>
                   </div>

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Network, Download, ShieldAlert, Maximize, Loader2, Printer, X, ChevronRight } from 'lucide-react';
+import { Network, Download, ShieldAlert, Maximize, Loader2, Printer, X, ChevronRight, Share2, Copy, Check, Code } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { cn } from '@/lib/utils';
+import ViewHeader from '../ui/ViewHeader';
 
 // ─── Colores hex puros (sin oklch) ────────────────────────────────────────────
 const NAVY        = '#2d3a5e';
@@ -219,47 +220,38 @@ function buildOrgCanvas(rootNode, allNodes, opts = PRINT_PRESETS.SCREEN) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Componente visual de pantalla (inline styles — sin oklch tampoco)
+// Componente visual de pantalla
 // ─────────────────────────────────────────────────────────────────────────────
 const TreeNode = ({ node, allNodes, onEdit }) => {
   const children = allNodes.filter(n => n.dependeDe === node.id);
   const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="flex flex-col items-center">
       {/* Tarjeta */}
       <div 
         onClick={() => onEdit && onEdit('dependencias', node)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={{
-          background: '#fff', 
-          border: `2px solid ${isHovered ? NAVY : NAVY_BORDER}`,
-          borderRadius: 12, 
-          padding: '14px 16px', 
-          minWidth: 210, 
-          maxWidth: 270,
-          textAlign: 'center', 
-          boxShadow: isHovered ? '0 10px 15px -3px rgba(45,58,94,0.15)' : '0 2px 8px rgba(45,58,94,0.08)',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease',
-          transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
-          position: 'relative',
-          zIndex: isHovered ? 10 : 1
-        }}
+        className={cn(
+          "bg-card border-2 rounded-xl p-4 min-w-[210px] max-w-[270px] text-center transition-all cursor-pointer relative z-10",
+          isHovered ? "border-primary shadow-lg -translate-y-1" : "border-border shadow-sm"
+        )}
       >
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: isHovered ? NAVY : TEXT_DARK, lineHeight: 1.35 }}>
+        <p className={cn(
+          "text-[13.5px] font-bold leading-tight",
+          isHovered ? "text-primary" : "text-foreground"
+        )}>
           {node.nombre}
         </p>
-        <span style={{
-          display: 'inline-block', marginTop: 7, background: isHovered ? NAVY : NAVY_LIGHT,
-          padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: isHovered ? '#fff' : NAVY, letterSpacing: '0.07em',
-          transition: 'all 0.2s ease'
-        }}>
+        <span className={cn(
+          "inline-block mt-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider transition-colors",
+          isHovered ? "bg-primary text-primary-foreground" : "bg-secondary text-primary"
+        )}>
           {node.codigo}
         </span>
         {node.sigla && (
-          <p style={{ margin: '4px 0 0', fontSize: 10, textTransform: 'uppercase', color: TEXT_MUTED, fontWeight: 600 }}>
+          <p className="mt-1 text-[10px] uppercase text-muted-foreground font-semibold">
             {node.sigla}
           </p>
         )}
@@ -267,19 +259,19 @@ const TreeNode = ({ node, allNodes, onEdit }) => {
 
       {/* Hijos */}
       {children.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ width: 1, height: 32, background: NAVY_CONN }} />
-          <div style={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
+        <div className="flex flex-col items-center">
+          <div className="w-0.5 h-8 bg-border" />
+          <div className="flex items-start relative">
             {children.map((child, i) => (
-              <div key={child.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', padding: '24px 20px 0' }}>
+              <div key={child.id} className="flex flex-col items-center relative pt-6 px-5">
                 {children.length > 1 && (
-                  <div style={{
-                    position: 'absolute', top: 0, height: 1, background: NAVY_CONN,
-                    left: i === 0 ? '50%' : 0,
-                    right: i === children.length - 1 ? '50%' : 0,
-                  }} />
+                  <div className={cn(
+                    "absolute top-0 h-0.5 bg-border",
+                    i === 0 ? "left-1/2 right-0" : 
+                    i === children.length - 1 ? "left-0 right-1/2" : "left-0 right-0"
+                  )} />
                 )}
-                <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 1, height: 24, background: NAVY_CONN }} />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-6 bg-border" />
                 <TreeNode node={child} allNodes={allNodes} onEdit={onEdit} />
               </div>
             ))}
@@ -296,34 +288,17 @@ const TreeNode = ({ node, allNodes, onEdit }) => {
 export default function OrgChartView({ dependencias, onEdit }) {
   const [selectedRootId, setSelectedRootId] = useState('');
   const [isExporting, setIsExporting]       = useState(false);
+  const [isPrinting, setIsPrinting]         = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [selectedPrintMode, setSelectedPrintMode] = useState('SINGLE_PAGE');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copiedType, setCopiedType] = useState(null);
 
-  // Drag & scroll
   const [isDragging, setIsDragging] = useState(false);
   const [drag, setDrag]             = useState({ startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
   const scrollRef = React.useRef(null);
 
   const rootNode = dependencias.find(d => d.id === selectedRootId);
-
-  // ─── Helpers de impresión horizontal ────────────────────────────────────────
-  const countSubtree = (nodeId) => {
-    let count = 1;
-    dependencias.filter(n => n.dependeDe === nodeId).forEach(c => count += countSubtree(c.id));
-    return count;
-  };
-
-  const findExpansions = (nodeId, isRoot = true) => {
-    const list = [];
-    const children = dependencias.filter(n => n.dependeDe === nodeId);
-    children.forEach(c => {
-      const grandchildren = dependencias.filter(n => n.dependeDe === c.id);
-      if (grandchildren.length > 0) list.push(c);
-      list.push(...findExpansions(c.id, false));
-    });
-    return list;
-  };
-
 
   const onMouseDown = e => {
     setIsDragging(true);
@@ -345,10 +320,9 @@ export default function OrgChartView({ dependencias, onEdit }) {
     scrollRef.current.scrollTop  = drag.scrollTop  - (y - drag.startY) * 1.4;
   };
 
-  // ─── Exportar PDF usando canvas puro (sin captura DOM → sin oklch) ──────────
   const handleExportPDF = async (mode = 'SINGLE_PAGE') => {
     if (!rootNode) return;
-    setIsExporting(true);
+    setIsPrinting(true);
     try {
       const opts = PRINT_PRESETS[mode];
       const pdf = new jsPDF('l', 'mm', 'a4'); 
@@ -358,301 +332,148 @@ export default function OrgChartView({ dependencias, onEdit }) {
       const printableW = pW - margin * 2;
       const printableH = pH - margin * 2;
 
-      // Escala fija para mantener consistencia y legibilidad (ajustable)
-      const scale = 0.65;
-      const pageWidthPx = printableW / scale;
-
-      // Función auxiliar para renderizar un conjunto de nodos en una o más páginas
-      const renderSubtree = (localRoot, localNodes, titlePrefix) => {
-        const { canvas, positions, opts: activeOpts } = buildOrgCanvas(localRoot, localNodes, opts);
-        const sortedNodes = Object.values(positions).sort((a, b) => a.x - b.x);
-        
-        let startIdx = 0;
-        let pagesCreated = 0;
-
-        while (startIdx < sortedNodes.length) {
-          if (pagesCreated > 0 || pdf.internal.getNumberOfPages() > 1 || (titlePrefix !== 'General')) {
-             if (pagesCreated > 0 || (titlePrefix !== 'General')) pdf.addPage('l', 'mm', 'a4');
-          }
-          
-          // Algoritmo Greedy: Buscar la mayor cantidad de nodos que quepan (guiado por 5, pero flexible)
-          let count = Math.min(12, sortedNodes.length - startIdx); // Intentamos hasta 12 si caben
-          let bestFit = 0;
-          
-          while (count >= 1) {
-            const batch = sortedNodes.slice(startIdx, startIdx + count);
-            if (batch.length === 0) break;
-            
-            const minX = Math.min(...batch.map(n => n.x));
-            const maxX = Math.max(...batch.map(n => n.x + activeOpts.nodeW));
-            
-            // Si caben en el ancho de la página o si es el mínimo aceptable (3)
-            if ((maxX - minX) <= pageWidthPx || count <= 3) {
-              bestFit = count;
-              break;
-            }
-            count--;
-          }
-          if (bestFit === 0) bestFit = 1; // Fallback extremo
-
-          const chunk = sortedNodes.slice(startIdx, startIdx + bestFit);
-          const minX = Math.max(0, Math.min(...chunk.map(n => n.x)) - 30); 
-          const maxX = Math.max(...chunk.map(n => n.x + activeOpts.nodeW)) + 30;
-          
-          const sX = (minX + activeOpts.pad) * HD;
-          const sW = (maxX - minX) * HD;
-          const sH = canvas.height;
-
-          const sliceCanvas = document.createElement('canvas');
-          sliceCanvas.width = sW;
-          sliceCanvas.height = sH;
-          const sCtx = sliceCanvas.getContext('2d');
-          sCtx.drawImage(canvas, sX, 0, sW, sH, 0, 0, sW, sH);
-          
-          const aspect = sW / sH;
-          let fw = printableW;
-          let fh = fw / aspect;
-          if (fh > printableH) { fh = printableH; fw = fh * aspect; }
-          
-          pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', (pW - fw) / 2, (pH - fh) / 2, fw, fh);
-          
-          pdf.setFontSize(10);
-          pdf.setTextColor(120);
-          pdf.text(`${titlePrefix} — Hoja ${pagesCreated + 1} — ${rootNode.nombre}`, margin, pH - 6);
-          
-          startIdx += bestFit;
-          pagesCreated++;
-        }
-      };
-
-      if (mode === 'SINGLE_PAGE') {
-        const { canvas } = buildOrgCanvas(rootNode, dependencias, opts);
-        const imgW = canvas.width / HD;
-        const imgH = canvas.height / HD;
-        const aspect = imgW / imgH;
-        let fw = printableW;
-        let fh = fw / aspect;
-        if (fh > printableH) { fh = printableH; fw = fh * aspect; }
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pW - fw) / 2, (pH - fh) / 2, fw, fh);
-      } else {
-        // 1. Estructura General
-        renderSubtree(rootNode, dependencias, 'Estructura General');
-
-        // 2. Vistas de Expansion (Hijas)
-        const expansions = findExpansions(rootNode.id);
-        for (const expNode of expansions) {
-          const subNodes = [expNode, ...dependencias.filter(n => n.dependeDe === expNode.id)];
-          renderSubtree(expNode, subNodes, `Detalle: ${expNode.nombre}`);
-        }
-      }
-
+      const { canvas } = buildOrgCanvas(rootNode, dependencias, opts);
+      const imgW = canvas.width / HD;
+      const imgH = canvas.height / HD;
+      const aspect = imgW / imgH;
+      let fw = printableW;
+      let fh = fw / aspect;
+      if (fh > printableH) { fh = printableH; fw = fh * aspect; }
+      
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pW - fw) / 2, (pH - fh) / 2, fw, fh);
       pdf.save(`Organigrama_${rootNode.nombre.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
       console.error(err);
       alert('Error al exportar: ' + (err.message || err));
     } finally {
-      setIsExporting(false);
+      setIsPrinting(false);
     }
   };
 
+  const generateStandaloneHTML = () => {
+    if (!rootNode) return '';
+    const buildHTMLTree = (node) => {
+      const children = dependencias.filter(n => n.dependeDe === node.id);
+      return `
+        <div class="node-container">
+          <div class="node-card">
+            <div class="node-name">${node.nombre}</div>
+            <div class="node-code">${node.codigo}</div>
+          </div>
+          ${children.length > 0 ? `
+            <div class="connector-v"></div>
+            <div class="children-container">
+              ${children.map(child => buildHTMLTree(child)).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    };
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center}.node-container{display:flex;flex-direction:column;align-items:center}.node-card{background:#fff;border:2px solid #c9cfe2;border-radius:12px;padding:16px;min-width:200px;text-align:center;box-shadow:0 4px 6px rgba(0,0,0,0.05)}.node-name{font-weight:700;color:#1e293b;margin-bottom:8px}.node-code{display:inline-block;background:#eef0f5;color:#2d3a5e;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700}.connector-v{width:2px;height:30px;background:#a8b2cf}.children-container{display:flex;border-top:2px solid #a8b2cf;padding-top:20px;gap:20px}</style></head><body>${buildHTMLTree(rootNode)}</body></html>`;
+  };
+
+  const handleCopy = (text, type) => {
+    navigator.clipboard.writeText(text);
+    setCopiedType(type);
+    setTimeout(() => setCopiedType(null), 2000);
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG }}>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {showPrintModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-          padding: 20
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 20, width: '100%', maxWidth: 640,
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
-            overflow: 'hidden', display: 'flex', flexDirection: 'column'
-          }}>
-            <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: NAVY_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Printer size={20} color={NAVY} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card w-full max-w-xl rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
+                  <Printer className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT_DARK }}>Configurar Impresión</h3>
-                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED }}>Formato horizontal optimizado para legibilidad</p>
+                  <h3 className="text-[15px] font-semibold text-foreground">Configurar Impresi\u00f3n</h3>
+                  <p className="text-[12px] text-muted-foreground">Formato horizontal optimizado</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowPrintModal(false)}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, color: TEXT_MUTED }}
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setShowPrintModal(false)} className="p-2 text-muted-foreground hover:text-foreground transition-colors"><X className="h-5 w-5" /></button>
             </div>
-
-            <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {/* Opción 1: Hoja Horizontal Única */}
-              <div 
-                onClick={() => setSelectedPrintMode('SINGLE_PAGE')}
-                style={{
-                  padding: 24, borderRadius: 16, border: `2px solid ${selectedPrintMode === 'SINGLE_PAGE' ? NAVY : '#f1f5f9'}`,
-                  background: selectedPrintMode === 'SINGLE_PAGE' ? '#f8fafc' : '#fff',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ 
-                  width: 48, height: 48, borderRadius: 12, 
-                  background: selectedPrintMode === 'SINGLE_PAGE' ? NAVY : '#f1f5f9',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: selectedPrintMode === 'SINGLE_PAGE' ? '#fff' : TEXT_MUTED
-                }}>
-                  <Maximize size={24} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: '0 0 4px', fontWeight: 700, color: TEXT_DARK, fontSize: 15 }}>Opción 1: Hoja Horizontal Única</p>
-                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED, lineHeight: 1.4 }}>
-                    Ajuste automático para que todo quepa en una hoja apaisada. Bordes gruesos y conectores reforzados.
-                  </p>
-                </div>
-                {selectedPrintMode === 'SINGLE_PAGE' && <ChevronRight size={20} color={NAVY} />}
+            <div className="p-6 flex flex-col gap-4">
+              <div onClick={() => setSelectedPrintMode('SINGLE_PAGE')} className={cn("p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-4", selectedPrintMode === 'SINGLE_PAGE' ? "border-primary bg-primary/5" : "border-border hover:border-border/80")}>
+                <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", selectedPrintMode === 'SINGLE_PAGE' ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}><Maximize className="h-5 w-5" /></div>
+                <div className="flex-1"><p className="text-[14px] font-semibold">Hoja \u00danica</p><p className="text-[12px] text-muted-foreground">Todo el organigrama en una sola hoja apaisada.</p></div>
               </div>
-
-              {/* Opción 2: Distribución Horizontal Inteligente */}
-              <div 
-                onClick={() => setSelectedPrintMode('MULTI_PAGE')}
-                style={{
-                  padding: 24, borderRadius: 16, border: `2px solid ${selectedPrintMode === 'MULTI_PAGE' ? NAVY : '#f1f5f9'}`,
-                  background: selectedPrintMode === 'MULTI_PAGE' ? '#f8fafc' : '#fff',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ 
-                  width: 48, height: 48, borderRadius: 12, 
-                  background: selectedPrintMode === 'MULTI_PAGE' ? NAVY : '#f1f5f9',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: selectedPrintMode === 'MULTI_PAGE' ? '#fff' : TEXT_MUTED
-                }}>
-                  <Printer size={24} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: '0 0 4px', fontWeight: 700, color: TEXT_DARK, fontSize: 15 }}>Opción 2: Distribución Horizontal Inteligente</p>
-                  <p style={{ margin: 0, fontSize: 13, color: TEXT_MUTED, lineHeight: 1.4 }}>
-                    Divide el flujo (aprox. 5 dependencias por hoja) y genera vistas detalladas para dependencias con hijas.
-                  </p>
-                </div>
-                {selectedPrintMode === 'MULTI_PAGE' && <ChevronRight size={20} color={NAVY} />}
+              <div onClick={() => setSelectedPrintMode('MULTI_PAGE')} className={cn("p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-4", selectedPrintMode === 'MULTI_PAGE' ? "border-primary bg-primary/5" : "border-border hover:border-border/80")}>
+                <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", selectedPrintMode === 'MULTI_PAGE' ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}><Printer className="h-5 w-5" /></div>
+                <div className="flex-1"><p className="text-[14px] font-semibold">Detallado</p><p className="text-[12px] text-muted-foreground">Escala optimizada para lectura.</p></div>
               </div>
             </div>
-
-            <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-              <button 
-                onClick={() => setShowPrintModal(false)}
-                style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 14, fontWeight: 600, color: TEXT_DARK, cursor: 'pointer' }}
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={() => {
-                  setShowPrintModal(false);
-                  handleExportPDF(selectedPrintMode);
-                }}
-                style={{ padding: '10px 28px', borderRadius: 10, border: 'none', background: NAVY, fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                <Download size={18} />
-                Generar PDF
+            <div className="p-6 bg-secondary/30 border-t border-border flex justify-end gap-3">
+              <button onClick={() => setShowPrintModal(false)} className="px-4 py-2 border border-input rounded-md text-[13px] font-medium hover:bg-background transition-colors">Cancelar</button>
+              <button onClick={() => handleExportPDF(selectedPrintMode)} disabled={isPrinting} className="px-5 py-2 bg-primary text-primary-foreground rounded-md text-[13px] font-semibold hover:bg-primary/90 transition-all flex items-center gap-2">
+                {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} {isPrinting ? 'Generando...' : 'Descargar PDF'}
               </button>
             </div>
           </div>
         </div>
       )}
-      
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div style={{
-        background: '#fff', borderBottom: '1px solid #e2e8f0',
-        padding: '14px 24px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', gap: 16, flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.05)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: NAVY_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Network size={20} color={NAVY} />
-          </div>
-          <div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: TEXT_DARK }}>Generador de Organigramas</p>
-            <p style={{ margin: 0, fontSize: 12, color: TEXT_MUTED }}>Mapeo jerárquico automático basado en dependencias</p>
+
+      {showShareModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card w-full max-w-xl rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary"><Share2 className="h-5 w-5" /></div>
+                <div><h3 className="text-[15px] font-semibold">Compartir Organigrama</h3><p className="text-[12px] text-muted-foreground">Exporta el dise\u00f1o para web</p></div>
+              </div>
+              <button onClick={() => setShowShareModal(false)} className="p-2 text-muted-foreground hover:text-foreground transition-colors"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between"><label className="text-[11px] font-bold text-muted-foreground uppercase">Embed</label><button onClick={() => handleCopy(`<iframe src="data:text/html;charset=utf-8,${encodeURIComponent(generateStandaloneHTML())}" width="100%" height="600px" frameborder="0"></iframe>`, 'embed')} className="text-[12px] font-semibold text-primary flex items-center gap-1.5 hover:underline">{copiedType === 'embed' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copiedType === 'embed' ? 'Copiado!' : 'Copiar'}</button></div>
+                <div className="bg-secondary/50 border border-border rounded-lg p-3 text-[11px] font-mono text-muted-foreground break-all">{"<iframe ...></iframe>"}</div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between"><label className="text-[11px] font-bold text-muted-foreground uppercase">HTML</label><button onClick={() => handleCopy(generateStandaloneHTML(), 'html')} className="text-[12px] font-semibold text-primary flex items-center gap-1.5 hover:underline">{copiedType === 'html' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copiedType === 'html' ? 'Copiado!' : 'Copiar'}</button></div>
+                <div className="bg-secondary/50 border border-border rounded-lg p-3 text-[11px] font-mono text-muted-foreground h-24 overflow-y-auto">{generateStandaloneHTML()}</div>
+              </div>
+            </div>
+            <div className="p-6 bg-secondary/30 border-t border-border flex justify-end"><button onClick={() => setShowShareModal(false)} className="px-6 py-2 bg-foreground text-background rounded-md text-[13px] font-semibold hover:bg-primary transition-all">Cerrar</button></div>
           </div>
         </div>
+      )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <select
-            value={selectedRootId}
-            onChange={e => setSelectedRootId(e.target.value)}
-            style={{
-              height: 40, minWidth: 280, borderRadius: 8, border: '1px solid #cbd5e1',
-              padding: '0 12px', fontSize: 14, background: '#f8fafc', color: TEXT_DARK, outline: 'none'
-            }}
-          >
-            <option value="">Selecciona dependencia raíz...</option>
-            {dependencias.map(dep => (
-              <option key={dep.id} value={dep.id}>{dep.codigo} — {dep.nombre}</option>
-            ))}
-          </select>
+      <ViewHeader
+        icon={Network}
+        title="Organigrama"
+        subtitle="Visualización jerárquica de dependencias"
+        actions={
+          <div className="flex items-center gap-2">
+            <select value={selectedRootId} onChange={e => setSelectedRootId(e.target.value)} className="h-8 min-w-[180px] rounded-md border border-input bg-card px-2 text-[12.5px] font-medium focus:outline-none focus:ring-1 focus:ring-ring">
+              <option value="">Selecciona raíz...</option>
+              {dependencias.map(dep => <option key={dep.id} value={dep.id}>{dep.codigo} — {dep.nombre}</option>)}
+            </select>
+            {rootNode && (
+              <>
+                <button onClick={() => setShowShareModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-input bg-card text-[12.5px] font-medium rounded-md hover:bg-secondary transition-all"><Share2 className="h-3.5 w-3.5" /> Web</button>
+                <button onClick={() => setShowPrintModal(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-[12.5px] font-semibold rounded-md hover:bg-primary/90 transition-all active:scale-95"><Printer className="h-3.5 w-3.5" /> PDF</button>
+              </>
+            )}
+          </div>
+        }
+      />
 
-          {rootNode && (
-            <button
-              onClick={() => setShowPrintModal(true)}
-              disabled={isExporting}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                background: NAVY, color: '#fff', border: 'none',
-                padding: '10px 18px', borderRadius: 8, fontSize: 14,
-                fontWeight: 600, cursor: isExporting ? 'not-allowed' : 'pointer',
-                opacity: isExporting ? 0.7 : 1
-              }}
-            >
-              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-              {isExporting ? 'Generando...' : 'Imprimir / Exportar'}
-            </button>
-          )}
-        </div>
+      <div className="flex-1 min-h-0 flex flex-col bg-secondary/20 relative overflow-hidden">
+        {rootNode ? (
+          <div ref={scrollRef} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseLeave={onMouseLeave} onMouseMove={onMouseMove} className={cn("flex-1 overflow-auto p-10 cursor-grab select-none custom-scrollbar", isDragging && "cursor-grabbing")}>
+            <div className="absolute top-4 right-4 bg-card/80 backdrop-blur border border-border px-3 py-1 rounded-full text-[10px] text-muted-foreground flex items-center gap-1.5 shadow-sm pointer-events-none z-10"><Maximize className="h-3 w-3" /> Arrastra para navegar</div>
+            <div className="inline-flex justify-center min-w-full pb-10"><TreeNode node={rootNode} allNodes={dependencias} onEdit={onEdit} /></div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center p-10 text-muted-foreground text-center">
+            <ShieldAlert className="h-12 w-12 opacity-20 mb-4 mx-auto" />
+            <p className="text-[14px] font-medium">Selecciona una dependencia ra\u00edz</p>
+            <p className="text-[12px] opacity-60">Mapeo jer\u00e1rquico autom\u00e1tico</p>
+          </div>
+        )}
       </div>
-
-      {/* ── Workspace ──────────────────────────────────────────────────────── */}
-      {rootNode ? (
-        <div
-          ref={scrollRef}
-          onMouseDown={onMouseDown}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseLeave}
-          onMouseMove={onMouseMove}
-          style={{
-            flex: 1, overflow: 'auto', padding: 40,
-            cursor: isDragging ? 'grabbing' : 'grab',
-            position: 'relative', userSelect: 'none'
-          }}
-        >
-          <div style={{
-            position: 'absolute', top: 12, right: 16,
-            fontSize: 11, color: TEXT_MUTED, background: '#fff',
-            padding: '4px 10px', borderRadius: 6, boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-            display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'none'
-          }}>
-            <Maximize size={12} /> Arrastra para navegar el lienzo
-          </div>
-
-          {/* Árbol visual (solo pantalla — el PDF usa canvas) */}
-          <div style={{ display: 'inline-flex', justifyContent: 'center', minWidth: '100%', paddingBottom: 40 }}>
-            <TreeNode node={rootNode} allNodes={dependencias} onEdit={onEdit} />
-          </div>
-        </div>
-      ) : (
-        <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', color: TEXT_MUTED, padding: 32
-        }}>
-          <ShieldAlert size={56} style={{ opacity: 0.25, marginBottom: 16 }} />
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>
-            Selecciona una dependencia raíz para generar su mapa jerárquico.
-          </p>
-          <p style={{ margin: '6px 0 0', fontSize: 12 }}>
-            El sistema calcula posiciones y conexiones automáticamente.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

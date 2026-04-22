@@ -1,48 +1,39 @@
 import React, { useState } from "react";
-import { Building2, Search, Plus, ListFilter, Play, FileEdit, Trash2, ShieldAlert, ArrowLeft, Image as ImageIcon, Save } from "lucide-react";
+import { Building2, Search, Plus, ListFilter, FileEdit, Trash2, ShieldAlert, Save, Mail, Phone, Globe, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
+import ViewHeader from "../ui/ViewHeader";
 
 export default function EntitiesView({ entities, setEntities }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState(null);
 
-  // Form states
   const [formData, setFormData] = useState({
-    // General
     tipoEntidad: "Persona Jurídica",
     clasificacion: "Privada",
     razonSocial: "",
     sector: "",
-    // ID
     tipoDocumento: "NIT",
     numeroDocumento: "",
     dv: "",
     ciiu: "",
-    // Location
     pais: "Colombia",
     departamento: "",
     ciudad: "",
     direccion: "",
-    // Contact
     telefono: "",
     celular: "",
     correo: "",
     nombreContacto: "",
     paginaWeb: "",
-    // Otros
     logoUrl: "",
-    tipoEjecutor: "",
     tamanoEmpresa: "Pequeña",
     estado: "Activo",
-    // Licenciamiento
     fechaInicio: "",
     fechaFin: "",
-    // Estructura
     entidadOrganizacional: true,
     proyectos: false,
-    // Config
     maxUsuarios: 10,
     maxDependencias: 20,
     maxProyectos: 5,
@@ -63,14 +54,14 @@ export default function EntitiesView({ entities, setEntities }) {
   };
 
   const handleDelete = (id) => {
-    if (confirm("¿Estás seguro de eliminar esta entidad cliente de forma permanente?")) {
+    if (confirm("¿Estás seguro de eliminar esta entidad de forma permanente?")) {
       fetch(`${API_BASE_URL}/entities/${id}`, {
         method: 'DELETE'
       }).then(res => {
         if (res.ok) {
           setEntities(entities.filter(a => a.id !== id));
         } else {
-          alert("Error al eliminar la entidad. Puede tener usuarios o dependencias asociadas.");
+          alert("Error al eliminar la entidad.");
         }
       });
     }
@@ -91,391 +82,253 @@ export default function EntitiesView({ entities, setEntities }) {
 
   const handleSave = () => {
     if (!validate()) return;
-    
-    if (view === "create") {
-      fetch(`${API_BASE_URL}/entities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      }).then(async res => {
-        if (res.ok) {
-          const savedEntity = await res.json();
-          // Merge formData with backend generated fields (id, etc) but map python keys to frontend aliases for immediate use
-          const frontendReadyEntity = {
-            ...formData, 
-            id: savedEntity.id, 
-            numeroDocumento: savedEntity.nit || formData.numeroDocumento, 
-            correo: savedEntity.email || formData.correo 
-          };
-          setEntities([...entities, frontendReadyEntity]);
-          setView("list");
+    const method = view === "create" ? 'POST' : 'PUT';
+    const url = view === "create" ? `${API_BASE_URL}/entities` : `${API_BASE_URL}/entities/${selectedEntity.id}`;
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    }).then(async res => {
+      if (res.ok) {
+        const saved = await res.json();
+        if (view === "create") {
+          setEntities([...entities, { ...formData, id: saved.id }]);
         } else {
-          alert("Error al salvar entidad.");
-        }
-      }).catch(err => {
-        console.error("Save error:", err);
-        alert("Error de conexión al salvar entidad.");
-      });
-    } else {
-      fetch(`${API_BASE_URL}/entities/${selectedEntity.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      }).then(res => {
-        if (res.ok) {
           setEntities(entities.map(e => (e.id === selectedEntity.id ? { ...e, ...formData } : e)));
-          setView("list");
-        } else {
-          alert("Error al actualizar la entidad.");
         }
-      });
-    }
+        setView("list");
+      } else {
+        alert("Error al guardar la entidad.");
+      }
+    }).catch(err => {
+      console.error(err);
+      alert("Error de conexi\u00f3n.");
+    });
   };
 
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-       const url = URL.createObjectURL(file);
-       setFormData({ ...formData, logoUrl: url });
-    }
-  };
-
-  // ──── Vista Listado ────
   if (view === "list") {
     return (
-      <div className="flex h-full flex-col p-6 space-y-6 overflow-auto">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Building2 className="h-6 w-6 text-primary" />
-              Directorio de Entidades
-            </h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Gestión SaaS de empresas e instituciones cliente.
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setFormData({
-                tipoEntidad: "Persona Jurídica", clasificacion: "Privada", razonSocial: "", sector: "",
-                tipoDocumento: "NIT", numeroDocumento: "", dv: "", ciiu: "",
-                pais: "Colombia", departamento: "", ciudad: "", direccion: "",
-                telefono: "", celular: "", correo: "", nombreContacto: "", paginaWeb: "",
-                logoUrl: "", tipoEjecutor: "", tamanoEmpresa: "Pequeña", estado: "Activo",
-                fechaInicio: "", fechaFin: "", entidadOrganizacional: true, proyectos: false,
-                maxUsuarios: 10, maxDependencias: 20, maxProyectos: 5,
-              });
-              setErrors({});
-              setView("create");
-            }}
-            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity"
-          >
-            <Plus className="h-4 w-4" />
-            Crear Empresa
-          </button>
-        </div>
+      <div className="flex flex-col h-full bg-background overflow-hidden">
+        <ViewHeader
+          icon={Building2}
+          title="Directorio de Entidades"
+          subtitle="Gestión global de organizaciones y clientes"
+          actions={
+            <button
+              onClick={() => {
+                setFormData({
+                  tipoEntidad: "Persona Jur\u00eddica", clasificacion: "Privada", razonSocial: "", sector: "",
+                  tipoDocumento: "NIT", numeroDocumento: "", dv: "", ciiu: "",
+                  pais: "Colombia", departamento: "", ciudad: "", direccion: "",
+                  telefono: "", celular: "", correo: "", nombreContacto: "", paginaWeb: "",
+                  logoUrl: "", tamanoEmpresa: "Peque\u00f1a", estado: "Activo",
+                  fechaInicio: "", fechaFin: "", entidadOrganizacional: true, proyectos: false,
+                  maxUsuarios: 10, maxDependencias: 20, maxProyectos: 5,
+                });
+                setErrors({});
+                setView("create");
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-[12.5px] font-semibold rounded-md hover:bg-primary/90 transition-all active:scale-95"
+            >
+              <Plus className="h-4 w-4" /> Nueva Entidad
+            </button>
+          }
+        />
 
-        <div className="flex items-center gap-3 bg-card p-3 rounded-xl border border-border shadow-sm">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex-1 overflow-auto p-5 md:p-7 space-y-6">
+          <div className="flex items-center gap-3 bg-card p-1.5 rounded-lg border border-border max-w-2xl">
+            <Search className="ml-3 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Buscar por razón social o NIT..."
+              placeholder="Buscar por nombre o NIT..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-transparent pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="flex-1 h-9 bg-transparent border-none text-[13px] focus:ring-0 outline-none"
             />
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-muted-foreground rounded-md text-[11px] font-bold uppercase hover:text-foreground transition-all">
+              <ListFilter className="h-3.5 w-3.5" /> Filtrar
+            </button>
           </div>
-          <button className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-secondary transition-colors">
-            <ListFilter className="h-4 w-4" />
-            Vistas
-          </button>
-        </div>
 
-        <div className="grid gap-4 mt-6">
-          {filteredEntities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center rounded-xl border border-dashed border-border bg-card">
-              <Building2 className="h-12 w-12 text-muted-foreground/30 mb-4" />
-              <p className="text-lg font-medium text-foreground">No hay entidades registradas</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">Crea la primera entidad cliente para empezar a comercializar y asignarles administradores.</p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-secondary/50 text-xs uppercase font-semibold text-muted-foreground border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3 w-16 text-center">Logo</th>
-                    <th className="px-4 py-3">Razón Social</th>
-                    <th className="px-4 py-3">NIT / Doc</th>
-                    <th className="px-4 py-3">Contacto</th>
-                    <th className="px-4 py-3">Planes (Usuarios)</th>
-                    <th className="px-4 py-3">Estado</th>
-                    <th className="px-4 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredEntities.map(ent => (
-                    <tr key={ent.id} className="hover:bg-secondary/30 transition-colors">
-                      <td className="px-4 py-3 text-center">
-                        {ent.logoUrl ? (
-                          <img src={ent.logoUrl} alt="Logo" className="w-8 h-8 object-cover rounded-md mx-auto" />
-                        ) : (
-                          <div className="h-8 w-8 rounded-md bg-secondary flex items-center justify-center mx-auto text-muted-foreground text-xs font-bold uppercase">
-                            {ent.razonSocial.slice(0, 2)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-foreground">{ent.razonSocial}</td>
-                      <td className="px-4 py-3 font-mono text-muted-foreground">{ent.numeroDocumento} {ent.dv && `-${ent.dv}`}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="text-xs">{ent.correo}</span>
-                          <span className="text-xs text-muted-foreground">{ent.telefono || ent.celular}</span>
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-[13px] text-left">
+              <thead className="bg-secondary/50 text-muted-foreground text-[10px] font-bold uppercase tracking-wider border-b border-border">
+                <tr>
+                  <th className="px-6 py-3 w-16">Logo</th>
+                  <th className="px-6 py-3">Organizaci\u00f3n</th>
+                  <th className="px-6 py-3">Identificaci\u00f3n</th>
+                  <th className="px-6 py-3">Contacto</th>
+                  <th className="px-6 py-3">Licencia</th>
+                  <th className="px-6 py-3">Estado</th>
+                  <th className="px-6 py-3 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredEntities.map(ent => (
+                  <tr key={ent.id} className="hover:bg-secondary/30 transition-colors">
+                    <td className="px-6 py-4">
+                      {ent.logoUrl ? (
+                        <img src={ent.logoUrl} className="h-8 w-8 rounded-md border border-border object-contain p-0.5 bg-white shadow-sm" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] uppercase">
+                          {ent.razonSocial.slice(0, 2)}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">Max. {ent.maxUsuarios} Usr</td>
-                      <td className="px-4 py-3">
-                        <span className={cn(
-                          "rounded-full px-2.5 py-0.5 text-xs font-medium border",
-                          ent.estado === "Activo" ? "bg-success/10 text-success border-success/20" : "bg-muted text-muted-foreground border-border"
-                        )}>
-                          {ent.estado}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                         <div className="flex items-center justify-end gap-2">
-                           <button onClick={() => handleEdit(ent)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
-                             <FileEdit className="h-4 w-4" />
-                           </button>
-                           <button onClick={() => handleDelete(ent.id)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-destructive/80 hover:bg-destructive/10 hover:text-destructive">
-                             <Trash2 className="h-4 w-4" />
-                           </button>
-                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial}</span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.sector || 'Sin sector'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-mono text-[11px] bg-secondary/80 px-1.5 py-0.5 rounded border border-border">
+                        {ent.numeroDocumento} {ent.dv && `-${ent.dv}`}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 space-y-0.5">
+                      <div className="flex items-center gap-1.5 text-muted-foreground"><Mail className="h-3 w-3" /> {ent.correo}</div>
+                      <div className="flex items-center gap-1.5 text-muted-foreground"><Phone className="h-3 w-3" /> {ent.telefono || ent.celular || '--'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-[11px] font-medium text-muted-foreground uppercase">{ent.maxUsuarios} Usuarios</div>
+                      <div className="text-[10px] text-muted-foreground/60">{ent.fechaFin ? `Vence: ${ent.fechaFin}` : 'Licencia Vitalicia'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border",
+                        ent.estado === "Activo" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-muted text-muted-foreground border-border"
+                      )}>
+                        {ent.estado}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-1">
+                      <button onClick={() => handleEdit(ent)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-primary/8 hover:text-primary transition-all"><FileEdit className="h-4 w-4" /></button>
+                      <button onClick={() => handleDelete(ent.id)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-destructive/60 hover:bg-destructive/8 hover:text-destructive transition-all"><Trash2 className="h-4 w-4" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ──── Vista Formulario (Create / Edit) ────
   return (
-    <div className="flex h-full flex-col p-6 space-y-6 overflow-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setView("list")}
-            className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              {view === "create" ? "Nueva Entidad" : "Editar Entidad"}
-            </h1>
-            <p className="text-muted-foreground mt-1 text-sm">Organización cliente del ecosistema.</p>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      <ViewHeader
+        icon={view === "create" ? Plus : FileEdit}
+        title={view === "create" ? "Nueva Entidad" : "Editar Entidad"}
+        subtitle="Configura los par\u00e1metros corporativos y l\u00edmites de acceso"
+        onBack={() => setView("list")}
+      />
+      <div className="flex-1 overflow-auto p-5 md:p-7">
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
+          {/* General */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><Building2 className="h-4 w-4 text-primary" /> Datos Corporativos</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Tipo</label>
+                <select value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>Persona Jur\u00eddica</option>
+                  <option>Persona Natural</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificaci\u00f3n</label>
+                <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>Privada</option>
+                  <option>P\u00fablica</option>
+                  <option>Mixta</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Raz\u00f3n Social *</label>
+              <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Doc.</label>
+                <select value={formData.tipoDocumento} onChange={e=>setFormData({...formData, tipoDocumento: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>NIT</option>
+                  <option>CC</option>
+                </select>
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">N\u00famero *</label>
+                <div className="flex gap-2">
+                  <input value={formData.numeroDocumento} onChange={e=>setFormData({...formData, numeroDocumento: e.target.value})} className={cn("flex-1 h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.numeroDocumento ? "border-destructive/50" : "border-input")} />
+                  <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="w-12 h-9 bg-background border border-input rounded-md text-[13px] text-center" />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2">
-           <button onClick={() => setView("list")} className="px-4 py-2 text-sm rounded-md border border-input hover:bg-secondary">
-             Cancelar
-           </button>
-           <button onClick={handleSave} className="flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90">
-             <Save className="h-4 w-4" />
-             Guardar
-           </button>
+
+          {/* Contact & Location */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><MapPin className="h-4 w-4 text-primary" /> Contacto y Ubicaci\u00f3n</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Correo *</label>
+                <input type="email" value={formData.correo} onChange={e=>setFormData({...formData, correo: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px]", errors.correo ? "border-destructive/50" : "border-input")} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Celular</label>
+                <input value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Direcci\u00f3n</label>
+              <input value={formData.direccion} onChange={e=>setFormData({...formData, direccion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Ciudad</label>
+                <input value={formData.ciudad} onChange={e=>setFormData({...formData, ciudad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Sitio Web</label>
+                <input value={formData.paginaWeb} onChange={e=>setFormData({...formData, paginaWeb: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+            </div>
+          </div>
+
+          {/* SaaS Config */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4 md:col-span-2">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><ShieldAlert className="h-4 w-4 text-primary" /> Par\u00e1metros SaaS y Licenciamiento</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Estado</label>
+                <select value={formData.estado} onChange={e=>setFormData({...formData, estado: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] font-bold text-primary">
+                  <option>Activo</option>
+                  <option>Inactivo</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Max Usuarios</label>
+                <input type="number" value={formData.maxUsuarios} onChange={e=>setFormData({...formData, maxUsuarios: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Inicio</label>
+                <input type="date" value={formData.fechaInicio} onChange={e=>setFormData({...formData, fechaInicio: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Vencimiento</label>
+                <input type="date" value={formData.fechaFin} onChange={e=>setFormData({...formData, fechaFin: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
-        
-        {/* Información General */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Información General</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Tipo Entidad</label>
-               <input value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Clasificación</label>
-               <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                 <option>Pública</option>
-                 <option>Privada</option>
-                 <option>Mixta</option>
-               </select>
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
-               <label className="text-xs font-semibold text-muted-foreground">Razón Social *</label>
-               <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("h-9 rounded-md border bg-background px-3 text-sm", errors.razonSocial ? "border-destructive" : "border-input")} />
-               {errors.razonSocial && <span className="text-[10px] text-destructive">{errors.razonSocial}</span>}
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
-               <label className="text-xs font-semibold text-muted-foreground">Sector Comercial</label>
-               <input value={formData.sector} onChange={e=>setFormData({...formData, sector: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-          </div>
-        </div>
-
-        {/* Identificación */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Identificación</div>
-          <div className="p-5 grid grid-cols-3 gap-4">
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Tipo Doc.</label>
-               <select value={formData.tipoDocumento} onChange={e=>setFormData({...formData, tipoDocumento: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                 <option>NIT</option>
-                 <option>RUT</option>
-                 <option>CC</option>
-               </select>
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
-               <label className="text-xs font-semibold text-muted-foreground">Número *</label>
-               <div className="flex gap-2">
-                 <input value={formData.numeroDocumento} onChange={e=>setFormData({...formData, numeroDocumento: e.target.value})} className={cn("h-9 flex-1 rounded-md border bg-background px-3 text-sm", errors.numeroDocumento ? "border-destructive" : "border-input")} />
-                 <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="h-9 w-12 rounded-md border border-input bg-background px-2 text-sm text-center" />
-               </div>
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-3">
-               <label className="text-xs font-semibold text-muted-foreground">CIIU (Actividad Económica)</label>
-               <input value={formData.ciiu} onChange={e=>setFormData({...formData, ciiu: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50" placeholder="Ej: 6201, 8411..." />
-            </div>
-          </div>
-        </div>
-
-        {/* Ubicación */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Ubicación</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">País</label>
-               <input value={formData.pais} onChange={e=>setFormData({...formData, pais: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Departamento</label>
-               <input value={formData.departamento} onChange={e=>setFormData({...formData, departamento: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2 relative">
-               <label className="text-xs font-semibold text-muted-foreground">Ciudad & Dirección Físca</label>
-               <div className="flex gap-2">
-                 <input placeholder="Ciudad" value={formData.ciudad} onChange={e=>setFormData({...formData, ciudad: e.target.value})} className="h-9 w-1/3 rounded-md border border-input bg-background px-3 text-sm" />
-                 <input placeholder="Av Calle Principal #1-23" value={formData.direccion} onChange={e=>setFormData({...formData, direccion: e.target.value})} className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm" />
-               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Contacto */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Contacto</div>
-          <div className="p-5 grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Nombre / Encargado</label>
-               <input value={formData.nombreContacto} onChange={e=>setFormData({...formData, nombreContacto: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Correo Electrónico *</label>
-               <input type="email" value={formData.correo} onChange={e=>setFormData({...formData, correo: e.target.value})} className={cn("h-9 rounded-md border bg-background px-3 text-sm", errors.correo ? "border-destructive" : "border-input")} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Teléfonos (Fijo & Cel)</label>
-               <div className="flex gap-2">
-                 <input placeholder="Fijo" value={formData.telefono} onChange={e=>setFormData({...formData, telefono: e.target.value})} className="h-9 w-1/2 rounded-md border border-input bg-background px-3 text-sm" />
-                 <input placeholder="Celular" value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="h-9 w-1/2 rounded-md border border-input bg-background px-3 text-sm" />
-               </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-               <label className="text-xs font-semibold text-muted-foreground">Página Web</label>
-               <input value={formData.paginaWeb} onChange={e=>setFormData({...formData, paginaWeb: e.target.value})} placeholder="https://" className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-            </div>
-          </div>
-        </div>
-
-        {/* Otros y Licenciamiento */}
-        <div className="col-span-1 xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col">
-            <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Identidad & Licencia</div>
-            <div className="p-5 grid grid-cols-2 gap-4 flex-1">
-              <div className="col-span-2 flex items-center gap-4">
-                 <div className="h-16 w-16 rounded-md border border-dashed border-muted-foreground/50 bg-secondary flex items-center justify-center overflow-hidden">
-                   {formData.logoUrl ? <img src={formData.logoUrl} className="w-full h-full object-cover" /> : <ImageIcon className="h-6 w-6 text-muted-foreground/50" />}
-                 </div>
-                 <div className="flex flex-col">
-                   <label className="text-xs font-semibold text-muted-foreground mb-1">Logo Institucional</label>
-                   <input type="file" accept="image/*" onChange={handleLogoUpload} className="text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary hover:file:bg-primary/20" />
-                 </div>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                 <label className="text-xs font-semibold text-muted-foreground">Estado Plataforma *</label>
-                 <select value={formData.estado} onChange={e=>setFormData({...formData, estado: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium">
-                   <option>Activo</option>
-                   <option>Inactivo</option>
-                   <option>Bloqueado</option>
-                 </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                 <label className="text-xs font-semibold text-muted-foreground">Tamaño Empresa</label>
-                 <select value={formData.tamanoEmpresa} onChange={e=>setFormData({...formData, tamanoEmpresa: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                   <option>Micro</option>
-                   <option>Pequeña</option>
-                   <option>Mediana</option>
-                   <option>Gran Empresa</option>
-                 </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                 <label className="text-xs font-semibold text-muted-foreground">Inicio Licencia</label>
-                 <input type="date" value={formData.fechaInicio} onChange={e=>setFormData({...formData, fechaInicio: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                 <label className="text-xs font-semibold text-muted-foreground">Fin Licencia</label>
-                 <input type="date" value={formData.fechaFin} onChange={e=>setFormData({...formData, fechaFin: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col">
-            <div className="px-5 py-3 border-b border-border bg-secondary/30 font-medium">Límites & Estructura (SaaS)</div>
-            <div className="p-5 flex flex-col gap-5 flex-1">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Topes Permisibles</label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-[11px] text-muted-foreground">Máx Usuarios</label>
-                     <input type="number" min="1" value={formData.maxUsuarios} onChange={e=>setFormData({...formData, maxUsuarios: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm text-center font-mono" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-[11px] text-muted-foreground">Máx Dependen.</label>
-                     <input type="number" min="1" value={formData.maxDependencias} onChange={e=>setFormData({...formData, maxDependencias: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm text-center font-mono" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-[11px] text-muted-foreground">Máx Proyectos</label>
-                     <input type="number" min="0" value={formData.maxProyectos} onChange={e=>setFormData({...formData, maxProyectos: e.target.value})} className="h-9 rounded-md border border-input bg-background px-3 text-sm text-center font-mono" />
-                  </div>
-                </div>
-              </div>
-              <hr className="border-border" />
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Módulos Habilitados</label>
-                <div className="flex flex-col gap-3">
-                  <label className="flex items-center gap-3">
-                    <input type="checkbox" checked={formData.entidadOrganizacional} onChange={e=>setFormData({...formData, entidadOrganizacional: e.target.checked})} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />
-                    <span className="text-sm font-medium">Entidad Organizacional Completa (TRD, Series)</span>
-                  </label>
-                  <label className="flex items-center gap-3">
-                    <input type="checkbox" checked={formData.proyectos} onChange={e=>setFormData({...formData, proyectos: e.target.checked})} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />
-                    <span className="text-sm font-medium">Gestión de Proyectos Individuales</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
+      
+      <div className="p-4 border-t border-border bg-card flex justify-end gap-3 shrink-0">
+        <button onClick={() => setView("list")} className="px-5 py-2 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-all">Cancelar</button>
+        <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-md text-[13px] font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">
+          <Save className="h-4 w-4" /> Guardar Organizaci\u00f3n
+        </button>
       </div>
     </div>
   );

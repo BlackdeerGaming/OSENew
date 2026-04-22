@@ -76,14 +76,15 @@ async def log_requests(request, call_next):
 # LLM y Prompts inicializados en db.py
 
 RAG_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """Eres OSE Copilot, el asistente experto de la Biblioteca RAG de OSE IA.
+    ("system", """Eres Documencio, el experto en Biblioteca RAG de OSE IA. Tu misión es asistir a los usuarios en la consulta de documentos institucionales con precisión técnica y conocimiento profundo de la normativa archivística.
 
 REGLAS DE RESPUESTA:
-1. Responde ÃƒÅ¡NICAMENTE basÃƒÂ¡ndote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
+1. Responde ÚNICAMENTE basándote en el CONTEXTO DEL DOCUMENTO proporcionado abajo.
 2. Si el contexto no tiene la respuesta o no hay documentos relevantes, responde obligatoriamente:
-   "Lo siento, no encontrÃƒÂ© informaciÃƒÂ³n cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
-3. NO inventes datos ni asumas informaciÃƒÂ³n que no estÃƒÂ© escrita en el contexto.
-4. Responde con un tono profesional y servicial.
+   "Lo siento, no encontré información cargada en mi biblioteca que me permita responder esa pregunta de forma precisa."
+3. NO inventes datos ni asumas información que no esté escrita en el contexto.
+4. Mantén un tono profesional, experto y servicial.
+5. Si encuentras contradicciones en los documentos, indícalo al usuario citando las fuentes.
 
 CONTEXTO DEL DOCUMENTO:
 {context}
@@ -278,10 +279,9 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-async def index_document_rag(doc_id: str, content: bytes, filename: str, entidad: str, file_url: str):
+async def index_document_rag(doc_id: str | None, content: bytes, filename: str, entidad: str, file_url: str):
     """
     Background Task: Extrae texto, realiza chunking y envía vectores a Supabase PgVector.
-    Se ejecuta de forma asíncrona y captura todas las excepciones para no romper el proceso principal.
     """
     print(f"--- RAG BACKGROUND: Iniciando indexación semántica para {filename} ---")
     if not supabase_client or not embeddings:
@@ -298,36 +298,34 @@ async def index_document_rag(doc_id: str, content: bytes, filename: str, entidad
         
         cleaned_text = clean_text(full_text)
         if not cleaned_text:
-            print("RAG BACKGROUND: No se extrajo texto útil para vectorizar.")
+            print("RAG BACKGROUND: No se extrajo texto útil.")
             return
             
-        print(f"RAG BACKGROUND: Texto extraído correctamente. Troceando...")
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         docs = text_splitter.create_documents([cleaned_text])
         
-        # Añadir metadata vital para la Búsqueda Vectorial por Entidad
         for i, doc in enumerate(docs):
             doc.metadata = {
                 "source": filename,
                 "chunk": i,
                 "entidad_id": entidad or "",
                 "file_url": file_url or "",
-                "type": "rag_chunk"
+                "status": "success",
+                "type": "rag_chunk",
+                "created_at": datetime.now().isoformat()
             }
             
-        print(f"RAG BACKGROUND: Insertando {len(docs)} chunks en PgVector...")
         vector_store = SupabaseVectorStore(
             embedding=embeddings,
             client=supabase_client,
             table_name="rag_documents",
             query_name="match_rag_documents"
         )
-        # Se ejecuta en un hilo separado para no bloquear el Event Loop de FastAPI
-        await asyncio.to_thread(vector_store.add_documents, docs)
         
-        print(f"RAG BACKGROUND: ✨ Éxito indexando {filename} de manera asíncrona.")
+        await asyncio.to_thread(vector_store.add_documents, docs)
+        print(f"RAG BACKGROUND: ✨ Éxito indexando {filename}.")
     except Exception as e:
-        print(f"RAG BACKGROUND ERROR: ⚠️ Falló la indexación silenciosamente -> {e}")
+        print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")
 
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
     """
@@ -630,6 +628,98 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         print(f" Error crtico en chat: {e}")
         return {"answer": "Lo siento, ocurri un error inesperado. Por favor intenta de nuevo en unos momentos.", "sources": []}
 
+@router.get("/rag-documents")
+async def get_rag_documents(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
+    """Lista los documentos \u00fanicos en el RAG (agrupados por source)."""
+    if not supabase_client: raise HTTPException(503)
+    
+    try:
+        # Si es superadmin puede ver todo, si no, solo lo de su entidad
+        query = supabase_client.table("rag_documents").select("id, metadata, created_at")
+        
+        # Filtro de entidad
+        if user.get("role") != SUPERADMIN_ROLE:
+            entidad_actual = user.get("entity_id")
+            if entidad_actual:
+                query = query.filter("metadata->>entidad_id", "eq", entidad_actual)
+        elif entidad_id and entidad_id != "e0":
+            query = query.filter("metadata->>entidad_id", "eq", entidad_id)
+
+        res = query.execute()
+        
+        # Agrupar por source para no repetir chunks
+        seen_sources = {}
+        unique_docs = []
+        
+        for item in res.data:
+            meta = item.get("metadata", {})
+            source = meta.get("source")
+            if source and source not in seen_sources:
+                seen_sources[source] = True
+                unique_docs.append({
+                    "id": item["id"],
+                    "filename": source,
+                    "metadata": meta,
+                    "created_at": item.get("created_at")
+                })
+        
+        return unique_docs
+    except Exception as e:
+        print(f" Error listando documentos RAG: {e}")
+        return []
+
+@router.put("/rag-documents/{doc_id}")
+async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(get_current_user)):
+    """Actualiza la metadata de todos los chunks de un documento."""
+    if not supabase_client: raise HTTPException(503)
+    if user.get("role") != SUPERADMIN_ROLE: raise HTTPException(403)
+    
+    try:
+        doc_res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if not doc_res.data: raise HTTPException(404)
+        
+        source = doc_res.data[0]["metadata"].get("source")
+        
+        all_chunks = supabase_client.table("rag_documents").select("id, metadata").execute()
+        to_update = [c for c in all_chunks.data if c["metadata"].get("source") == source]
+        
+        for chunk in to_update:
+            new_meta = {**chunk["metadata"], **payload}
+            supabase_client.table("rag_documents").update({"metadata": new_meta}).eq("id", chunk["id"]).execute()
+            
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@router.delete("/rag-documents/{doc_id}")
+async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user)):
+    """Elimina un documento y todos sus vectores asociados."""
+    if not supabase_client: raise HTTPException(503)
+    if user.get("role") != SUPERADMIN_ROLE: raise HTTPException(403)
+    
+    try:
+        doc_res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if not doc_res.data: raise HTTPException(404)
+        
+        source = doc_res.data[0]["metadata"].get("source")
+        
+        file_url = doc_res.data[0]["metadata"].get("file_url")
+        if file_url and "rag-uploads/" in file_url:
+            try:
+                filename_storage = file_url.split("rag-uploads/")[-1]
+                supabase_client.storage.from_("rag-uploads").remove([filename_storage])
+            except: pass
+
+        all_chunks = supabase_client.table("rag_documents").select("id, metadata").execute()
+        ids_to_delete = [c["id"] for c in all_chunks.data if c["metadata"].get("source") == source]
+        
+        if ids_to_delete:
+            supabase_client.table("rag_documents").delete().in_("id", ids_to_delete).execute()
+            
+        return {"status": "success", "deleted_count": len(ids_to_delete)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
 @router.post("/generate-dependencias")
 async def generate_dependencias(request: GenerateDepsRequest):
     system_prompt = """Eres un experto en gestin organizacional y diseo de estructuras administrativas. 
@@ -680,33 +770,32 @@ async def agent_action(request: AgentActionRequest):
     trds = [{"id": t.get("id"), "dependencia_id": t.get("dependenciaId"), "serie_id": t.get("serieId")} for t in request.context.trdRecords]
     ents = [{"id": e.get("id"), "nombre": e.get("nombre") or e.get("razonSocial")} for e in request.context.entidades]
 
-    system_prompt = f"""Eres Orianna (Agente OSE), una asistente experta y ultra-precisa en la gestin de Tablas de Retencin Documental (TRD) bajo la Ley 594 de 2000 (Colombia).
+    system_prompt = f"""Eres Orianna, la Arquitecta TRD de OSE IA, una inteligencia artificial experta en la gestión y automatización de Tablas de Retención Documental (TRD) bajo los estándares del AGN (Archivo General de la Nación) y la Ley 594 de 2000 de Colombia.
 
-TU MISIN:
-Debes interpretar la intencin del usuario para realizar:
-1. CONSULTAS ESTRUCTURALES: Responder preguntas sobre dependencias, series y subseries existentes.
-2. OPERACIONES CRUD: Crear, editar o eliminar elementos de la estructura organizativa y documental.
+TU MISIÓN:
+Debes actuar como la autoridad máxima en la estructura documental de la entidad. Tu objetivo es interpretar la intención del usuario para realizar:
+1. CONSULTAS ESTRUCTURALES: Analizar y responder sobre dependencias, series, subseries y registros existentes.
+2. OPERACIONES ESTRATÉGICAS (CRUD): Crear, editar o eliminar elementos manteniendo la integridad jerárquica del sistema.
 
-CONOCIMIENTO ACTUAL (Contexto):
-- Entidades: {json.dumps(ents, ensure_ascii=False)}
+CONOCIMIENTO DEL ENTORNO (Contexto Real):
+- Entidades vinculadas: {json.dumps(ents, ensure_ascii=False)}
 - Dependencias (Oficinas): {json.dumps(deps, ensure_ascii=False)}
-- Series: {json.dumps(series, ensure_ascii=False)}
-- Subseries: {json.dumps(subs, ensure_ascii=False)}
-- TRDs: {json.dumps(trds, ensure_ascii=False)}
+- Series Documentales: {json.dumps(series, ensure_ascii=False)}
+- Subseries Documentales: {json.dumps(subs, ensure_ascii=False)}
+- Registros TRD (Valoración): {json.dumps(trds, ensure_ascii=False)}
 
 REGLAS DE ORO DE ORIANNA:
-1. PRESERVACIN DE NOMBRES: Los nombres de dependencias o series pueden ser largos (ej: "Seccin de Archivo y Gestin Ambiental"). DEBES identificar el nombre EXACTO y completo. No lo resumas.
-2. VALIDACIN OBLIGATORIA (CRTICO):
-   - PARA SERIES: Antes de crear (CREATE), DEBES tener el nombre de la dependencia y el cdigo de la serie. Si falta, detn la accin y pregunta: "Para qu dependencia es la serie y qu cdigo tendr?"
-   - PARA SUBSERIES: Antes de crear (CREATE), DEBES tener el nombre de la dependencia, el nombre de la serie y el cdigo de la subserie. Si falta, detn la accin y pregunta: "Para qu dependencia, cul serie y qu cdigo tendr la subserie?"
-   - NO ASUMAS DATOS: Si falta informacin obligatoria, devuelve "actions": [] e "intent": "QUERY" con el mensaje de solicitud de datos.
-3. DETECCIN DE INTENCIN: 
-   - Si el usuario pregunta "Qu series tiene..." o "Cules son...", devuelve un mensaje claro con la lista obtenida del contexto.
-   - Si el usuario ordena "Crea...", "Edita...", genera el objeto 'actions' correspondiente siempre que los datos estn completos.
-4. JERARQUA AUTOMTICA: Si te piden crear una estructura jerrquica (ej: "3 dependencias con 3 hijas"), genera mltiples acciones CREATE con IDs temporales (t1, t2...) para enlazar padres e hijos.
-5. MODO CONSULTA (QUERY): Si el usuario solo pregunta informacin o si faltan datos para una accin, devuelve "actions": [] y la respuesta en "message".
+1. INTEGRIDAD DE NOMBRES: Los nombres de dependencias o series NUNCA deben ser abreviados ni resumidos por ti. Usa el nombre oficial completo (ej: "Secretaría de Hacienda y Crédito Público").
+2. VALIDACIÓN ESTRUCTURAL (CRÍTICO):
+   - PARA CREAR SERIES: Es obligatorio conocer la Dependencia productora y el Código. Si falta algo, pregunta con autoridad: "¿Para qué dependencia es la serie y qué código oficial le asignaremos?"
+   - PARA CREAR SUBSERIES: Requiere Dependencia, Serie y Código propio. Si hay ambigüedad, solicita los datos faltantes antes de generar cualquier acción.
+3. DETECCIÓN DE INTENCIÓN PROACTIVA:
+   - Si el usuario pregunta "Qué series hay...", responde con un listado estructurado y profesional basado en el contexto.
+   - Si el usuario ordena cambios, genera el objeto 'actions' con precisión quirúrgica.
+4. JERARQUÍA AUTOMÁTICA: Si se solicita una estructura compleja, genera múltiples acciones CREATE usando IDs temporales (t1, t2...) para enlazar los niveles de forma coherente.
+5. MODO CONSULTA (QUERY): Si solo informas o si faltan datos, usa "intent": "QUERY". Si vas a ejecutar cambios, usa "intent": "CRUD".
 
-FORMATO DE PAYLOADS:
+ESTRUCTURA DE DATOS (Payloads):
 - 'dependencias': {{ "nombre", "sigla", "codigo", "dependeDe" }}
 - 'series': {{ "dependenciaId", "nombre", "codigo", "tipoDocumental" }}
 - 'subseries': {{ "dependenciaId", "serieId", "nombre", "codigo" }}

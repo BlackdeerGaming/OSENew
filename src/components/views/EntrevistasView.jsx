@@ -3,6 +3,7 @@ import { Search, Plus, Trash2, Edit2, AlertCircle, Loader2, Users } from "lucide
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
 import EntrevistaModal from "../forms/EntrevistaModal";
+import ViewHeader from "../ui/ViewHeader";
 
 export default function EntrevistasView({ dependencias, entities, currentUser }) {
   const [entrevistas, setEntrevistas] = useState([]);
@@ -91,41 +92,32 @@ export default function EntrevistasView({ dependencias, entities, currentUser })
   });
 
   return (
-    <div className="flex flex-col h-full bg-background relative">
-      {/* Header Panel */}
-      <div className="bg-card w-full border-b border-border shadow-sm p-6 shrink-0 relative z-10 hidden md:block">
-        <div className="max-w-6xl mx-auto flex items-end justify-between gap-4">
-          <div className="flex-1 space-y-1 relative pl-12">
-            <div className="absolute left-0 top-0.5 bg-primary/10 w-10 h-10 rounded-lg flex items-center justify-center shadow-inner">
-              <Users className="h-5 w-5 text-primary" />
+    <div className="flex flex-col h-full bg-background">
+      <ViewHeader
+        icon={Users}
+        title="Entrevistas"
+        subtitle="Gestión de entrevistas y personal abordado por dependencia"
+        actions={
+          <>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar entrevistado o cargo..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-52 bg-background border border-input rounded-md py-1.5 pl-9 pr-3 text-[12.5px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+              />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Entrevistas
-            </h2>
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              Gestión de entrevistas y personal abordado por dependencia
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-             <div className="w-[300px] relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                <input 
-                  type="text" 
-                  placeholder="Buscar entrevistado, cargo o área..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-background border border-input rounded-md py-2 pl-9 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
-                />
-            </div>
-            <button 
+            <button
               onClick={handleCreate}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-semibold text-sm shadow hover:shadow-md transition-all active:scale-95 flex items-center gap-2"
+              className="flex items-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 px-3.5 py-1.5 rounded-md font-semibold text-[12.5px] transition-all active:scale-95"
             >
-              <Plus className="h-4 w-4" /> Nueva Entrevista
+              <Plus className="h-3.5 w-3.5" /> Nueva Entrevista
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Main Content List */}
       <div className="flex-1 overflow-auto p-6">

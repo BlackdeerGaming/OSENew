@@ -55,7 +55,7 @@ export default function SettingsView({ currentUser, onUpdate, onLogout }) {
   };
 
   return (
-    <div className="flex-1 p-6 lg:p-8 h-full overflow-y-auto max-w-4xl mx-auto w-full">
+    <div className="flex-1 p-6 lg:p-8 h-full overflow-y-auto w-full">
       <div className="mb-8 flex justify-between items-center">
         <div>
            <h1 className="text-2xl font-bold text-foreground">Configuración de Cuenta</h1>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { HelpCircle, ChevronDown, ChevronRight, MessageSquare, BookOpen, Send, Lightbulb, Search, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ViewHeader from '../ui/ViewHeader';
 
 const FAQS = [
   {
@@ -170,56 +171,38 @@ export default function HelpCenterView({ currentUser }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-hidden relative">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 p-8 shrink-0">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary border border-primary/20">
-              <HelpCircle className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Centro de Ayuda y FAQ</h1>
-              <p className="text-sm text-slate-500 font-medium mt-1">Encuentra respuestas, aprende a usar el sistema o contacta soporte.</p>
-            </div>
-          </div>
-        </div>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      <ViewHeader
+        icon={HelpCircle}
+        title="Centro de Ayuda"
+        subtitle="Preguntas frecuentes, guías rápidas y contacto de soporte"
+      />
 
-        {/* Tab Navigation */}
-        <div className="max-w-4xl mx-auto mt-8 flex border-b border-slate-200">
-          <button 
-            onClick={() => setActiveTab('faq')}
+      {/* Tab nav */}
+      <div className="border-b border-border bg-card px-6 flex gap-1">
+        {[
+          { id: 'faq', label: 'Preguntas frecuentes', icon: BookOpen },
+          { id: 'guides', label: 'Guías rápidas', icon: Lightbulb },
+          { id: 'support', label: 'Soporte', icon: MessageSquare },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "px-6 py-3 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2",
-              activeTab === 'faq' ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-slate-800"
+              "flex items-center gap-1.5 px-4 py-3 text-[12.5px] font-medium border-b-2 transition-all",
+              activeTab === tab.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            <BookOpen className="h-4 w-4" /> Preguntas Frecuentes
+            <tab.icon className="h-3.5 w-3.5" /> {tab.label}
           </button>
-          <button 
-            onClick={() => setActiveTab('guides')}
-            className={cn(
-              "px-6 py-3 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2",
-              activeTab === 'guides' ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <Lightbulb className="h-4 w-4" /> Guías Rápidas
-          </button>
-          <button 
-            onClick={() => setActiveTab('support')}
-            className={cn(
-              "px-6 py-3 text-sm font-bold tracking-tight border-b-2 transition-all flex items-center gap-2",
-              activeTab === 'support' ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <MessageSquare className="h-4 w-4" /> Contactar Soporte
-          </button>
-        </div>
+        ))}
       </div>
 
       {/* Content Area */}
       <div className="flex-1 overflow-auto p-4 md:p-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="w-full">
           
           {/* FAQ TAB */}
           {activeTab === 'faq' && (

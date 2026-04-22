@@ -45,11 +45,15 @@ if OPENROUTER_API_KEY:
 embeddings = None
 if OPENROUTER_API_KEY:
     try:
+        # Nota: OpenRouter soporta text-embedding-3-small si se redirige correctamente.
+        # En algunos entornos, es mejor usar la URL directa si falla la est\u00e1ndar.
         embeddings = OpenAIEmbeddings(
             model="text-embedding-3-small",
             openai_api_key=OPENROUTER_API_KEY,
             openai_api_base="https://openrouter.ai/api/v1",
+            check_embedding_ctx_length=False # OpenRouter puede no retornar esto
         )
-        print(" [DB] Embeddings (text-embedding-3-small) listo.")
+        print(" [DB] Embeddings (OpenRouter: text-embedding-3-small) listo.")
     except Exception as e:
         print(f" [DB] Error inicializando embeddings: {e}")
+        embeddings = None

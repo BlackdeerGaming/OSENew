@@ -95,6 +95,11 @@ class GenerateManualRequest(BaseModel):
     cargos: List[str]  # Cargo names from entrevistados list
     dependencia_id: str # To grab context
 
+class DocumentoOficialCreate(BaseModel):
+    tipo: str # 'manual_funciones' | 'ccd'
+    contenido: str # HTML
+
+
 # ---------- Helper functions ----------
 def _record_to_dict(record) -> dict:
     """Convert a Pydantic model (or dict) to a plain dict suitable for JSON storage."""
@@ -140,7 +145,7 @@ async def create_dependencia_entity(
 async def list_dependencias_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     res = supabase_client.table("dependencias").select("*").eq("entidad_id", entity_id).execute()
-    return res.data
+    return res.data or []
 
 @router.put("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
 async def update_dependencia_entity(
@@ -371,8 +376,12 @@ async def create_funcion_entity(
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])
 async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
-    return res.data
+    try:
+        res = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Ignored error in list_funciones_entity: {e}")
+        return []
 
 @router.put("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
 async def update_funcion_entity(
@@ -409,8 +418,12 @@ async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depen
 @router.get("/entity/{entity_id}/entrevistados", response_model=List[dict])
 async def list_entrevistados_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("entrevistados").select("*").eq("entidad_id", entity_id).execute()
-    return res.data
+    try:
+        res = supabase_client.table("entrevistados").select("*").eq("entidad_id", entity_id).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Ignored error in list_entrevistados_entity: {e}")
+        return []
 
 @router.post("/entity/{entity_id}/entrevistas", response_model=dict)
 async def create_entrevista_entity(
@@ -466,9 +479,13 @@ async def create_entrevista_entity(
 async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_current_user)):
     
     require_entity_admin(user, entity_id)
-    # Using foreign key joins for easiest frontend use
-    res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entidad_id", entity_id).execute()
-    return res.data
+    try:
+        # Using foreign key joins for easiest frontend use
+        res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entidad_id", entity_id).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Ignored error in list_entrevistas_entity: {e}")
+        return []
 
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
 async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):
@@ -588,4 +605,87 @@ async def admin_list_trd(user: dict = Depends(get_current_user)):
     res = supabase_client.table("trd_records").select("*").execute()
     return res.data
 
-# Additional admin CRUD (create, update, delete) can be added similarly.
+# ---------- Documentos Oficiales (Control de Versiones) ----------
+
+@router.get("/entity/{entity_id}/documentos-oficiales", response_model=List[dict])
+async def list_documentos_oficiales(entity_id: str, user: dict = Depends(get_current_user)):
+    require_entity_admin(user, entity_id)
+    res = supabase_client.table("documentos_oficiales").select("*").eq("entidad_id", entity_id).order("created_at", desc=True).execute()
+    return res.data or []
+
+@router.post("/entity/{entity_id}/documentos-oficiales", response_model=dict)
+async def create_documento_oficial(
+    entity_id: str,
+    payload: DocumentoOficialCreate,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    
+    tipo = payload.tipo
+    contenido = payload.contenido
+
+    try:
+        # 1. Eliminar backup anterior (si existe)
+        supabase_client.table("documentos_oficiales")\
+            .delete()\
+            .eq("entidad_id", entity_id)\
+            .eq("tipo", tipo)\
+            .eq("is_backup", True)\
+            .execute()
+
+        # 2. Convertir el activo actual en backup
+        supabase_client.table("documentos_oficiales")\
+            .update({"is_active": False, "is_backup": True})\
+            .eq("entidad_id", entity_id)\
+            .eq("tipo", tipo)\
+            .eq("is_active", True)\
+            .execute()
+
+        # 3. Insertar el nuevo como activo
+        new_doc = {
+            "entidad_id": entity_id,
+            "tipo": tipo,
+            "contenido": contenido,
+            "is_active": True,
+            "is_backup": False
+        }
+        res = supabase_client.table("documentos_oficiales").insert(new_doc).execute()
+        
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Error al guardar el documento oficial")
+            
+        return res.data[0]
+    except Exception as e:
+        print(f"Error in versioning logic: {e}")
+        # Intentar crear la tabla si no existe (esto fallará en Supabase si no hay permisos, 
+        # pero es una forma de alertar indirectamente o manejar el primer error)
+        raise HTTPException(status_code=500, detail=f"Error en la base de datos: {str(e)}")
+
+@router.post("/entity/{entity_id}/documentos-oficiales/restore/{doc_id}", response_model=dict)
+async def restore_documento_oficial(
+    entity_id: str,
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+):
+    require_entity_admin(user, entity_id)
+    
+    # 1. Obtener el documento a restaurar (debe ser backup)
+    res_target = supabase_client.table("documentos_oficiales").select("*").eq("id", doc_id).eq("entidad_id", entity_id).execute()
+    if not res_target.data:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    doc_to_restore = res_target.data[0]
+    tipo = doc_to_restore["tipo"]
+
+    # 2. El activo actual pasa a ser backup (el backup anterior ya no importa o se borra)
+    # Primero borramos cualquier backup que exista
+    supabase_client.table("documentos_oficiales").delete().eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_backup", True).execute()
+    
+    # El activo actual pasa a backup
+    supabase_client.table("documentos_oficiales").update({"is_active": False, "is_backup": True}).eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_active", True).execute()
+    
+    # El documento target pasa a ser activo
+    res = supabase_client.table("documentos_oficiales").update({"is_active": True, "is_backup": False}).eq("id", doc_id).execute()
+    
+    return res.data[0]
+

@@ -29,43 +29,43 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
   });
 
   return (
-    <aside className="w-full lg:w-60 border-b lg:border-r border-border bg-card flex flex-col shadow-sm shrink-0">
+    <aside className="w-full lg:w-64 border-b lg:border-r border-slate-200 bg-white flex flex-col shadow-xl shrink-0 z-20">
       {/* Dynamic Orianna Toggle Button - Now at the Top */}
       {role !== 'usuario' && (
-        <div className="p-4 border-b border-border/50 bg-secondary/20">
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50">
           <button
             onClick={onToggleAgent}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-semibold transition-all duration-200 border shadow-sm",
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 border shadow-lg active:scale-95",
               isAgentOpen
-                ? "bg-primary text-primary-foreground border-primary shadow-primary/20"
-                : "bg-background text-foreground border-border hover:bg-secondary"
+                ? "bg-primary text-white border-primary shadow-primary/20"
+                : "bg-white text-slate-600 border-slate-200 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
             )}
           >
-            <Bot className={cn("h-4 w-4 shrink-0", isAgentOpen ? "text-primary-foreground" : "text-primary")} />
-            <span className="flex-1 text-left">{isAgentOpen ? "Desactivar Orianna" : "Activar Orianna"}</span>
-            {isAgentOpen ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            <Bot className={cn("h-4 w-4 shrink-0", isAgentOpen ? "text-white" : "text-primary")} />
+            <span className="flex-1 text-left">{isAgentOpen ? "Ocultar Orianna" : "Consultar Orianna"}</span>
+            {isAgentOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
         </div>
       )}
 
-      <div className="flex items-center justify-between p-4 border-b border-border/50 bg-background lg:py-5 lg:bg-transparent">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider lg:px-2">Estructura Documental</h2>
+      <div className="flex items-center justify-between p-5 lg:py-6">
+        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] lg:px-2">Estructura TRD</h2>
         <button 
           onClick={() => setIsMobileExpanded(!isMobileExpanded)}
-          className="lg:hidden p-1.5 bg-slate-100 ring-1 ring-slate-200 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
+          className="lg:hidden p-2 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 transition-all"
         >
-          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isMobileExpanded && "rotate-180")} />
+          <ChevronDown className={cn("h-4 w-4 transition-transform duration-300", isMobileExpanded && "rotate-180")} />
         </button>
       </div>
       
       <nav className={cn(
-        "flex-col p-3 space-y-1 lg:flex lg:flex-1 lg:overflow-y-auto",
+        "flex-col p-4 space-y-2 lg:flex lg:flex-1 lg:overflow-y-auto custom-scrollbar",
         isMobileExpanded ? "flex" : "hidden"
       )}>
         {filteredItems.map((item, index) => {
           if (item.separator) {
-            return <div key={`sep-${index}`} className="my-3 border-t border-border/50" />;
+            return <div key={`sep-${index}`} className="my-4 border-t border-slate-100" />;
           }
 
           const isActive = activeModule === item.id;
@@ -84,17 +84,18 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
               disabled={isDisabled}
               title={isDisabled ? "Debes tener datos estructurados para ver la TRD" : ""}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200",
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-tight transition-all duration-300 group relative",
                 isActive 
-                  ? "bg-primary text-primary-foreground shadow-sm" 
+                  ? "bg-primary/10 text-primary shadow-sm" 
                   : isDisabled
-                  ? "opacity-40 grayscale cursor-not-allowed"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  ? "opacity-30 grayscale cursor-not-allowed"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-primary"
               )}
             >
-              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
-              {item.label}
-              {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1 rounded uppercase flex items-center gap-1"><Lock className="w-2 h-2"/> Bloqueado</span>}
+              {isActive && <div className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-r-full" />}
+              <Icon className={cn("h-4 w-4 shrink-0 transition-colors", isActive ? "text-primary" : "text-slate-400 group-hover:text-primary")} />
+              <span className="flex-1 text-left">{item.label}</span>
+              {isDisabled && <span className="ml-auto text-[8px] bg-slate-100 px-1.5 py-0.5 rounded uppercase flex items-center gap-1 font-black"><Lock className="w-2.5 h-2.5"/></span>}
             </button>
           );
         })}
@@ -102,17 +103,15 @@ export default function Sidebar({ activeModule, onNavigate, isAgentOpen, onToggl
 
       {/* Orianna Status - Bottom of SideBar */}
       {role !== 'usuario' && (
-        <div className="hidden lg:block p-4 border-t border-border/50 bg-secondary/10">
-          <div className="flex items-center gap-3 px-2">
-            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20">
-              <Bot className="h-4 w-4" />
+        <div className="hidden lg:block p-6 border-t border-slate-100 bg-slate-50/30">
+          <div className="flex items-center gap-4 px-2">
+            <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner border border-primary/20 relative">
+              <Bot className="h-5 w-5" />
+              <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white animate-pulse" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-foreground leading-tight">Orianna IA</h3>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">En línea</span>
-              </div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-tighter">Orianna <span className="text-primary font-black italic">IA</span></h3>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Motor Activo</p>
             </div>
           </div>
         </div>

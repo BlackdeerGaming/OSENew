@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown } from "lucide-react";
+import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown, Save, History, CheckCircle2, RotateCcw } from "lucide-react";
 import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
+import ViewHeader from "../ui/ViewHeader";
 
 // ── Small chip component ────────────────────────────────────────────────────
 function Chip({ label, onRemove }) {
@@ -35,6 +36,9 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [generatedHtml, setGeneratedHtml] = useState("");
+  const [officialDocs, setOfficialDocs] = useState([]);
+  const [showConfirmSave, setShowConfirmSave] = useState(false);
+  const [isSavingOfficial, setIsSavingOfficial] = useState(false);
 
   const activeEntityId = entities?.[0]?.id || currentUser?.entity_id;
 
@@ -42,8 +46,19 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
     if (activeEntityId) {
       fetchEntrevistados();
       fetchFunciones();
+      fetchOfficialDocs();
     }
   }, [activeEntityId]);
+
+  const fetchOfficialDocs = async () => {
+    if (!activeEntityId) return;
+    try {
+      const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/documentos-oficiales`, {
+        headers: { "Authorization": `Bearer ${currentUser?.token || ""}` }
+      });
+      if (resp.ok) setOfficialDocs(await resp.json());
+    } catch (e) { console.error(e); }
+  };
 
   const fetchEntrevistados = async () => {
     try {
@@ -161,6 +176,53 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
     handleExportPDFGeneral("documento-generado", label);
   };
 
+  const handleSaveOfficial = async () => {
+    if (!generatedHtml || !activeEntityId) return;
+    setIsSavingOfficial(true);
+    try {
+      const tipo = activeTab === "ccd" ? "ccd" : "manual_funciones";
+      const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/documentos-oficiales`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${currentUser?.token || ""}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ tipo, contenido: generatedHtml })
+      });
+      if (!resp.ok) throw new Error("Error al guardar el documento oficial");
+      await fetchOfficialDocs();
+      setShowConfirmSave(false);
+      alert("Documento guardado como versión ACTIVA. El anterior ha pasado a BACKUP.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSavingOfficial(false);
+    }
+  };
+
+  const handleRestore = async (docId) => {
+    if (!confirm("¿Deseas restaurar este backup? El documento activo actual pasará a ser el nuevo backup.")) return;
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/documentos-oficiales/restore/${docId}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${currentUser?.token || ""}` }
+      });
+      if (!resp.ok) throw new Error("Error al restaurar el documento");
+      await fetchOfficialDocs();
+      const restored = await resp.json();
+      setGeneratedHtml(restored.contenido);
+      alert("Documento restaurado con éxito.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const activeDoc = officialDocs.find(d => d.tipo === (activeTab === "ccd" ? "ccd" : "manual_funciones") && d.is_active);
+  const backupDoc = officialDocs.find(d => d.tipo === (activeTab === "ccd" ? "ccd" : "manual_funciones") && d.is_backup);
+
   // ── Cargo chip helpers (AI mode) ─────────────────────────────────────
   const cargosUnicos = [];
   const mapCargos = new Set();
@@ -194,19 +256,12 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-background relative">
-      {/* Header */}
-      <div className="bg-card w-full border-b border-border shadow-sm p-6 shrink-0 relative z-10 hidden md:block">
-        <div className="max-w-6xl mx-auto flex items-end justify-between gap-4">
-          <div className="flex-1 space-y-1 relative pl-12">
-            <div className="absolute left-0 top-0.5 bg-primary/10 w-10 h-10 rounded-lg flex items-center justify-center shadow-inner">
-              <Wand2 className="h-5 w-5 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Generador Documental IA</h2>
-            <p className="text-sm text-muted-foreground">Construcción automática de manuales y cuadros con modelo analítico archivístico.</p>
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-background">
+      <ViewHeader
+        icon={Wand2}
+        title="Generador Documental IA"
+        subtitle="Construcción automática de manuales y cuadros con modelo analítico archivístico"
+      />
 
       <div className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
 
@@ -436,6 +491,62 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               )
             )}
           </div>
+
+          {/* Versioning status panel */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+             <div className="flex items-center gap-2 text-xs font-black text-slate-500 uppercase tracking-widest">
+               <History size={14} /> Control de Versiones
+             </div>
+
+             <div className="space-y-2">
+                <div className={cn(
+                  "p-3 rounded-lg border flex flex-col gap-1 transition-all",
+                  activeDoc ? "bg-emerald-50 border-emerald-100" : "bg-slate-100/50 border-slate-100 grayscale opacity-60"
+                )}>
+                   <div className="flex items-center justify-between">
+                     <span className="text-[10px] font-bold text-emerald-700 uppercase">Versión Activa</span>
+                     {activeDoc && <CheckCircle2 size={12} className="text-emerald-500" />}
+                   </div>
+                   <div className="text-xs font-bold text-slate-700">
+                     {activeDoc ? `Última actualización: ${new Date(activeDoc.created_at).toLocaleDateString()}` : "No hay documento activo"}
+                   </div>
+                   {activeDoc && (
+                     <button 
+                       onClick={() => setGeneratedHtml(activeDoc.contenido)}
+                       className="text-[10px] text-emerald-600 font-bold hover:underline text-left mt-1"
+                     >
+                       CARGAR EN VISOR
+                     </button>
+                   )}
+                </div>
+
+                {backupDoc && (
+                  <div className="p-3 rounded-lg border bg-amber-50 border-amber-100 flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-700 uppercase">Respaldo (Backup)</span>
+                      <RotateCcw size={12} className="text-amber-500" />
+                    </div>
+                    <div className="text-xs font-bold text-slate-700">
+                      Fecha: {new Date(backupDoc.created_at).toLocaleDateString()}
+                    </div>
+                    <div className="flex gap-3 mt-1">
+                      <button 
+                        onClick={() => setGeneratedHtml(backupDoc.contenido)}
+                        className="text-[10px] text-amber-600 font-bold hover:underline"
+                      >
+                        VER CONTENIDO
+                      </button>
+                      <button 
+                        onClick={() => handleRestore(backupDoc.id)}
+                        className="text-[10px] text-amber-600 font-bold hover:underline"
+                      >
+                        RESTAURAR A ACTIVO
+                      </button>
+                    </div>
+                  </div>
+                )}
+             </div>
+          </div>
         </div>
 
         {/* ── Panel Derecho: Visor ─────────────────────────────────────── */}
@@ -464,7 +575,21 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             </div>
           ) : (
             <div className="w-full flex flex-col gap-6 items-center">
-              <div className="w-full max-w-4xl flex justify-end">
+              <div className="w-full max-w-4xl flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setShowConfirmSave(true)}
+                    className="bg-emerald-600 text-white hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition active:scale-95"
+                  >
+                    <Save className="h-4 w-4" /> Guardar como Oficial
+                  </button>
+                  {activeDoc && (
+                    <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase">
+                      <CheckCircle2 size={12} /> Documento Activo
+                    </div>
+                  )}
+                </div>
+                
                 <button onClick={handleExportPDF}
                   className="bg-slate-800 text-white hover:bg-slate-700 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition">
                   <Download className="h-4 w-4" /> Exportar PDF
@@ -502,6 +627,47 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         </div>
 
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmSave && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+                <AlertCircle className="h-6 w-6 text-amber-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 text-center mb-2">¿Confirmar Versión Oficial?</h3>
+              <p className="text-sm text-slate-500 text-center mb-6">
+                Esta acción establecerá el documento actual como la <strong>Versión Activa</strong> de la entidad. 
+                El documento activo actual se guardará como <strong>Backup</strong> y el respaldo anterior será reemplazado permanentemente.
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleSaveOfficial}
+                  disabled={isSavingOfficial}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  {isSavingOfficial ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSavingOfficial ? "Guardando..." : "Sí, Reemplazar y Guardar"}
+                </button>
+                <button
+                  onClick={() => setShowConfirmSave(false)}
+                  disabled={isSavingOfficial}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-xl font-bold text-sm transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+            <div className="bg-slate-50 p-4 border-t border-slate-100">
+              <p className="text-[10px] text-slate-400 text-center uppercase font-black tracking-widest">
+                Sistema de Control de Versiones OSE IA
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

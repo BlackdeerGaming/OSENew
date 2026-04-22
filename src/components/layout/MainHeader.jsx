@@ -1,41 +1,46 @@
 import React from "react";
-import { LogOut, User, Download, CheckCircle2, Printer, Menu } from "lucide-react";
+import { LogOut, User, Printer, Menu, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export default function MainHeader({ 
+export default function MainHeader({
   onLogout, mainView, trdProps, currentUser, onExportPDF, onNavigate,
   selectedEntityId, userEntities, onSelectEntity, onMenuToggle
 }) {
-  // Extract TRD props safely
   const { status = "Borrador", rows = [], availableDependencias = [], selectedDependencia = "TODAS", onSelectDependencia = () => {} } = trdProps || {};
 
   return (
-    <header className="sticky top-0 z-50 flex flex-col w-full border-b border-border bg-background shadow-sm print:hidden">
-      <div className="flex min-h-[4rem] w-full items-center justify-between px-4 lg:px-6 py-2 md:py-0">
-        <div className="flex items-center gap-2 lg:gap-4">
-          <button 
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-sm print:hidden">
+      <div className="flex h-14 w-full items-center justify-between px-4 lg:px-6 gap-4">
+
+        {/* Left: menu toggle + title */}
+        <div className="flex items-center gap-3 min-w-0">
+          <button
             onClick={onMenuToggle}
-            className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Abrir menú"
+            className="lg:hidden p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-5 w-5" />
           </button>
-          <div className="flex flex-col">
-            <h1 className="text-sm lg:text-xl font-bold text-foreground tracking-tight leading-tight md:leading-normal truncate max-w-[150px] md:max-w-none">Centro Documental</h1>
-            <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 hidden xs:block truncate max-w-[200px] md:max-w-none">Visualiza indicadores, consulta TRD y ejecuta acciones con apoyo de IA.</p>
+
+          <div className="min-w-0">
+            <h1 className="text-[14px] font-semibold text-foreground leading-tight truncate">
+              Centro Documental
+            </h1>
+            <p className="text-[11px] text-muted-foreground hidden sm:block truncate">
+              OSE IA · Gestión Archivística Inteligente
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
-          {/* Selector de Entidad (Desktop) */}
+        {/* Right: actions */}
+        <div className="flex items-center gap-2 shrink-0">
+
+          {/* Entity selector */}
           {userEntities?.length > 1 && (
-            <div className="hidden md:flex items-center gap-2 mr-2">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Contexto:</span>
+            <div className="hidden md:flex items-center gap-2">
               <select
-                title="Cambiar entidad de trabajo"
                 value={selectedEntityId}
                 onChange={(e) => onSelectEntity(e.target.value)}
-                className="text-xs font-bold bg-secondary/50 text-foreground border border-input rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+                className="text-[12px] font-medium bg-secondary text-foreground border border-input rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
               >
                 {userEntities.map(ent => (
                   <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
@@ -44,63 +49,61 @@ export default function MainHeader({
             </div>
           )}
 
-        {/* Botón de exportar y filtro selectivo para la Tabla Final */}
-        {mainView === 'trd' && (
-          <div className="flex items-center gap-3 mr-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 shadow-sm">
-            
-            <select
-              title="Filtrar por TRD (Dependencia)"
-              value={selectedDependencia}
-              onChange={(e) => onSelectDependencia(e.target.value)}
-              className="text-xs font-bold bg-white text-slate-700 outline-none border border-slate-200 rounded px-2 py-1.5 w-48 truncate"
-            >
-              <option value="TODAS">👉 TODAS LAS TRDs</option>
-              {availableDependencias.map(dep => (
-                <option key={dep} value={dep}>{dep}</option>
-              ))}
-            </select>
+          {/* TRD toolbar */}
+          {mainView === 'trd' && (
+            <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-2 py-1.5">
+              <select
+                value={selectedDependencia}
+                onChange={(e) => onSelectDependencia(e.target.value)}
+                className="text-[12px] font-medium bg-transparent text-foreground outline-none w-44 truncate"
+              >
+                <option value="TODAS">Todas las dependencias</option>
+                {availableDependencias.map(dep => (
+                  <option key={dep} value={dep}>{dep}</option>
+                ))}
+              </select>
+              <div className="w-px h-5 bg-border" />
+              <button
+                onClick={onExportPDF}
+                className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 hover:text-emerald-600 transition-colors whitespace-nowrap"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Vista PDF
+              </button>
+            </div>
+          )}
 
-            <button
-              onClick={onExportPDF}
-              className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-500 transition-all shadow-sm uppercase tracking-tighter"
-            >
-              <Printer className="h-4 w-4" />
-              VISTA PREVIA PDF
-            </button>
-            <div className="w-px h-6 bg-border mx-1" />
-          </div>
-        )}
+          {/* Account */}
+          <button
+            onClick={() => onNavigate('settings')}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground border border-border bg-card px-3 py-1.5 rounded-md transition-colors hover:border-border/80"
+          >
+            <User className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Cuenta</span>
+          </button>
 
-        {/* Global SaaS Buttons */}
-        <button 
-          onClick={() => onNavigate('settings')}
-          className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground transition-colors shadow-sm"
-        >
-          <User className="h-4 w-4" />
-          Cuenta
-        </button>
-        <button 
-          onClick={onLogout}
-          className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all shadow-sm group"
-          title="Cerrar sesión"
-        >
-          <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-          <span className="inline">Cerrar sesión</span>
-        </button>
+          {/* Logout */}
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-destructive/80 hover:text-destructive border border-destructive/15 bg-destructive/5 px-3 py-1.5 rounded-md transition-colors hover:bg-destructive/10"
+            title="Cerrar sesión"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Salir</span>
+          </button>
         </div>
       </div>
 
-      {/* Selector de Entidad (Mobile Centered) */}
+      {/* Mobile entity selector */}
       {userEntities?.length > 1 && (
-        <div className="flex md:hidden w-full px-4 pb-3 items-center justify-center">
+        <div className="flex md:hidden w-full px-4 pb-2">
           <select
-            title="Cambiar entidad de trabajo"
             value={selectedEntityId}
             onChange={(e) => onSelectEntity(e.target.value)}
-            className="w-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 rounded-lg px-4 py-2 text-center text-center-last focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-inner"
+            className="w-full text-[12px] font-medium bg-secondary text-foreground border border-input rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
           >
             {userEntities.map(ent => (
-              <option key={ent.id} value={ent.id}>🏢 {ent.razonSocial || ent.sigla}</option>
+              <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
             ))}
           </select>
         </div>

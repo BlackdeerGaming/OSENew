@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle, Link, Mail, ShieldAlert } from 'lucide-react';
+import { Search, Filter, Plus, UserCircle, MoreVertical, Trash2, X, Check, Eye, EyeOff, Save, FileEdit, Loader2, AlertCircle, Link, Mail, ShieldAlert, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
+import ViewHeader from '../ui/ViewHeader';
 
-export default function UsersView({ searchQuery, currentUser, users = [], setUsers, entities = [], selectedEntityId }) {
+export default function UsersView({ searchQuery, onSearchQueryChange, currentUser, users = [], setUsers, entities = [], selectedEntityId }) {
   const isSuperAdmin = currentUser?.role === 'superadmin';
   const isEntityAdmin = isSuperAdmin || currentUser?.entities?.some(e => e.id === selectedEntityId && ['administrador', 'admin'].includes(e.role));
   const role = isSuperAdmin ? 'superadmin' : (isEntityAdmin ? 'administrador' : 'usuario');
@@ -248,60 +249,51 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
 
   // --- BÚSQUEDA ---
   const displayedUsers = filteredUsers.filter(u => 
-    u.nombre?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.username?.toLowerCase().includes(searchQuery.toLowerCase())
+    (u.nombre?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+    (u.apellido?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+    (u.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+    (u.username?.toLowerCase() || "").includes(searchQuery.toLowerCase())
   );
 
   return (
-    <div className="flex-1 p-6 lg:p-10 overflow-y-auto w-full h-full animate-in fade-in duration-500">
-      
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-[#0f172a] tracking-tight">Gestión de Usuarios</h1>
-          <p className="text-slate-500 mt-1">
-             {currentUser?.role === 'superadmin' 
-               ? "Administración global de todos los accesos al sistema."
-               : `Personal y colaboradores de ${currentUser?.entidadNombre || 'la organización'}.`}
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {(isSuperAdmin || isEntityAdmin) && (
-            <button 
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      <ViewHeader
+        icon={Users}
+        title="Usuarios"
+        subtitle="Gestión de accesos y permisos del directorio de la entidad"
+        actions={
+          (isSuperAdmin || isEntityAdmin) && (
+            <button
               onClick={() => setShowModal(true)}
-              className="flex items-center justify-center gap-2 bg-[#00bfa5] hover:bg-[#00a693] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00bfa5]/20 transition-all active:scale-95"
+              className="flex items-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 px-3.5 py-1.5 rounded-md font-semibold text-[12.5px] transition-all active:scale-95"
             >
-              <Plus className="h-5 w-5" />
-              Nuevo Usuario (Directo)
+              <Plus className="h-3.5 w-3.5" /> Crear Usuario
             </button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-
-
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input 
-              type="text" 
-              placeholder="Buscar usuario..."
-              defaultValue={searchQuery}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white shadow-sm transition-all"
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Search + filter toolbar */}
+        <div className="px-5 py-3 border-b border-border bg-card flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, email o usuario..."
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange && onSearchQueryChange(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-background border border-input rounded-md text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
             />
           </div>
-          <button className="flex items-center gap-2 px-3 py-2 border border-slate-200 bg-white rounded-md text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">
-            <Filter className="w-4 h-4" />
-            Vistas y Filtros
+          <button className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground border border-input bg-card px-3 py-1.5 rounded-md hover:text-foreground hover:border-border/80 transition-colors">
+            <Filter className="w-3.5 h-3.5" /> Filtrar
           </button>
         </div>
 
-        <div className="overflow-x-auto min-h-[400px]">
+        <div className="overflow-x-auto flex-1">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 border-b border-border text-slate-600">
+            <thead className="bg-secondary/50 border-b border-border">
               <tr>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Nombres</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Entidad</th>
@@ -312,7 +304,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.length === 0 ? (
+              {displayedUsers.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-16 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-3">
@@ -324,7 +316,7 @@ export default function UsersView({ searchQuery, currentUser, users = [], setUse
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map(user => (
+                displayedUsers.map(user => (
                   <tr key={user.id} className="hover:bg-slate-50/50 transition-colors bg-white">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">

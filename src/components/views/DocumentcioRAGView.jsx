@@ -2,20 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   MessageSquare, Send, FileText, Loader2, Database, Search,
-  Trash2, Calendar, HardDrive, Info, Clock, Download, UploadCloud,
-  BrainCircuit, ChevronRight, X, CheckCircle2, AlertCircle,
-  Pencil as PencilIcon, Eye, BookOpen, ChevronLeft, ChevronRight as ChevRight
+  Trash2, Download, UploadCloud, BrainCircuit, X, 
+  CheckCircle2, AlertCircle, Eye, BookOpen, Clock, 
+  Filter, LayoutGrid, List, Sparkles, ShieldCheck
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import API_BASE_URL from '@/config/api';
+import { DocumentCard, ChatBubble } from './RAGComponents';
+import ViewHeader from '../ui/ViewHeader';
 
-// ─── CHAT PANEL ────────────────────────────────────────────────────────────────
+// ─── HELPER: CHAT PANEL ────────────────────────────────────────────────────────
 
 function ChatPanel({ currentEntityId, currentUser }) {
   const [messages, setMessages] = useState([
     {
       id: 1,
       role: 'assistant',
-      content: '¡Hola! Soy tu Asistente de Biblioteca, especialista en gestión documental. Puedo consultarte sobre los documentos cargados en la Biblioteca RAG, incluyendo TRDs importadas y creadas en el sistema. ¿En qué te puedo ayudar hoy?'
+      content: '¡Hola! Soy Documencio, tu Asistente de Biblioteca. He sido entrenado con tus documentos institucionales para resolver dudas sobre tiempos de retención, disposición final y normatividad vigente. ¿Qué deseas consultar?'
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -26,7 +29,6 @@ function ChatPanel({ currentEntityId, currentUser }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Recuperar historial de Documencio al cargar
   useEffect(() => {
     const fetchHistory = async () => {
       if (!currentUser?.token) return;
@@ -36,18 +38,13 @@ function ChatPanel({ currentEntityId, currentUser }) {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.messages && data.messages.length > 0) {
-            setMessages(data.messages);
-          }
+          if (data.messages && data.messages.length > 0) setMessages(data.messages);
         }
-      } catch (e) {
-        console.error("Error cargando historial de Documencio:", e);
-      }
+      } catch (e) { console.error("Error cargando historial:", e); }
     };
     fetchHistory();
   }, [currentUser]);
 
-  // Persistir historial de Documencio automáticamente
   useEffect(() => {
     const saveHistory = async () => {
       if (!currentUser?.token || messages.length <= 1) return;
@@ -60,20 +57,17 @@ function ChatPanel({ currentEntityId, currentUser }) {
           },
           body: JSON.stringify({ messages })
         });
-      } catch (e) {
-        console.error("Error guardando historial de Documencio:", e);
-      }
+      } catch (e) { console.error("Error guardando historial:", e); }
     };
-
-    const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
+    const timer = setTimeout(saveHistory, 2000);
     return () => clearTimeout(timer);
   }, [messages, currentUser]);
 
-  const handleSend = async (text) => {
-    const query = text || inputValue;
-    if (!query.trim() || isTyping) return;
+  const handleSend = async () => {
+    const query = inputValue.trim();
+    if (!query || isTyping) return;
 
-    const userMsgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const userMsgId = `${Date.now()}`;
     setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: query }]);
     setInputValue('');
     setIsTyping(true);
@@ -87,218 +81,115 @@ function ChatPanel({ currentEntityId, currentUser }) {
         },
         body: JSON.stringify({ query, entidadId: currentEntityId })
       });
-      if (!res.ok) throw new Error('Error del servidor');
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Error del servidor (${res.status})`);
+      }
+      
       const data = await res.json();
-      const assistantMsgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       setMessages(prev => [...prev, {
-        id: assistantMsgId,
+        id: `${Date.now()}-ai`,
         role: 'assistant',
         content: data.answer,
         sources: data.sources
       }]);
-    } catch {
-      const errMsgId = `${Date.now()}-err`;
+    } catch (err) {
       setMessages(prev => [...prev, {
-        id: errMsgId,
+        id: 'err',
         role: 'assistant',
-        content: 'Lo siento, ocurrió un error al conectar con el servidor. Por favor intenta de nuevo.'
+        content: `Lo siento, encontré un problema técnico: ${err.message}. Por favor, intenta de nuevo.`
       }]);
-    } finally {
-      setIsTyping(false);
-    }
+    } finally { setIsTyping(false); }
   };
 
-  const SUGGESTIONS = [
-    '¿Qué documentos están disponibles en la biblioteca?',
-    '¿Cuáles son los tiempos de retención de la serie Contratos?',
-    '¿Qué TRD ha sido importada recientemente?',
-    '¿Cuál es la disposición final de los informes?'
-  ];
-
   return (
-    <div className="flex flex-col h-full bg-white border-r border-slate-100">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-[#0a1128] to-[#111d40] flex items-center gap-3 shrink-0">
-        <div className="w-9 h-9 bg-primary/20 rounded-xl flex items-center justify-center text-primary border border-primary/30">
-          <BrainCircuit className="w-5 h-5 text-blue-400" />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-white">IA Biblioteca</h2>
-          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Asistente Documental · RAG Activo</p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          {messages.length > 1 && (
-            <button 
-              onClick={() => {
-                if (window.confirm('¿Limpiar el historial de este chat?')) {
-                  setMessages([{
-                    id: 1,
-                    role: 'assistant',
-                    content: '¡Hola! Soy tu Asistente de Biblioteca, especialista en gestión documental. ¿En qué te puedo ayudar hoy?'
-                  }]);
-                }
-              }}
-              className="text-[10px] text-white/60 hover:text-white font-bold uppercase tracking-wider transition-colors border border-white/20 px-2 py-1 rounded"
-            >
-              Nuevo Chat
-            </button>
-          )}
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">En línea</span>
+      <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md z-10">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/10 rounded-[1.25rem] flex items-center justify-center text-primary border border-primary/20 shadow-inner">
+            <BrainCircuit className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-sm font-black text-slate-900 uppercase italic tracking-tighter leading-none">Documencio AI</h2>
+            <div className="flex items-center gap-1.5 mt-1">
+               <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Motor RAG Activo</p>
+            </div>
           </div>
         </div>
+        <button 
+          onClick={() => setMessages([{ id: 1, role: 'assistant', content: '¡Hola! ¿En qué te puedo ayudar hoy?' }])}
+          className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-colors"
+        >
+          <Clock className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50">
-        {messages.map((m) => (
-          <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : ''}`}>
-            {m.role !== 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white shrink-0 shadow-sm">
-                <BrainCircuit className="w-4 h-4" />
-              </div>
-            )}
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed ${
-              m.role === 'user'
-                ? 'bg-primary text-white rounded-tr-sm'
-                : 'bg-white border border-slate-100 text-slate-700 rounded-tl-sm'
-            }`}>
-              <div className="whitespace-pre-wrap">{m.content}</div>
-              {m.sources && m.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest w-full">Fuentes:</span>
-                  {m.sources.map(s => (
-                    <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded flex items-center gap-1">
-                      <FileText className="w-2.5 h-2.5" /> Pág. {s}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            {m.role === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-slate-200 flex items-center justify-center text-slate-500 shrink-0 shadow-sm">
-                <MessageSquare className="w-4 h-4" />
-              </div>
-            )}
-          </div>
-        ))}
-
-        {isTyping && (
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white shrink-0 shadow-sm">
-              <BrainCircuit className="w-4 h-4" />
-            </div>
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-              <div className="flex gap-1 items-center">
-                <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce" />
-                <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:0.2s]" />
-                <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:0.4s]" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Suggestions (only when there's just the welcome message) */}
-        {messages.length === 1 && !isTyping && (
-          <div className="space-y-2 pt-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Sugerencias:</p>
-            {SUGGESTIONS.map((q, i) => (
-              <button
-                key={i}
-                onClick={() => handleSend(q)}
-                disabled={isTyping}
-                className="w-full text-left text-xs bg-white border border-slate-200 hover:border-primary/40 hover:bg-primary/5 rounded-xl p-3 transition-all shadow-sm text-slate-600 flex items-center justify-between group"
-              >
-                {q}
-                <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
-              </button>
-            ))}
-          </div>
-        )}
-
+      <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-slate-50/20">
+        {messages.map((m) => <ChatBubble key={m.id} message={m} />)}
+        {isTyping && <ChatBubble message={{ role: 'assistant', content: '' }} isTyping />}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+      <div className="p-8 bg-white border-t border-slate-50 shrink-0">
         <div className="relative">
           <input
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Consulta sobre documentos, TRDs, retenciones..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Pregunta a tu biblioteca..."
             disabled={isTyping}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all disabled:opacity-60"
+            className="w-full bg-slate-50/50 border border-slate-100 rounded-[1.5rem] px-8 py-5 pr-20 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/20 focus:bg-white transition-all disabled:opacity-60"
           />
           <button
             onClick={() => handleSend()}
             disabled={!inputValue.trim() || isTyping}
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center hover:bg-primary/90 transition-all disabled:opacity-40 disabled:grayscale active:scale-95"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center hover:bg-primary transition-all disabled:opacity-40 shadow-xl"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">
-          Este asistente consulta la Biblioteca RAG y las TRDs del sistema para responder.
-        </p>
       </div>
     </div>
   );
 }
 
-// ─── UPLOAD MODAL ──────────────────────────────────────────────────────────────
+// ─── HELPER: UPLOAD MODAL ──────────────────────────────────────────────────────
 
-function UploadModal({ onClose, onUploaded, existingFilenames, currentEntityId, currentUser }) {
+function UploadModal({ onClose, onUploaded, currentUser }) {
   const [file, setFile] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | uploading | success | error | duplicate
-  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState('idle');
   const [step, setStep] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const onDrop = useCallback((acceptedFiles) => {
-    const f = acceptedFiles[0];
-    if (!f) return;
-    setFile(f);
+    setFile(acceptedFiles[0]);
     setStatus('idle');
-    setErrorMsg('');
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
-    maxFiles: 1
+    onDrop, accept: { 'application/pdf': ['.pdf'] }, maxFiles: 1
   });
 
   const handleUpload = async () => {
     if (!file) return;
-
-    // Client-side deduplication check (fast path)
-    if (existingFilenames.some(name =>
-      name.toLowerCase() === file.name.toLowerCase()
-    )) {
-      setStatus('duplicate');
-      setErrorMsg(`El documento "${file.name}" ya existe en la Biblioteca RAG. Elimínalo primero si deseas reindexarlo.`);
-      return;
-    }
-
     setStatus('uploading');
-    setProgress(10);
-    setStep('Leyendo archivo...');
+    setStep('Indexando documento...');
 
     try {
-      setProgress(30);
-      setStep('Extrayendo texto...');
-
       const formData = new FormData();
       formData.append('file', file);
-      if (currentEntityId) {
-        formData.append('entidad_id', currentEntityId);
-      }
-
-      setProgress(60);
-      setStep('Indexando en RAG...');
+      formData.append('entidad_id', currentUser?.entidadId || '');
 
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
@@ -306,651 +197,345 @@ function UploadModal({ onClose, onUploaded, existingFilenames, currentEntityId, 
         body: formData
       });
 
-      // Parse the response body regardless of status to get the error detail
-      let responseData = null;
-      try { responseData = await res.json(); } catch { /* ignore */ }
-
-      if (res.status === 409) {
-        setStatus('duplicate');
-        setErrorMsg(responseData?.detail || `El documento "${file.name}" ya existe en la Biblioteca RAG.`);
-        return;
-      }
-
       if (!res.ok) {
-        throw new Error(responseData?.detail || 'Error al subir el archivo al servidor.');
+        const d = await res.json();
+        throw new Error(d.detail || 'Error en carga');
       }
 
-      setProgress(100);
-      setStep('¡Indexado con éxito!');
       setStatus('success');
-
-      setTimeout(() => {
-        onUploaded();
-        onClose();
-      }, 1200);
+      setTimeout(() => { onUploaded(); onClose(); }, 1500);
     } catch (err) {
-      if (err.message.includes('ya existe')) {
-        setStatus('duplicate');
-      } else {
-        setStatus('error');
-      }
-      setErrorMsg(err.message || 'Error desconocido al subir el archivo.');
+      setStatus('error');
+      setErrorMsg(err.message);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200">
-        {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <UploadCloud className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900">Cargar Documento RAG</h3>
-              <p className="text-[11px] text-slate-500">Solo superadministrador</p>
-            </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+             <div className="p-3 bg-primary/10 rounded-2xl text-primary"><UploadCloud className="w-6 h-6" /></div>
+             <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Cargar Inteligencia</h3>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
-            <X className="h-5 w-5" />
-          </button>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-4">
-          <div {...getRootProps()} className={`block border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all outline-none ${
-            isDragActive ? 'border-primary bg-primary/10 scale-[1.02]' : 
-            file ? 'border-primary/50 bg-primary/5' : 'border-slate-200 hover:border-primary/40 hover:bg-slate-50'
-          }`}>
+        <div className="p-8 space-y-6">
+          <div {...getRootProps()} className={cn(
+            "border-2 border-dashed rounded-[2rem] p-12 text-center transition-all cursor-pointer",
+            isDragActive ? "border-primary bg-primary/5" : "border-slate-100 hover:border-primary/20 bg-slate-50/50"
+          )}>
             <input {...getInputProps()} />
-            <UploadCloud className={`h-8 w-8 mx-auto mb-3 transition-colors ${
-              isDragActive ? 'text-primary' : 
-              file ? 'text-primary' : 'text-slate-300'
-            }`} />
+            <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mx-auto mb-6 text-slate-300">
+               <FileText className="w-10 h-10" />
+            </div>
             {file ? (
-              <>
-                <p className="font-bold text-slate-900 text-sm truncate">{file.name}</p>
-                <p className="text-[11px] text-slate-500 mt-1">{(file.size / 1024).toFixed(1)} KB · Click o arrastra para cambiar</p>
-              </>
+              <p className="font-black text-slate-900 uppercase italic">{file.name}</p>
             ) : (
-              <>
-                <p className={`font-bold text-sm ${isDragActive ? 'text-primary' : 'text-slate-700'}`}>
-                  {isDragActive ? 'Suelta el PDF aquí' : 'Selecciona o arrastra un PDF'}
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">El documento se indexará en la Biblioteca RAG</p>
-              </>
+              <div className="space-y-1">
+                <p className="font-black text-slate-900 uppercase italic tracking-tight">Arrastra tu PDF aquí</p>
+                <p className="text-xs text-slate-400 font-medium text-slate-400">Tamaño máximo: 20MB</p>
+              </div>
             )}
           </div>
 
-          {/* Progress */}
           {status === 'uploading' && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] font-bold">
-                <span className="text-primary uppercase tracking-wide">{step}</span>
-                <span className="text-slate-600">{progress}%</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-primary to-blue-400 transition-all duration-500 rounded-full"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+            <div className="flex flex-col items-center gap-3 py-4 animate-pulse">
+               <Loader2 className="w-6 h-6 text-primary animate-spin" />
+               <p className="text-[10px] font-black text-primary uppercase tracking-widest">{step}</p>
             </div>
           )}
 
-          {/* Status messages */}
-          {status === 'success' && (
-            <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm font-semibold">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              Documento indexado correctamente en la Biblioteca RAG.
-            </div>
-          )}
-          {(status === 'error' || status === 'duplicate') && (
-            <div className="flex items-start gap-2 text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span className="font-medium">{errorMsg}</span>
+          {status === 'error' && (
+            <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+               <AlertCircle className="w-5 h-5" />
+               <p className="text-xs font-bold">{errorMsg}</p>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-xl transition-colors font-medium">
-            Cancelar
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={!file || status === 'uploading' || status === 'success'}
-            className="px-5 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:grayscale flex items-center gap-2 shadow-sm active:scale-95"
-          >
-            {status === 'uploading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-            Indexar en RAG
-          </button>
+        <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-4">
+           <button onClick={onClose} className="px-6 py-3 text-sm font-bold text-slate-400">Cancelar</button>
+           <button 
+             onClick={handleUpload}
+             disabled={!file || status === 'uploading'}
+             className="px-10 py-3.5 bg-slate-900 text-white font-black uppercase italic tracking-widest text-[11px] rounded-2xl hover:bg-primary transition-all disabled:opacity-40 shadow-xl"
+           >
+             Comenzar Indexación
+           </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── DOCUMENT VIEWER ───────────────────────────────────────────────────────────
+// ─── MAIN VIEW ─────────────────────────────────────────────────────────────────
 
-function DocumentViewer({ doc, onClose }) {
-  const fileUrl = doc.metadata?.file_url;
-  const title = doc.metadata?.label || doc.filename || 'Documento';
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-4xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-[#0a1128] to-[#111d40] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 bg-white/10 rounded-xl shrink-0">
-              <BookOpen className="h-5 w-5 text-blue-300" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-white text-sm truncate">{title}</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider font-bold">
-                Visor de documento original
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-center gap-2">
-            {fileUrl && (
-              <a
-                href={`${fileUrl}${fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(doc.filename || 'documento.pdf')}`}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0 flex items-center gap-2 text-xs font-bold"
-                title="Descargar Original"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Descargar</span>
-              </a>
-            )}
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 bg-slate-100 relative">
-          {fileUrl ? (
-            <iframe
-              src={`${fileUrl}#toolbar=0&view=FitH`}
-              className="w-full h-full border-none"
-              title={`Visor PDF - ${title}`}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 p-8 text-center">
-              <FileText className="h-12 w-12 text-slate-300" />
-              <p className="text-sm font-medium text-slate-500">
-                El archivo original no está disponible.
-              </p>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Este documento fue indexado antes de que se habilitara el almacenamiento de archivos originales, o es un documento netamente de base de datos.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─── EDIT MODAL ────────────────────────────────────────────────────────────────
-
-function EditModal({ doc, onClose, onSaved, currentUser }) {
-  const [label, setLabel] = useState(doc.metadata?.label || doc.filename || '');
-  const [description, setDescription] = useState(doc.metadata?.description || '');
-  const [isInternal, setIsInternal] = useState(!!doc.metadata?.is_trd_internal);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/rag-documents/${doc.id}`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser?.token}`
-        },
-        body: JSON.stringify({ label, description, is_trd_internal: isInternal })
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || 'Error al guardar cambios.');
-      }
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-900">Editar Documento</h3>
-            <p className="text-[11px] text-slate-500 truncate max-w-[280px]" title={doc.filename}>{doc.filename}</p>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Etiqueta / Nombre visible</label>
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={doc.filename}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/50 outline-none transition-all"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">Nombre que se mostrará en la biblioteca. El archivo original no cambia.</p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Descripción</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descripción opcional del contenido del documento..."
-              rows={3}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/50 outline-none transition-all resize-none"
-            />
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <div>
-              <p className="text-sm font-bold text-slate-700">Documento Interno (TRD)</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Los documentos internos NO aparecen en tarjetas, pero sí son consultables por la IA de la Biblioteca.</p>
-            </div>
-            <button
-              onClick={() => setIsInternal(v => !v)}
-              className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ml-3 ${isInternal ? 'bg-primary' : 'bg-slate-300'}`}
-            >
-              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${isInternal ? 'translate-x-5' : 'translate-x-1'}`} />
-            </button>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs font-medium">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-xl transition-colors font-medium">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm active:scale-95"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Guardar cambios
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── RAG LIBRARY PANEL (CRUD) ──────────────────────────────────────────────────
-
-function RAGLibraryPanel({ currentUser, currentEntityId }) {
+export default function DocumentcioRAGView({ currentUser }) {
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('all'); // all | visible | internal
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [editDoc, setEditDoc] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
+  
   const isSuperAdmin = currentUser?.role === 'superadmin';
+  const iaAvailable = currentUser?.iaDisponible ?? true;
 
-  const existingFilenames = documents.map(d => d.filename).filter(Boolean);
-
-  const fetchDocuments = async () => {
+  const fetchDocs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/rag-documents?entidad_id=${currentEntityId}`, {
+      const res = await fetch(`${API_BASE_URL}/rag-documents?entidad_id=${currentUser?.entidadId}`, {
         headers: { "Authorization": `Bearer ${currentUser?.token}` }
       });
       const data = await res.json();
       setDocuments(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Error fetching RAG docs:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setIsLoading(false); }
   };
 
-  useEffect(() => { fetchDocuments(); }, [currentEntityId]);
+  useEffect(() => { fetchDocs(); }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar este documento de la base de conocimientos RAG? Esta acción no se puede deshacer.')) return;
+    if (!window.confirm('¿Eliminar este documento?')) return;
     try {
-      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
       setDocuments(prev => prev.filter(d => d.id !== id));
-    } catch (err) {
-      console.error('Error deleting doc:', err);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  // Compute derived lists
-  const allDocs = isSuperAdmin ? documents : documents.filter(d => !d.metadata?.is_trd_internal);
-  const visibleDocs = allDocs.filter(d => !d.metadata?.is_trd_internal);
-  const internalDocs = allDocs.filter(d => d.metadata?.is_trd_internal);
-
-  const baseList = filter === 'visible' ? visibleDocs
-                 : filter === 'internal' ? internalDocs
-                 : allDocs;
-
-  const filteredDocs = baseList.filter(doc => {
+  const filteredDocs = documents.filter(doc => {
     const term = searchQuery.toLowerCase();
     const name = (doc.metadata?.label || doc.filename || '').toLowerCase();
-    return name.includes(term) || doc.metadata?.source?.toLowerCase().includes(term);
+    return name.includes(term);
   });
 
-  const FILTERS = [
-    { id: 'all', label: 'Todos', count: allDocs.length },
-    { id: 'visible', label: 'Visibles', count: visibleDocs.length },
-    ...(isSuperAdmin ? [{ id: 'internal', label: 'Internos (TRD)', count: internalDocs.length }] : [])
-  ];
-
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 gap-3">
-        <div className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-amber-500" />
-          <h2 className="text-sm font-bold text-slate-900">Biblioteca RAG</h2>
-        </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={fetchDocuments}
-            disabled={isLoading}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Recargar"
-          >
-            <Clock className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-          {isSuperAdmin && (
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-all shadow-sm active:scale-95"
-            >
-              <UploadCloud className="h-3.5 w-3.5" />
-              Cargar PDF
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col lg:flex-row w-full h-full bg-[#fbfcfd] overflow-hidden">
+      
+      {/* Sidebar: Chat */}
+      <aside className="w-full lg:w-[50%] border-r border-slate-100 flex flex-col shrink-0 bg-white">
+         <ChatPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
+      </aside>
 
-      {showUploadModal && (
-        <UploadModal 
-          onClose={() => setShowUploadModal(false)} 
-          onUploaded={fetchDocuments}
-          existingFilenames={existingFilenames}
-          currentEntityId={currentEntityId}
-          currentUser={currentUser}
+      {/* Main Content: Library */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        
+        {/* Header */}
+        <ViewHeader
+          icon={Database}
+          title="Biblioteca RAG"
+          subtitle="Repositorio de documentos institucionales indexados con inteligencia artificial"
+          actions={
+            <>
+              {/* View Toggle */}
+              <div className="flex bg-secondary/50 p-1 rounded-lg border border-border mr-2">
+                <button 
+                  onClick={() => setViewMode('grid')}
+                  className={cn(
+                    "p-1.5 rounded-md transition-all",
+                    viewMode === 'grid' ? "bg-white shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Vista Cuadrícula"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={cn(
+                    "p-1.5 rounded-md transition-all",
+                    viewMode === 'list' ? "bg-white shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Vista Lista"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Buscar en el repositorio..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-52 pl-9 pr-3 py-1.5 bg-background border border-input rounded-md text-[12.5px] focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+                />
+              </div>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-[12.5px] font-semibold rounded-md hover:bg-primary/90 transition-all active:scale-95"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" /> Cargar PDF
+                </button>
+              )}
+            </>
+          }
         />
-      )}
 
-      {/* Toolbar: Search + Filters */}
-      <div className="px-4 py-3 border-b border-slate-100 space-y-2.5 shrink-0 bg-slate-50/60">
-        {/* Search */}
-        <div className="relative">
-          <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre o fuente..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        {/* Filter tabs */}
-        <div className="flex gap-1">
-          {FILTERS.map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                filter === f.id
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'bg-white border border-slate-200 text-slate-500 hover:border-primary/30 hover:text-primary'
-              }`}
-            >
-              {f.label}
-              <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black ${
-                filter === f.id ? 'bg-white/20' : 'bg-slate-100'
-              }`}>{f.count}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="p-8 flex justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
-          </div>
-        ) : filteredDocs.length === 0 ? (
-          <div className="py-16 text-center flex flex-col items-center gap-3">
-            <FileText className="h-10 w-10 text-slate-200" />
-            <p className="text-slate-400 font-bold text-sm">
-              {searchQuery ? 'Sin coincidencias para tu búsqueda' : 'No hay documentos en esta categoría'}
-            </p>
-            {!searchQuery && isSuperAdmin && filter !== 'internal' && (
-              <button onClick={() => setShowUploadModal(true)} className="text-xs text-primary font-bold hover:underline">
-                + Cargar el primer documento
-              </button>
-            )}
-          </div>
-        ) : (
-          <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">Nombre</th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest hidden md:table-cell">Tipo</th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:table-cell">Fecha</th>
-                <th className="text-center px-4 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest hidden md:table-cell">Págs</th>
-                <th className="text-right px-4 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredDocs.map((doc) => {
-                const displayName = doc.metadata?.label || doc.filename || 'Sin nombre';
-                const isInternal = !!doc.metadata?.is_trd_internal;
-                return (
-                  <tr key={doc.id} className="hover:bg-slate-50 transition-colors group">
-                    {/* Name */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-start gap-2.5">
-                        <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${isInternal ? 'bg-indigo-100' : 'bg-slate-100'}`}>
-                          <FileText className={`h-3.5 w-3.5 ${isInternal ? 'text-indigo-500' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-800 text-xs truncate max-w-[180px]" title={displayName}>
-                            {displayName}
-                          </p>
-                          {doc.metadata?.description && (
-                            <p className="text-[10px] text-slate-400 truncate max-w-[180px]">{doc.metadata.description}</p>
-                          )}
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {isInternal && (
-                              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded uppercase tracking-wider">
-                                TRD Interno
-                              </span>
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto px-5 pb-8">
+          
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-4">
+               <Loader2 className="w-10 h-10 text-primary animate-spin" />
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando Archivos...</p>
+            </div>
+          ) : filteredDocs.length > 0 ? (
+            viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                 {filteredDocs.map(doc => (
+                   <DocumentCard 
+                     key={doc.id} 
+                     doc={doc} 
+                     isSuperAdmin={isSuperAdmin}
+                     onDelete={handleDelete}
+                     onView={setViewDoc}
+                     onEdit={(d) => console.log('Edit', d)}
+                   />
+                 ))}
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50/50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nombre</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estado</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredDocs.map(doc => (
+                      <tr key={doc.id} className="hover:bg-slate-50/30 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/5 text-primary flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <span className="font-bold text-slate-700 truncate max-w-[200px]">
+                              {doc.metadata?.label || doc.filename}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 rounded">
+                            {doc.filename?.split('.').pop() || 'PDF'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-medium">
+                          {new Date(doc.created_at || Date.now()).toLocaleDateString('es-CO')}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Indexado</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => setViewDoc(doc)}
+                              className="p-1.5 hover:bg-primary/10 text-primary rounded-md transition-all"
+                              title="Ver"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {isSuperAdmin && (
+                              <button 
+                                onClick={() => handleDelete(doc.id)}
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-md transition-all"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Type */}
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded uppercase">
-                        {doc.metadata?.type || 'general'}
-                      </span>
-                    </td>
-                    {/* Date */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-[11px] text-slate-500">
-                        {new Date(doc.created_at).toLocaleDateString('es-CO')}
-                      </span>
-                    </td>
-                    {/* Pages */}
-                    <td className="px-4 py-3 text-center hidden md:table-cell">
-                      <span className="text-[11px] font-bold text-slate-600">
-                        {doc.metadata?.pages ?? '—'}
-                      </span>
-                    </td>
-                    {/* Actions */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {/* View button — visible to ALL roles */}
-                        <button
-                          onClick={() => setViewDoc(doc)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                          title="Ver contenido"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        {isSuperAdmin && doc.metadata?.file_url && (
-                          <a
-                            href={`${doc.metadata.file_url}${doc.metadata.file_url.includes('?') ? '&' : '?'}download=${encodeURIComponent(doc.filename || 'documento.pdf')}`}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                            title="Descargar original"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </a>
-                        )}
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => setEditDoc(doc)}
-                            className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
-                            title="Editar"
-                          >
-                            <PencilIcon className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => handleDelete(doc.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                            title="Eliminar del RAG"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+               <div className="w-32 h-32 bg-slate-50 rounded-[3rem] flex items-center justify-center text-slate-200 mb-8 border border-slate-100">
+                  <Database className="w-16 h-16" />
+               </div>
+               <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">Repositorio Vacío</h3>
+               <p className="text-slate-400 text-sm font-medium mt-2 max-w-sm">
+                 {searchQuery ? 'No encontramos coincidencias para tu búsqueda.' : 'No se han cargado documentos en la biblioteca RAG todavía.'}
+               </p>
+            </div>
+          )}
+        </div>
 
-      {/* Footer count */}
-      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
-        <span className="text-[10px] text-slate-400 font-medium">
-          {filteredDocs.length} de {allDocs.length} documentos
-        </span>
-        {isSuperAdmin && (
-          <span className="text-[10px] text-indigo-500 font-bold">
-            {internalDocs.length} internos (TRD) · {visibleDocs.length} visibles
-          </span>
-        )}
-      </div>
+        {/* Floating status */}
+        <div className="px-10 py-4 bg-white/80 backdrop-blur-md border-t border-slate-50 flex items-center justify-between shrink-0">
+           <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                 <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{documents.length} Documentos Totales</span>
+              </div>
+              <div className="flex items-center gap-2">
+                 <div className="h-2 w-2 rounded-full bg-primary" />
+                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">IA Operativa</span>
+              </div>
+           </div>
+           <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Neural Documencio Engine v3.0</p>
+        </div>
+      </main>
 
       {/* Modals */}
-      {showUploadModal && (
-        <UploadModal
-          onClose={() => setShowUploadModal(false)}
-          onUploaded={fetchDocuments}
-          existingFilenames={existingFilenames}
-          currentUser={currentUser}
-        />
-      )}
-      {editDoc && (
-        <EditModal
-          doc={editDoc}
-          onClose={() => setEditDoc(null)}
-          onSaved={fetchDocuments}
-          currentUser={currentUser}
-        />
-      )}
+      {showUploadModal && <UploadModal onClose={() => setShowUploadModal(false)} onUploaded={fetchDocs} currentUser={currentUser} />}
+      
       {viewDoc && (
-        <DocumentViewer
-          doc={viewDoc}
-          onClose={() => setViewDoc(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-
-
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
-
-export default function DocumentcioRAGView({ currentUser }) {
-  const iaAvailable = currentUser?.iaDisponible ?? true;
-
-  return (
-    <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden bg-white">
-      {/* IA Restriction Overlay */}
-      {!iaAvailable && (
-        <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 text-center">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-           <div className="relative bg-white p-8 rounded-3xl shadow-2xl max-w-sm flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
-             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center">
-                <BrainCircuit className="w-8 h-8" />
-             </div>
-             <h3 className="text-xl font-black text-slate-900 leading-tight">Acceso a Biblioteca IA restringido</h3>
-             <p className="text-slate-500 text-sm font-medium">Si quieres este servicio, mejora tu plan o habla con tu administrador.</p>
+        <div className="fixed inset-0 z-[110] flex items-center justify-end">
+           <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setViewDoc(null)} />
+           <div className="relative w-full max-w-4xl h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                 <div className="flex items-center gap-4">
+                    <BookOpen className="w-6 h-6 text-primary" />
+                    <h3 className="font-black uppercase italic tracking-tighter truncate max-w-lg">{viewDoc.metadata?.label || viewDoc.filename}</h3>
+                 </div>
+                 <button onClick={() => setViewDoc(null)} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="flex-1 bg-slate-100">
+                 {viewDoc.metadata?.file_url ? (
+                   <iframe src={`${viewDoc.metadata.file_url}#toolbar=0`} className="w-full h-full border-none" />
+                 ) : (
+                   <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                      <AlertCircle className="w-12 h-12" />
+                      <p className="font-bold uppercase tracking-widest text-[10px]">Archivo original no disponible en Storage</p>
+                   </div>
+                 )}
+              </div>
            </div>
         </div>
       )}
 
-      {/* TOP on mobile / LEFT on desktop: Chat Panel */}
-      <div className="w-full h-80 lg:h-full lg:w-[45%] shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200">
-        <ChatPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
-      </div>
-
-      {/* BOTTOM on mobile / RIGHT on desktop: RAG Library Panel */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <RAGLibraryPanel currentUser={currentUser} currentEntityId={currentUser?.entidadId} />
-      </div>
+      {/* IA Restricted Overlay */}
+      {!iaAvailable && (
+        <div className="absolute inset-0 z-[120] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md">
+           <div className="bg-white p-12 rounded-[3rem] shadow-2xl text-center max-w-md animate-in zoom-in-95">
+              <div className="w-20 h-20 bg-primary/10 text-primary rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner border border-primary/20">
+                 <BrainCircuit className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter mb-4">Módulo Restringido</h2>
+              <p className="text-slate-500 font-medium leading-relaxed mb-10">Tu perfil actual no cuenta con privilegios de consulta en la Biblioteca de Inteligencia Artificial.</p>
+              <button className="w-full py-4 bg-slate-900 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl hover:bg-primary transition-all shadow-xl shadow-primary/20">Contactar Administrador</button>
+           </div>
+        </div>
+      )}
     </div>
   );
 }
