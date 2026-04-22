@@ -1,12 +1,12 @@
 import React from "react";
-import { Table, Check, Info, FileText } from "lucide-react";
+import { Table, Check, Info, FileText, Download } from "lucide-react";
 
 // ── UN SOLO TOKEN DE BORDE: 1px negro puro ──────────────────────────────────
 // Todas las celdas usan este mismo valor.
 // border-collapse: collapse en la tabla elimina la superposición.
 const BD = "1px solid #000000";
 
-export default function TRDGenerator({ rows = [], selectedIds = new Set(), currentEntity, logoBase64 }) {
+export default function TRDGenerator({ rows = [], selectedIds = new Set(), currentEntity, logoBase64, onExportPDF }) {
   // If we have selected IDs, we filter rows. If not, we show all provided rows.
   const exportRows = (selectedIds instanceof Set && selectedIds.size > 0) 
     ? rows.filter(r => selectedIds.has(r.id)) 
@@ -56,9 +56,20 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), curre
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Previsualización del Documento Archivístico</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 border border-slate-300 bg-white">
-          <Info className="h-3.5 w-3.5" />
-          {selectedIds.size > 0 ? `${selectedIds.size} seleccionados` : `Todos los registros (${rows.length})`}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 border border-slate-300 bg-white">
+            <Info className="h-3.5 w-3.5" />
+            {selectedIds.size > 0 ? `${selectedIds.size} seleccionados` : `Todos los registros (${rows.length})`}
+          </div>
+          {onExportPDF && (
+            <button
+              onClick={onExportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Descargar TRD
+            </button>
+          )}
         </div>
       </div>
 

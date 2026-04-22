@@ -1297,6 +1297,7 @@ function App() {
                   currentUser={currentUser}
                   currentEntity={currentEntity}
                   logoBase64={entidadLogoBase64}
+                  onExportPDF={() => setShowPrintModal(true)}
                 />
               </div>
             )}

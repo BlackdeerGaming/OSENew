@@ -1,5 +1,5 @@
 import React from "react";
-import { LogOut, User, Printer, Menu, ChevronDown } from "lucide-react";
+import { LogOut, User, Printer, Menu, ChevronDown, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function MainHeader({
