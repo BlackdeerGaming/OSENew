@@ -389,7 +389,7 @@ export default function OrgChartView({ dependencias, onEdit }) {
                   <Printer className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-[15px] font-semibold text-foreground">Configurar Impresi\u00f3n</h3>
+                  <h3 className="text-[15px] font-semibold text-foreground">Configurar Impresión</h3>
                   <p className="text-[12px] text-muted-foreground">Formato horizontal optimizado</p>
                 </div>
               </div>
@@ -398,7 +398,7 @@ export default function OrgChartView({ dependencias, onEdit }) {
             <div className="p-6 flex flex-col gap-4">
               <div onClick={() => setSelectedPrintMode('SINGLE_PAGE')} className={cn("p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-4", selectedPrintMode === 'SINGLE_PAGE' ? "border-primary bg-primary/5" : "border-border hover:border-border/80")}>
                 <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", selectedPrintMode === 'SINGLE_PAGE' ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}><Maximize className="h-5 w-5" /></div>
-                <div className="flex-1"><p className="text-[14px] font-semibold">Hoja \u00danica</p><p className="text-[12px] text-muted-foreground">Todo el organigrama en una sola hoja apaisada.</p></div>
+                <div className="flex-1"><p className="text-[14px] font-semibold">Hoja Única</p><p className="text-[12px] text-muted-foreground">Todo el organigrama en una sola hoja apaisada.</p></div>
               </div>
               <div onClick={() => setSelectedPrintMode('MULTI_PAGE')} className={cn("p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-4", selectedPrintMode === 'MULTI_PAGE' ? "border-primary bg-primary/5" : "border-border hover:border-border/80")}>
                 <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", selectedPrintMode === 'MULTI_PAGE' ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}><Printer className="h-5 w-5" /></div>
@@ -421,7 +421,7 @@ export default function OrgChartView({ dependencias, onEdit }) {
             <div className="px-6 py-4 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary"><Share2 className="h-5 w-5" /></div>
-                <div><h3 className="text-[15px] font-semibold">Compartir Organigrama</h3><p className="text-[12px] text-muted-foreground">Exporta el dise\u00f1o para web</p></div>
+                <div><h3 className="text-[15px] font-semibold">Compartir Organigrama</h3><p className="text-[12px] text-muted-foreground">Exporta el diseño para web</p></div>
               </div>
               <button onClick={() => setShowShareModal(false)} className="p-2 text-muted-foreground hover:text-foreground transition-colors"><X className="h-5 w-5" /></button>
             </div>
@@ -469,8 +469,8 @@ export default function OrgChartView({ dependencias, onEdit }) {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-10 text-muted-foreground text-center">
             <ShieldAlert className="h-12 w-12 opacity-20 mb-4 mx-auto" />
-            <p className="text-[14px] font-medium">Selecciona una dependencia ra\u00edz</p>
-            <p className="text-[12px] opacity-60">Mapeo jer\u00e1rquico autom\u00e1tico</p>
+            <p className="text-[14px] font-medium">Selecciona una dependencia raíz</p>
+            <p className="text-[12px] opacity-60">Mapeo jerárquico automático</p>
           </div>
         )}
       </div>

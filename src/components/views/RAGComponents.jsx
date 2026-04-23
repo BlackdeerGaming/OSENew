@@ -140,7 +140,7 @@ export function ChatBubble({ message, isTyping }) {
           <div className="flex flex-wrap gap-2 px-2">
             {message.sources.map(s => (
               <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-400 text-[9px] font-black rounded-full border border-slate-200">
-                P\u00c1GINA {s}
+                PÁGINA {s}
               </span>
             ))}
           </div>

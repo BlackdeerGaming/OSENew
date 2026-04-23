@@ -103,7 +103,7 @@ export default function EntitiesView({ entities, setEntities }) {
       }
     }).catch(err => {
       console.error(err);
-      alert("Error de conexi\u00f3n.");
+      alert("Error de conexión.");
     });
   };
 
@@ -118,11 +118,11 @@ export default function EntitiesView({ entities, setEntities }) {
             <button
               onClick={() => {
                 setFormData({
-                  tipoEntidad: "Persona Jur\u00eddica", clasificacion: "Privada", razonSocial: "", sector: "",
+                  tipoEntidad: "Persona Jurídica", clasificacion: "Privada", razonSocial: "", sector: "",
                   tipoDocumento: "NIT", numeroDocumento: "", dv: "", ciiu: "",
                   pais: "Colombia", departamento: "", ciudad: "", direccion: "",
                   telefono: "", celular: "", correo: "", nombreContacto: "", paginaWeb: "",
-                  logoUrl: "", tamanoEmpresa: "Peque\u00f1a", estado: "Activo",
+                  logoUrl: "", tamanoEmpresa: "Pequeña", estado: "Activo",
                   fechaInicio: "", fechaFin: "", entidadOrganizacional: true, proyectos: false,
                   maxUsuarios: 10, maxDependencias: 20, maxProyectos: 5,
                 });
@@ -156,8 +156,8 @@ export default function EntitiesView({ entities, setEntities }) {
               <thead className="bg-secondary/50 text-muted-foreground text-[10px] font-bold uppercase tracking-wider border-b border-border">
                 <tr>
                   <th className="px-6 py-3 w-16">Logo</th>
-                  <th className="px-6 py-3">Organizaci\u00f3n</th>
-                  <th className="px-6 py-3">Identificaci\u00f3n</th>
+                  <th className="px-6 py-3">Organización</th>
+                  <th className="px-6 py-3">Identificación</th>
                   <th className="px-6 py-3">Contacto</th>
                   <th className="px-6 py-3">Licencia</th>
                   <th className="px-6 py-3">Estado</th>
@@ -220,7 +220,7 @@ export default function EntitiesView({ entities, setEntities }) {
       <ViewHeader
         icon={view === "create" ? Plus : FileEdit}
         title={view === "create" ? "Nueva Entidad" : "Editar Entidad"}
-        subtitle="Configura los par\u00e1metros corporativos y l\u00edmites de acceso"
+        subtitle="Configura los parámetros corporativos y límites de acceso"
         onBack={() => setView("list")}
       />
       <div className="flex-1 overflow-auto p-5 md:p-7">
@@ -232,21 +232,21 @@ export default function EntitiesView({ entities, setEntities }) {
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Tipo</label>
                 <select value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
-                  <option>Persona Jur\u00eddica</option>
+                  <option>Persona Jurídica</option>
                   <option>Persona Natural</option>
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificaci\u00f3n</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificación</label>
                 <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
                   <option>Privada</option>
-                  <option>P\u00fablica</option>
+                  <option>Pública</option>
                   <option>Mixta</option>
                 </select>
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase">Raz\u00f3n Social *</label>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
               <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -258,7 +258,7 @@ export default function EntitiesView({ entities, setEntities }) {
                 </select>
               </div>
               <div className="space-y-1.5 col-span-2">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">N\u00famero *</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Número *</label>
                 <div className="flex gap-2">
                   <input value={formData.numeroDocumento} onChange={e=>setFormData({...formData, numeroDocumento: e.target.value})} className={cn("flex-1 h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.numeroDocumento ? "border-destructive/50" : "border-input")} />
                   <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="w-12 h-9 bg-background border border-input rounded-md text-[13px] text-center" />
@@ -269,7 +269,7 @@ export default function EntitiesView({ entities, setEntities }) {
 
           {/* Contact & Location */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><MapPin className="h-4 w-4 text-primary" /> Contacto y Ubicaci\u00f3n</h3>
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><MapPin className="h-4 w-4 text-primary" /> Contacto y Ubicación</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Correo *</label>
@@ -281,7 +281,7 @@ export default function EntitiesView({ entities, setEntities }) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase">Direcci\u00f3n</label>
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Dirección</label>
               <input value={formData.direccion} onChange={e=>setFormData({...formData, direccion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -298,7 +298,7 @@ export default function EntitiesView({ entities, setEntities }) {
 
           {/* SaaS Config */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-4 md:col-span-2">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><ShieldAlert className="h-4 w-4 text-primary" /> Par\u00e1metros SaaS y Licenciamiento</h3>
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><ShieldAlert className="h-4 w-4 text-primary" /> Parámetros SaaS y Licenciamiento</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Estado</label>
@@ -327,7 +327,7 @@ export default function EntitiesView({ entities, setEntities }) {
       <div className="p-4 border-t border-border bg-card flex justify-end gap-3 shrink-0">
         <button onClick={() => setView("list")} className="px-5 py-2 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-all">Cancelar</button>
         <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-md text-[13px] font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">
-          <Save className="h-4 w-4" /> Guardar Organizaci\u00f3n
+          <Save className="h-4 w-4" /> Guardar Organización
         </button>
       </div>
     </div>

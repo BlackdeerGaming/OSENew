@@ -59,6 +59,9 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
   const [showActProposal, setShowActProposal] = React.useState(false);
+  const [showExportModal, setShowExportModal] = React.useState(false);
+  const [exportRange, setExportRange] = React.useState({ start: '', end: '' });
+  const [isExporting, setIsExporting] = React.useState(false);
 
   const handleSendMessage = async (text) => {
     const query = text || inputValue;
@@ -131,30 +134,54 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   };
 
-  const handleExportCSV = () => {
-    if (activityLogs.length === 0) return;
-    const headers = ["ID Acción", "Usuario", "Actividad", "Fecha y Hora"];
-    const csvContent = [
-      headers.join(","),
-      ...activityLogs.map(log => [
-        log.id.replace('act_', ''),
-        `"${log.user || 'Sistema'}"`,
-        `"${log.message}"`,
-        `"${formatDate(log.timestamp)}"`
-      ].join(","))
-    ].join("\n");
+  const handleExportExcel = async () => {
+    if (!exportRange.start || !exportRange.end) {
+      alert("Por favor selecciona un rango de fechas.");
+      return;
+    }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `RegistroActividad_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setIsExporting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/activity-logs/export?start_date=${exportRange.start}&end_date=${exportRange.end}`, {
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || "Error al exportar registros");
+      }
+      
+      const data = await res.json();
+      
+      // Generate CSV from filtered data
+      const headers = ["ID Acción", "Usuario", "Actividad", "Fecha y Hora"];
+      const csvContent = [
+        headers.join(","),
+        ...data.map(log => [
+          log.id.substring(log.id.length - 8),
+          `"${log.user_name || 'Sistema'}"`,
+          `"${log.message}"`,
+          `"${formatDate(log.created_at)}"`
+        ].join(","))
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Trazabilidad_${exportRange.start}_a_${exportRange.end}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setShowExportModal(false);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  // L\u00f3gica de Recomendaciones Reales
+  // Lógica de Recomendaciones Reales
   const recommendations = React.useMemo(() => {
     const recs = [];
     if (!stats) return [{ title: "Cargando", desc: "Preparando recomendaciones...", type: "neutral" }];
@@ -164,7 +191,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     if (stats.totalDocs > 100) recs.push({ title: "Transferencia", desc: "Programar transferencia documental al Archivo Central", type: "info" });
     
     // Default if nothing critical
-    if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retenci\u00f3n", type: "neutral" });
+    if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retención", type: "neutral" });
     return recs;
   }, [stats]);
 
@@ -222,7 +249,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
           <StatsCard 
             title="Alertas Vencimiento" 
             value={stats.expiredDocs} 
-            subtitle="Tablas de Retenci\u00f3n"
+            subtitle="Tablas de Retención"
             icon={AlertTriangle} 
             trend="down"
             alert={stats.expiredDocs > 0}
@@ -323,7 +350,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             {showAnalysis && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 animate-in fade-in duration-700">
                 <AnalysisWidget title="Series" desc={`${stats.totalDocs > 0 ? seriesCount : 0}`} type="info" />
-                <AnalysisWidget title="Estado" desc={stats.expiredDocs > 0 ? "Cr\u00edtico" : "\u00d3ptimo"} type="neutral" />
+                <AnalysisWidget title="Estado" desc={stats.expiredDocs > 0 ? "Crítico" : "Óptimo"} type="neutral" />
                 <AnalysisWidget title="Pendientes" desc={`${stats.unapprovedTRDs}`} type="warning" />
                 <AnalysisWidget title="Insight" desc={recommendations[0].desc} type="success" />
               </div>
@@ -338,7 +365,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                   <Activity className="w-3.5 h-3.5" /> Actualizar Logs
                 </button>
                 <button
-                  onClick={handleExportCSV}
+                  onClick={() => setShowExportModal(true)}
                   className="shrink-0 flex items-center gap-2 bg-card border border-border text-muted-foreground px-4 py-2 rounded-lg text-[12px] font-medium hover:text-foreground hover:border-border/80 transition-all"
                 >
                   <Download className="w-3.5 h-3.5" /> Exportar Registro
@@ -371,12 +398,12 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                       activityLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-secondary/30 transition-colors">
                           <td className="px-5 py-3 font-mono text-[11px] text-muted-foreground">#{log.id.substring(log.id.length - 6)}</td>
-                          <td className="px-5 py-3 font-medium text-foreground text-[12.5px]">{log.user || 'Sistema'}</td>
+                          <td className="px-5 py-3 font-medium text-foreground text-[12.5px]">{log.user_name || 'Sistema'}</td>
                           <td className="px-5 py-3 text-muted-foreground text-[12.5px]">{log.message}</td>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                               <Clock className="w-3 h-3" />
-                              {formatDate(log.timestamp)}
+                              {formatDate(log.created_at)}
                             </div>
                           </td>
                         </tr>
@@ -445,6 +472,67 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                 className="px-6 py-3 text-sm font-black bg-slate-900 text-white rounded-2xl shadow-xl hover:bg-slate-800 transition-all flex items-center gap-2"
               >
                 Iniciar Selección <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setShowExportModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                  <Download className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-slate-900">Exportar Trazabilidad</h3>
+              </div>
+              <button onClick={() => setShowExportModal(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Inicio</label>
+                <input 
+                  type="date" 
+                  value={exportRange.start}
+                  onChange={(e) => setExportRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Fin</label>
+                <input 
+                  type="date" 
+                  value={exportRange.end}
+                  onChange={(e) => setExportRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 italic">
+              * El sistema filtrará todos los eventos ocurridos en el rango seleccionado.
+            </p>
+
+            <div className="flex justify-end gap-2 mt-2">
+              <button 
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-[12px] font-bold text-slate-500 hover:text-slate-800"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleExportExcel}
+                disabled={isExporting}
+                className="px-5 py-2 bg-primary text-white rounded-lg text-[12px] font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center gap-2"
+              >
+                {isExporting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                {isExporting ? "Generando..." : "Descargar Excel"}
               </button>
             </div>
           </div>

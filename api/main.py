@@ -1844,8 +1844,51 @@ async def bulk_archive_invitations(req: InvitationBulkArchive, current_user: dic
 @router.get("/activity-logs")
 async def get_activity_logs(current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    res = supabase_client.table("activity_logs").select("*").order("created_at", desc=True).limit(50).execute()
-    return res.data
+    
+    from datetime import datetime, date
+    today = date.today()
+    first_day_current_month = date(today.year, today.month, 1).isoformat()
+    
+    # 1. Auto-cleanup: Delete logs older than the current month
+    try:
+        supabase_client.table("activity_logs").delete().lt("created_at", first_day_current_month).execute()
+    except Exception as e:
+        print(f"Error cleaning up old logs: {e}")
+
+    # 2. Fetch logs only for the current month
+    res = supabase_client.table("activity_logs")\
+        .select("*")\
+        .gte("created_at", first_day_current_month)\
+        .order("created_at", desc=True)\
+        .execute()
+        
+    return res.data or []
+
+@router.get("/activity-logs/export")
+async def export_activity_logs(
+    start_date: str, 
+    end_date: str, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Returns activity logs within a specific date range for Excel export."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    
+    # Simple validation: ensure end_date is at the end of the day
+    # if dates are YYYY-MM-DD, we should query gte start and lte end + 'T23:59:59'
+    query_start = f"{start_date}T00:00:00"
+    query_end = f"{end_date}T23:59:59"
+    
+    res = supabase_client.table("activity_logs")\
+        .select("*")\
+        .gte("created_at", query_start)\
+        .lte("created_at", query_end)\
+        .order("created_at", desc=True)\
+        .execute()
+        
+    if not res.data:
+        raise HTTPException(status_code=404, detail="No se encontraron registros en el rango seleccionado")
+        
+    return res.data or []
 
 @router.post("/auth/signup")
 async def signup(req: UserSignUp):
