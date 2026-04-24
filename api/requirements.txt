@@ -11,3 +11,6 @@ pydantic
 supabase
 httpx
 PyJWT
+boto3
+mangum
+requests

@@ -1,29 +1,20 @@
 import json
 from typing import Any, Dict
+from .aws.s3_storage import s3_client
 
-from supabase import Client
-
-# Assuming supabase_client is initialized in main.py and imported here
-
-def get_storage_client(supabase_client: Client):
-    """Return the Supabase storage bucket client for TRD data."""
-    return supabase_client.storage.from_('trd-uploads')
-
-def upload_record(supabase_client: Client, entity_id: str, module: str, record_id: str, data: Dict[str, Any]) -> str:
-    """Upload a JSON representation of a TRD record to Supabase storage.
+async def upload_record(entity_id: str, module: str, record_id: str, data: Dict[str, Any]) -> str:
+    """Upload a JSON representation of a TRD record to AWS S3.
     """
-    storage = get_storage_client(supabase_client)
-    path = f"entity_{entity_id}/{module}/{record_id}.json"
+    path = f"{entity_id}/{module}/{record_id}.json"
     content = json.dumps(data, ensure_ascii=False, indent=2)
-    # Supabase storage expects bytes. Set upsert=True to avoid conflict if retrying.
-    # supabase-py raises on error or returns an object with path/full_path
-    storage.upload(path, content.encode('utf-8'), file_options={"content-type": "application/json", "upsert": "true"})
+    await s3_client.upload_file(content.encode('utf-8'), path, content_type="application/json")
     return path
 
-def delete_record(supabase_client: Client, entity_id: str, module: str, record_id: str) -> None:
-    """Delete a stored JSON file from Supabase storage."""
-    storage = get_storage_client(supabase_client)
-    path = f"entity_{entity_id}/{module}/{record_id}.json"
-    result = storage.remove([path])
-    if result.get('error'):
-        raise Exception(f"Supabase storage delete error: {result['error']}")
+async def get_view_url(path: str) -> str:
+    """Get a pre-signed URL for viewing a file."""
+    return await s3_client.get_download_url(path)
+
+async def delete_record(entity_id: str, module: str, record_id: str) -> None:
+    """Delete a stored JSON file from AWS S3."""
+    path = f"{entity_id}/{module}/{record_id}.json"
+    await s3_client.delete_file(path)

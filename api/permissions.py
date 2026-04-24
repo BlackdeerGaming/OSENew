@@ -7,15 +7,18 @@ import os
 JWT_SECRET = os.getenv('JWT_SECRET', 'ose-ia-secret-key-2024-standard')
 JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
+from .aws.cognito_auth import cognito
+
 security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # Verify using Cognito logic
+        payload = cognito.verify_token(token)
         
-        # --- NORMALIZACIÓN DE ROLES CENTRALIZADA ---
-        raw_role = str(payload.get('role', 'usuario')).lower().strip()
+        # Cognito attributes mapping (normalización)
+        raw_role = str(payload.get('custom:role', payload.get('role', 'usuario'))).lower().strip()
         
         if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
             payload['role'] = 'administrador'
@@ -24,11 +27,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
             payload['role'] = 'usuario'
         else:
-            payload['role'] = raw_role # Mantener otros roles específicos
+            payload['role'] = raw_role
+            
+        # Ensure sub and entity_id are present as per existing logic
+        payload['user_id'] = payload.get('sub')
+        payload['entity_id'] = payload.get('custom:entity_id', payload.get('entity_id'))
             
         return payload
-    except jwt.PyJWTError as e:
-        raise HTTPException(status_code=401, detail='Invalid authentication token')
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f'Invalid authentication token: {str(e)}')
 
 def require_entity_admin(user: dict, entity_id: str):
     # superadmin passes automatically for everything

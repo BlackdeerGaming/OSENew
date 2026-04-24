@@ -1,25 +1,20 @@
 import os
 from dotenv import load_dotenv
-from supabase import create_client, Client
+
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 
 # Critical: load env vars first
 load_dotenv()
 
 # Environment Variables
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
 
-# Initialize Supabase Client
-supabase_client: Client = None
-if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-    try:
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        print(" [DB] Supabase conectado correctamente.")
-    except Exception as e:
-        print(f" [DB] Error conectando a Supabase: {e}")
+# Initialize DynamoDB Client
+from .aws.dynamo_db import db
+
+print(" [DB] DynamoDB configurado para arquitectura serverless.")
 
 # Initialize LLM (OpenRouter)
 llm = None
