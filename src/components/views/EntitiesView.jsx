@@ -265,6 +265,10 @@ export default function EntitiesView({ entities, setEntities }) {
                 </div>
               </div>
             </div>
+            <div className="space-y-1.5 mt-4">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">CIIU (Actividad Económica)</label>
+              <input value={formData.ciiu || ""} onChange={e=>setFormData({...formData, ciiu: e.target.value})} placeholder="Ej: 6201" className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none focus:ring-1 focus:ring-ring" />
+            </div>
           </div>
 
           {/* Contact & Location */}

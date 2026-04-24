@@ -3,8 +3,9 @@ import { FormGroup } from "./DependenciaForm";
 import { inputClass, textareaClass } from "./SerieForm";
 import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
+import FuncionesMultiSelect from "../ui/FuncionesMultiSelect";
 
-export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [] }) {
+export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [], funciones = [], currentUser }) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -13,6 +14,10 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
     } else {
       onChange({ ...data, [name]: value });
     }
+  };
+
+  const handleFuncionesChange = (selectedIds) => {
+    onChange({ ...data, funciones_ids: selectedIds });
   };
 
   // Extract selected entities for code population
@@ -168,7 +173,22 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
                </label>
             </div>
           </div>
-          <div></div>
+
+          {/* Funciones — dropdown multi-select */}
+          <div className="border border-border/70 rounded-md p-4 bg-background flex flex-col gap-3">
+            <h4 className={groupHeaderClass}>Funciones</h4>
+            <FuncionesMultiSelect
+              funciones={funciones}
+              selectedIds={data.funciones_ids || []}
+              onChange={handleFuncionesChange}
+              filteredDependenciaId={data.dependenciaId || null}
+            />
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              {data.dependenciaId
+                ? "Mostrando funciones de la dependencia seleccionada."
+                : "Selecciona una dependencia para filtrar las funciones disponibles."}
+            </p>
+          </div>
         </div>
 
         <FormGroup label="Procedimiento *" isActive={activeField === 'procedimiento'}>

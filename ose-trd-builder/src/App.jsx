@@ -197,6 +197,7 @@ function App() {
   const [series, setSeries] = useState([]);
   const [subseries, setSubseries] = useState([]);
   const [trdRecords, setTrdRecords] = useState([]);
+  const [funciones, setFunciones] = useState([]);
 
   // UI State
   const handleUpdateUserProfile = (updatedData) => {
@@ -216,6 +217,23 @@ function App() {
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(true);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
+
+  // Cargar funciones cuando el usuario tiene entity_id
+  useEffect(() => {
+    const loadFunciones = async () => {
+      if (!currentUser?.entity_id || !currentUser?.token) return;
+      try {
+        const resp = await fetch(
+          `${API_BASE_URL}/trd/entity/${currentUser.entity_id}/funciones`,
+          { headers: { Authorization: `Bearer ${currentUser.token}` } }
+        );
+        if (resp.ok) setFunciones(await resp.json());
+      } catch (err) {
+        console.error("[App] Error cargando funciones:", err);
+      }
+    };
+    loadFunciones();
+  }, [currentUser?.entity_id, currentUser?.token]);
   
   // Chat State
   const [messages, setMessages] = useState([]);
@@ -684,7 +702,7 @@ function App() {
               <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} currentUser={currentUser} />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} currentUser={currentUser} />
+              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} funciones={funciones} currentUser={currentUser} />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />

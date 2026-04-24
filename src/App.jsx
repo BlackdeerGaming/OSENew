@@ -160,6 +160,24 @@ function App() {
     }
   ]);
 
+  const [funciones, setFunciones] = useState([]);
+  
+  useEffect(() => {
+    if (!currentUser?.entity_id) return;
+    const loadFunciones = async () => {
+      try {
+        const resp = await fetch(
+          `${API_BASE_URL}/trd/entity/${currentUser.entity_id}/funciones`,
+          { headers: { Authorization: `Bearer ${currentUser.token}` } }
+        );
+        if (resp.ok) setFunciones(await resp.json());
+      } catch (err) {
+        console.error("[App] Error cargando funciones:", err);
+      }
+    };
+    loadFunciones();
+  }, [currentUser]);
+
   // Manejar sesión de Google (Supabase OAuth)
   useEffect(() => {
     if (!supabase) return;
@@ -1270,7 +1288,7 @@ function App() {
               <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} currentUser={currentUser} />
+              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
