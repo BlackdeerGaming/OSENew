@@ -296,7 +296,14 @@ export default function EntitiesView({ entities, setEntities }) {
               <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
               <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Tipo Entidad</label>
+                <select value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>Persona Jurídica</option>
+                  <option>Persona Natural</option>
+                </select>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificación</label>
                 <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
