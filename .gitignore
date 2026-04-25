@@ -235,3 +235,4 @@ backend/__pycache__/
 # No ignoraremos PDFs si son parte del repo pero usualmente no se incluyen
 scratch/
  
+.vercel

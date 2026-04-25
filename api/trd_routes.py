@@ -173,10 +173,9 @@ async def update_dependencia_entity(
             dep_id,
             full_item,
         )
-        # supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", dep_id).execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
-    return record
+        print(f"Cloud sync failed: {e}")
+    return full_item
 
 @router.delete("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
 async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = Depends(get_current_user)):
@@ -237,9 +236,10 @@ async def update_serie_entity(
 @router.delete("/entity/{entity_id}/series/{serie_id}")
 async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try: delete_record(supabase_client, entity_id, "series", serie_id)
+    try:
+        await delete_record(entity_id, "series", serie_id)
     except: pass
-    supabase_client.table("series").delete().eq("id", serie_id).eq("entidad_id", entity_id).execute()
+    await db.delete_item("series", f"ENTITY#{entity_id}", f"SER#{serie_id}")
     return {"status": "deleted", "id": serie_id}
 
 # ---------- Subseries ----------
@@ -290,9 +290,10 @@ async def update_subserie_entity(
 @router.delete("/entity/{entity_id}/subseries/{subserie_id}")
 async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
+    try:
+        await delete_record(entity_id, "subseries", subserie_id)
     except: pass
-    supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entidad_id", entity_id).execute()
+    await db.delete_item("subseries", f"ENTITY#{entity_id}", f"SUB#{subserie_id}")
     return {"status": "deleted", "id": subserie_id}
 
 # ---------- TRD Records ----------
@@ -332,13 +333,11 @@ async def update_trd_record_entity(
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("trd_records").update(data).eq("id", record_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="TRD Record not found")
-    record = res.data[0]
+    pk, sk = f"ENTITY#{entity_id}", f"TRD#{record_id}"
+    await db.update_item("trd_records", pk, sk, data)
+    record = await db.get_item("trd_records", pk, sk)
     try:
-        path = upload_record(supabase_client, entity_id, "trd_records", record_id, _record_to_dict(record))
-        # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record_id).execute()
+        await upload_record(entity_id, "trd_records", record_id, record)
     except Exception: pass
     return record
 
@@ -425,9 +424,6 @@ async def create_entrevista_entity(
     entrevistado_id = entrevistado_data.get("id")
     
     if entrevistado_id:
-        # Update existing
-        supabase_client.table("entrevistados").update({
-    if entrevistado_id:
         pk, sk = f"ENTITY#{entity_id}", f"ETV#{entrevistado_id}"
         await db.update_item("entrevistados", pk, sk, {
             "nombres": entrevistado_data["nombres"],
@@ -481,17 +477,13 @@ async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Dep
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
 @router.get("/admin/dependencias", response_model=List[dict])
 async def admin_list_dependencias(user: dict = Depends(get_current_user)):
-    
     require_super_admin(user)
-    res = supabase_client.table("dependencias").select("*").execute()
-    return res.data
+    return await db.scan_table("dependencias")
 
 @router.get("/admin/series", response_model=List[dict])
 async def admin_list_series(user: dict = Depends(get_current_user)):
-    
     require_super_admin(user)
-    res = supabase_client.table("series").select("*").execute()
-    return res.data
+    return await db.scan_table("series")
 
 # ---------- Generación Documental con LLM ----------
 
@@ -595,42 +587,37 @@ async def create_documento_oficial(
     
     tipo = payload.tipo
     contenido = payload.contenido
+    pk = f"ENTITY#{entity_id}"
 
     try:
-        # 1. Eliminar backup anterior (si existe)
-        supabase_client.table("documentos_oficiales")\
-            .delete()\
-            .eq("entidad_id", entity_id)\
-            .eq("tipo", tipo)\
-            .eq("is_backup", True)\
-            .execute()
-
-        # 2. Convertir el activo actual en backup
-        supabase_client.table("documentos_oficiales")\
-            .update({"is_active": False, "is_backup": True})\
-            .eq("entidad_id", entity_id)\
-            .eq("tipo", tipo)\
-            .eq("is_active", True)\
-            .execute()
+        # 1. Obtener documentos existentes del mismo tipo
+        items = await db.query_by_entity("documentos_oficiales", entity_id)
+        docs_tipo = [i for i in items if i.get("tipo") == tipo]
+        
+        # 2. Eliminar backup anterior y convertir activo en backup
+        for doc in docs_tipo:
+            if doc.get("is_backup"):
+                await db.delete_item("documentos_oficiales", pk, doc["SK"])
+            elif doc.get("is_active"):
+                await db.update_item("documentos_oficiales", pk, doc["SK"], {"is_active": False, "is_backup": True})
 
         # 3. Insertar el nuevo como activo
+        doc_id = str(uuid.uuid4())
         new_doc = {
+            "PK": pk,
+            "SK": f"DOC#{doc_id}",
+            "id": doc_id,
             "entidad_id": entity_id,
             "tipo": tipo,
             "contenido": contenido,
             "is_active": True,
-            "is_backup": False
+            "is_backup": False,
+            "created_at": datetime.now().isoformat()
         }
-        res = supabase_client.table("documentos_oficiales").insert(new_doc).execute()
-        
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Error al guardar el documento oficial")
-            
-        return res.data[0]
+        await db.put_item("documentos_oficiales", new_doc)
+        return new_doc
     except Exception as e:
         print(f"Error in versioning logic: {e}")
-        # Intentar crear la tabla si no existe (esto fallará en Supabase si no hay permisos, 
-        # pero es una forma de alertar indirectamente o manejar el primer error)
         raise HTTPException(status_code=500, detail=f"Error en la base de datos: {str(e)}")
 
 @router.post("/entity/{entity_id}/documentos-oficiales/restore/{doc_id}", response_model=dict)
@@ -640,24 +627,25 @@ async def restore_documento_oficial(
     user: dict = Depends(get_current_user),
 ):
     require_entity_admin(user, entity_id)
+    pk = f"ENTITY#{entity_id}"
     
-    # 1. Obtener el documento a restaurar (debe ser backup)
-    res_target = supabase_client.table("documentos_oficiales").select("*").eq("id", doc_id).eq("entidad_id", entity_id).execute()
-    if not res_target.data:
+    # 1. Obtener el documento a restaurar
+    doc_to_restore = await db.get_item("documentos_oficiales", pk, f"DOC#{doc_id}")
+    if not doc_to_restore:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    doc_to_restore = res_target.data[0]
     tipo = doc_to_restore["tipo"]
 
-    # 2. El activo actual pasa a ser backup (el backup anterior ya no importa o se borra)
-    # Primero borramos cualquier backup que exista
-    supabase_client.table("documentos_oficiales").delete().eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_backup", True).execute()
+    # 2. El activo actual pasa a ser backup
+    items = await db.query_by_entity("documentos_oficiales", entity_id)
+    for doc in items:
+        if doc.get("tipo") == tipo:
+            if doc.get("is_backup"):
+                await db.delete_item("documentos_oficiales", pk, doc["SK"])
+            elif doc.get("is_active"):
+                await db.update_item("documentos_oficiales", pk, doc["SK"], {"is_active": False, "is_backup": True})
     
-    # El activo actual pasa a backup
-    supabase_client.table("documentos_oficiales").update({"is_active": False, "is_backup": True}).eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_active", True).execute()
-    
-    # El documento target pasa a ser activo
-    res = supabase_client.table("documentos_oficiales").update({"is_active": True, "is_backup": False}).eq("id", doc_id).execute()
-    
-    return res.data[0]
+    # 3. El documento target pasa a ser activo
+    await db.update_item("documentos_oficiales", pk, f"DOC#{doc_id}", {"is_active": True, "is_backup": False})
+    return await db.get_item("documentos_oficiales", pk, f"DOC#{doc_id}")
 

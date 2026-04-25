@@ -13,7 +13,7 @@ export default function EntitiesView({ entities, setEntities }) {
     tipoEntidad: "Persona Jurídica",
     clasificacion: "Privada",
     razonSocial: "",
-    sector: "",
+    sector: "Nacional",
     tipoDocumento: "NIT",
     numeroDocumento: "",
     dv: "",
@@ -26,51 +26,33 @@ export default function EntitiesView({ entities, setEntities }) {
     celular: "",
     correo: "",
     nombreContacto: "",
+    tipoEjecutor: "Entidad Pública",
+    tamanoEmpresa: "Pequeña Empresa",
+    entidadOrganizacional: false,
+    proyectos: false,
+    numDependencias: "",
+    numProyectos: "",
     paginaWeb: "",
     logoUrl: "",
-    tamanoEmpresa: "Pequeña",
     estado: "Activo",
-    fechaInicio: "",
-    fechaFin: "",
-    entidadOrganizacional: true,
-    proyectos: false,
     maxUsuarios: 10,
     maxDependencias: 20,
     maxProyectos: 5,
   });
 
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState({});
-
-  const filteredEntities = entities.filter(ent =>
-    ent.razonSocial.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ent.numeroDocumento.includes(searchQuery)
-  );
-
-  const handleEdit = (ent) => {
-    setSelectedEntity(ent);
-    setFormData({ ...ent });
-    setErrors({});
-    setView("edit");
-  };
-
-  const handleDelete = (id) => {
-    if (confirm("¿Estás seguro de eliminar esta entidad de forma permanente?")) {
-      fetch(`${API_BASE_URL}/entities/${id}`, {
-        method: 'DELETE'
-      }).then(res => {
-        if (res.ok) {
-          setEntities(entities.filter(a => a.id !== id));
-        } else {
-          alert("Error al eliminar la entidad.");
-        }
-      });
-    }
-  };
 
   const validate = () => {
     const newErrors = {};
     if (!formData.razonSocial.trim()) newErrors.razonSocial = "Obligatorio";
     if (!formData.numeroDocumento.trim()) newErrors.numeroDocumento = "Obligatorio";
+    if (!formData.nombreContacto.trim()) newErrors.nombreContacto = "Obligatorio";
+    if (!formData.sector) newErrors.sector = "Obligatorio";
+    if (!formData.tipoEjecutor) newErrors.tipoEjecutor = "Obligatorio";
+    if (!formData.tamanoEmpresa) newErrors.tamanoEmpresa = "Obligatorio";
+    
     if (!formData.correo.trim()) {
       newErrors.correo = "Obligatorio";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.correo)) {
@@ -78,6 +60,36 @@ export default function EntitiesView({ entities, setEntities }) {
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleLogoChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onloadend = () => setLogoPreview(reader.result);
+    reader.readAsDataURL(file);
+
+    // Upload to S3 via API
+    setIsUploading(true);
+    const body = new FormData();
+    body.append('file', file);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
+        method: 'POST',
+        body
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData({ ...formData, logoUrl: data.url });
+      }
+    } catch (err) {
+      console.error("Logo upload failed", err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSave = () => {
@@ -107,25 +119,65 @@ export default function EntitiesView({ entities, setEntities }) {
     });
   };
 
+  const handleEdit = (ent) => {
+    setSelectedEntity(ent);
+    setFormData({
+      ...ent,
+      sector: ent.sector || "Nacional",
+      tipoEjecutor: ent.tipoEjecutor || "Entidad Pública",
+      tamanoEmpresa: ent.tamanoEmpresa || "Pequeña Empresa",
+      entidadOrganizacional: !!ent.entidadOrganizacional,
+      proyectos: !!ent.proyectos,
+      numDependencias: ent.numDependencias || "",
+      numProyectos: ent.numProyectos || "",
+      nombreContacto: ent.nombreContacto || "",
+      correo: ent.correo || ent.email || "",
+      celular: ent.celular || "",
+      paginaWeb: ent.paginaWeb || "",
+      dv: ent.dv || "",
+      logoUrl: ent.logoUrl || "",
+    });
+    setLogoPreview(null);
+    setErrors({});
+    setView("edit");
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("¿Está seguro de eliminar esta entidad?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/entities/${id}`, { method: 'DELETE' });
+      if (res.ok) setEntities(entities.filter(e => e.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredEntities = entities.filter(e => 
+    e.razonSocial?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    e.numeroDocumento?.includes(searchQuery)
+  );
+
   if (view === "list") {
     return (
       <div className="flex flex-col h-full bg-background overflow-hidden">
         <ViewHeader
           icon={Building2}
-          title="Directorio de Entidades"
+          title="Directorio de Entidades - V2.0"
           subtitle="Gestión global de organizaciones y clientes"
           actions={
             <button
               onClick={() => {
                 setFormData({
-                  tipoEntidad: "Persona Jurídica", clasificacion: "Privada", razonSocial: "", sector: "",
+                  tipoEntidad: "Persona Jurídica", clasificacion: "Privada", razonSocial: "", sector: "Nacional",
                   tipoDocumento: "NIT", numeroDocumento: "", dv: "", ciiu: "",
                   pais: "Colombia", departamento: "", ciudad: "", direccion: "",
                   telefono: "", celular: "", correo: "", nombreContacto: "", paginaWeb: "",
-                  logoUrl: "", tamanoEmpresa: "Pequeña", estado: "Activo",
-                  fechaInicio: "", fechaFin: "", entidadOrganizacional: true, proyectos: false,
+                  tipoEjecutor: "Entidad Pública", tamanoEmpresa: "Pequeña Empresa",
+                  entidadOrganizacional: false, proyectos: false, numDependencias: "", numProyectos: "",
+                  logoUrl: "", estado: "Activo",
                   maxUsuarios: 10, maxDependencias: 20, maxProyectos: 5,
                 });
+                setLogoPreview(null);
                 setErrors({});
                 setView("create");
               }}
@@ -159,7 +211,7 @@ export default function EntitiesView({ entities, setEntities }) {
                   <th className="px-6 py-3">Organización</th>
                   <th className="px-6 py-3">Identificación</th>
                   <th className="px-6 py-3">Contacto</th>
-                  <th className="px-6 py-3">Licencia</th>
+                  <th className="px-6 py-3">Sector</th>
                   <th className="px-6 py-3">Estado</th>
                   <th className="px-6 py-3 text-right">Acciones</th>
                 </tr>
@@ -172,13 +224,13 @@ export default function EntitiesView({ entities, setEntities }) {
                         <img src={ent.logoUrl} className="h-8 w-8 rounded-md border border-border object-contain p-0.5 bg-white shadow-sm" />
                       ) : (
                         <div className="h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] uppercase">
-                          {ent.razonSocial.slice(0, 2)}
+                          {ent.razonSocial?.slice(0, 2) || "EN"}
                         </div>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial}</span>
-                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.sector || 'Sin sector'}</span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.tipoEjecutor || 'Ejecutor No Def.'}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-mono text-[11px] bg-secondary/80 px-1.5 py-0.5 rounded border border-border">
@@ -186,18 +238,17 @@ export default function EntitiesView({ entities, setEntities }) {
                       </span>
                     </td>
                     <td className="px-6 py-4 space-y-0.5">
-                      <div className="flex items-center gap-1.5 text-muted-foreground"><Mail className="h-3 w-3" /> {ent.correo}</div>
-                      <div className="flex items-center gap-1.5 text-muted-foreground"><Phone className="h-3 w-3" /> {ent.telefono || ent.celular || '--'}</div>
+                      <div className="font-medium text-foreground">{ent.nombreContacto}</div>
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]"><Mail className="h-3 w-3" /> {ent.correo}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-[11px] font-medium text-muted-foreground uppercase">{ent.maxUsuarios} Usuarios</div>
-                      <div className="text-[10px] text-muted-foreground/60">{ent.fechaFin ? `Vence: ${ent.fechaFin}` : 'Licencia Vitalicia'}</div>
+                    <td className="px-6 py-4 text-muted-foreground text-[12px]">
+                      {ent.sector}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn(
-                        "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border",
-                        ent.estado === "Activo" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-muted text-muted-foreground border-border"
-                      )}>
+                         "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border",
+                         ent.estado === "Activo" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-muted text-muted-foreground border-border"
+                       )}>
                         {ent.estado}
                       </span>
                     </td>
@@ -225,26 +276,93 @@ export default function EntitiesView({ entities, setEntities }) {
       />
       <div className="flex-1 overflow-auto p-5 md:p-7">
         <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
-          {/* General */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><Building2 className="h-4 w-4 text-primary" /> Datos Corporativos</h3>
-            <div className="grid grid-cols-2 gap-4">
+          
+          {/* Logo & Identity */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-5 lg:row-span-2">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
+              <Building2 className="h-4 w-4 text-primary" /> Identidad Visual
+            </h3>
+            
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="relative group">
+                <div className="h-32 w-32 rounded-xl border-2 border-dashed border-border flex items-center justify-center overflow-hidden bg-secondary/30 transition-all group-hover:border-primary/50">
+                  {logoPreview || formData.logoUrl ? (
+                    <img src={logoPreview || formData.logoUrl} className="h-full w-full object-contain p-2" />
+                  ) : (
+                    <Building2 className="h-12 w-12 text-muted-foreground/30" />
+                  )}
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                      <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                </div>
+                <label className="absolute -bottom-2 -right-2 h-8 w-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center cursor-pointer shadow-lg hover:scale-110 transition-all">
+                  <Plus className="h-4 w-4" />
+                  <input type="file" className="hidden" onChange={handleLogoChange} accept="image/*" />
+                </label>
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center">Carga el logo oficial de la entidad (PNG, JPG o SVG)</p>
+            </div>
+
+            <div className="space-y-4 pt-2">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Tipo</label>
-                <select value={formData.tipoEntidad} onChange={e=>setFormData({...formData, tipoEntidad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
-                  <option>Persona Jurídica</option>
-                  <option>Persona Natural</option>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Sector *</label>
+                <select 
+                  value={formData.sector} 
+                  onChange={e=>setFormData({...formData, sector: e.target.value})} 
+                  className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.sector ? "border-destructive/50" : "border-input")}
+                >
+                  <option>Distrital</option>
+                  <option>Municipal</option>
+                  <option>Departamental</option>
+                  <option>Regional</option>
+                  <option>Nacional</option>
+                  <option>Internacional</option>
+                  <option>Personal</option>
                 </select>
               </div>
+
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificación</label>
-                <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
-                  <option>Privada</option>
-                  <option>Pública</option>
-                  <option>Mixta</option>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Tipo de Ejecutor *</label>
+                <select 
+                  value={formData.tipoEjecutor} 
+                  onChange={e=>setFormData({...formData, tipoEjecutor: e.target.value})} 
+                  className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.tipoEjecutor ? "border-destructive/50" : "border-input")}
+                >
+                  <option>Entidad Pública</option>
+                  <option>MPI</option>
+                  <option>Empresa Gestión Documental</option>
+                  <option>Bibliotecólogo / Archivistas</option>
+                  <option>Entidad Privada</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Tamaño Empresa *</label>
+                <select 
+                  value={formData.tamanoEmpresa} 
+                  onChange={e=>setFormData({...formData, tamanoEmpresa: e.target.value})} 
+                  className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.tamanoEmpresa ? "border-destructive/50" : "border-input")}
+                >
+                  <option>MicroEmpresa</option>
+                  <option>Pequeña Empresa</option>
+                  <option>Mediana Empresa</option>
+                  <option>Gran Empresa</option>
+                  <option>Entidad sin ánimo de lucro</option>
+                  <option>Entidad pública</option>
+                  <option>Entidad Organizacional</option>
+                  <option>Proyectos</option>
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Core Data */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
+              <ShieldAlert className="h-4 w-4 text-primary" /> Información Legal
+            </h3>
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
               <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
@@ -264,6 +382,10 @@ export default function EntitiesView({ entities, setEntities }) {
                   <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="w-12 h-9 bg-background border border-input rounded-md text-[13px] text-center" />
                 </div>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Nombre de Contacto *</label>
+              <input value={formData.nombreContacto} onChange={e=>setFormData({...formData, nombreContacto: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.nombreContacto ? "border-destructive/50" : "border-input")} />
             </div>
           </div>
 
@@ -296,37 +418,57 @@ export default function EntitiesView({ entities, setEntities }) {
             </div>
           </div>
 
-          {/* SaaS Config */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4 md:col-span-2">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><ShieldAlert className="h-4 w-4 text-primary" /> Parámetros SaaS y Licenciamiento</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {/* Operational Scope */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4 lg:col-span-2">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
+              <ListFilter className="h-4 w-4 text-primary" /> Alcance Operativo
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="flex flex-col gap-3 justify-center">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input type="checkbox" checked={formData.entidadOrganizacional} onChange={e=>setFormData({...formData, entidadOrganizacional: e.target.checked})} className="peer hidden" />
+                    <div className="h-5 w-5 border-2 border-border rounded-md bg-background peer-checked:bg-primary peer-checked:border-primary transition-all"></div>
+                    <Save className="h-3 w-3 absolute inset-1 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="text-[13px] font-medium group-hover:text-primary transition-colors">Entidad Organizacional</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input type="checkbox" checked={formData.proyectos} onChange={e=>setFormData({...formData, proyectos: e.target.checked})} className="peer hidden" />
+                    <div className="h-5 w-5 border-2 border-border rounded-md bg-background peer-checked:bg-primary peer-checked:border-primary transition-all"></div>
+                    <Save className="h-3 w-3 absolute inset-1 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="text-[13px] font-medium group-hover:text-primary transition-colors">Proyectos</span>
+                </label>
+              </div>
+
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Estado</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Nº Dependencias</label>
+                <input placeholder="Ej: 30" value={formData.numDependencias} onChange={e=>setFormData({...formData, numDependencias: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Nº Proyectos</label>
+                <input placeholder="Ej: 5" value={formData.numProyectos} onChange={e=>setFormData({...formData, numProyectos: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Estado Licencia</label>
                 <select value={formData.estado} onChange={e=>setFormData({...formData, estado: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] font-bold text-primary">
                   <option>Activo</option>
                   <option>Inactivo</option>
                 </select>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Max Usuarios</label>
-                <input type="number" value={formData.maxUsuarios} onChange={e=>setFormData({...formData, maxUsuarios: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Inicio</label>
-                <input type="date" value={formData.fechaInicio} onChange={e=>setFormData({...formData, fechaInicio: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Vencimiento</label>
-                <input type="date" value={formData.fechaFin} onChange={e=>setFormData({...formData, fechaFin: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
             </div>
           </div>
+
         </div>
       </div>
       
       <div className="p-4 border-t border-border bg-card flex justify-end gap-3 shrink-0">
         <button onClick={() => setView("list")} className="px-5 py-2 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-all">Cancelar</button>
-        <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-md text-[13px] font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">
+        <button onClick={handleSave} disabled={isUploading} className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-md text-[13px] font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50">
           <Save className="h-4 w-4" /> Guardar Organización
         </button>
       </div>
