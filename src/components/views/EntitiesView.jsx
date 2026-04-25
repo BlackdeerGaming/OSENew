@@ -395,6 +395,11 @@ export default function EntitiesView({ entities, setEntities }) {
                 <input value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
               </div>
             </div>
+            
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Sitio Web</label>
+              <input value={formData.paginaWeb} onChange={e=>setFormData({...formData, paginaWeb: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" placeholder="https://" />
+            </div>
           </div>
 
           {/* Logo & Identity (THIRD, spans 2 rows to fit nicely on the right) */}
