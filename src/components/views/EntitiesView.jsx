@@ -44,14 +44,32 @@ export default function EntitiesView({ entities, setEntities }) {
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const filteredEntities = entities.filter(ent =>
-    ent.razonSocial.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ent.numeroDocumento.includes(searchQuery)
-  );
+  const filteredEntities = (entities || []).filter(e => {
+    const term = (searchQuery || "").toLowerCase();
+    const razonSocial = (e.razonSocial || "").toLowerCase();
+    const nit = (e.numeroDocumento || "").toString();
+    return razonSocial.includes(term) || nit.includes(term);
+  });
 
   const handleEdit = (ent) => {
     setSelectedEntity(ent);
-    setFormData({ ...ent });
+    setFormData({
+      ...ent,
+      sector: ent.sector || "Nacional",
+      tipoEjecutor: ent.tipoEjecutor || "Entidad Pública",
+      tamanoEmpresa: ent.tamanoEmpresa || "Pequeña Empresa",
+      entidadOrganizacional: !!ent.entidadOrganizacional,
+      proyectos: !!ent.proyectos,
+      numDependencias: ent.num_dependencias || ent.numDependencias || "",
+      numProyectos: ent.num_proyectos || ent.numProyectos || "",
+      nombreContacto: ent.nombre_contacto || ent.nombreContacto || "",
+      correo: ent.correo || ent.email || "",
+      celular: ent.celular || "",
+      paginaWeb: ent.pagina_web || ent.paginaWeb || "",
+      dv: ent.dv || "",
+      logoUrl: ent.logo_url || ent.logoUrl || "",
+    });
+    setLogoPreview(null);
     setErrors({});
     setView("edit");
   };
@@ -205,7 +223,7 @@ export default function EntitiesView({ entities, setEntities }) {
                         <img src={ent.logoUrl} className="h-8 w-8 rounded-md border border-border object-contain p-0.5 bg-white shadow-sm" />
                       ) : (
                         <div className="h-8 w-8 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] uppercase">
-                          {ent.razonSocial.slice(0, 2)}
+                          {ent.razonSocial?.slice(0, 2) || "EN"}
                         </div>
                       )}
                     </td>
