@@ -455,6 +455,7 @@ class EntityCreate(BaseModel):
     razonSocial: str
     numeroDocumento: str
     dv: str | None = ""
+    ciiu: str | None = ""
     correo: str
     nombreContacto: str
     sector: str
