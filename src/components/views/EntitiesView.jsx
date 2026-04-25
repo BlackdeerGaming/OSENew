@@ -296,6 +296,20 @@ export default function EntitiesView({ entities, setEntities }) {
               <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
               <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Clasificación</label>
+                <select value={formData.clasificacion} onChange={e=>setFormData({...formData, clasificacion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>Pública</option>
+                  <option>Privada</option>
+                  <option>Mixta</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">CIIU</label>
+                <input value={formData.ciiu} onChange={e=>setFormData({...formData, ciiu: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none" />
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Doc.</label>
@@ -369,7 +383,7 @@ export default function EntitiesView({ entities, setEntities }) {
                 <input type="email" value={formData.correo} onChange={e=>setFormData({...formData, correo: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px]", errors.correo ? "border-destructive/50" : "border-input")} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Celular</label>
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Teléfono</label>
                 <input value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
               </div>
             </div>
