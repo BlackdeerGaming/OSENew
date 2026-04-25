@@ -240,20 +240,32 @@ class UserSignUp(BaseModel):
 
 class EntityCreate(BaseModel):
     razonSocial: str
-    nit: str | None = None
-    numeroDocumento: str | None = None
-    email: str | None = None
-    correo: str | None = None
-    telefono: str | None = None
+    numeroDocumento: str
+    dv: str | None = ""
+    correo: str
+    nombreContacto: str
+    sector: str
+    tipoEjecutor: str
+    tamanoEmpresa: str
+    entidadOrganizacional: bool = False
+    proyectos: bool = False
+    numDependencias: str | None = ""
+    numProyectos: str | None = ""
+    logoUrl: str | None = ""
+    tipoEntidad: str | None = "Persona Jurídica"
+    clasificacion: str | None = "Privada"
+    tipoDocumento: str | None = "NIT"
     pais: str | None = "Colombia"
-    departamento: str | None = None
-    ciudad: str | None = None
-    sigla: str | None = None
-    direccion: str | None = None
+    departamento: str | None = ""
+    ciudad: str | None = ""
+    direccion: str | None = ""
+    telefono: str | None = ""
+    celular: str | None = ""
+    paginaWeb: str | None = ""
+    estado: str | None = "Activo"
     maxUsuarios: int | None = 10
     maxDependencias: int | None = 20
-    estado: str | None = "Activo"
-    ciiu: str | None = None
+    maxProyectos: int | None = 5
 
 class PasswordResetRequest(BaseModel):
     email: str
@@ -1382,72 +1394,97 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
 async def get_entities():
     if not supabase_client: return []
     res = supabase_client.table("entities").select("*").execute()
-    mapped = []
-    for e in res.data:
-        mapped.append({
-            "id": e["id"], "razonSocial": e["razon_social"], "nit": e["nit"],
-            "numeroDocumento": e["nit"],
-            "email": e.get("email"), "correo": e.get("email"),
-            "pais": e["pais"], "estado": e["estado"],
-            "ciiu": e.get("ciiu"),
-            "telefono": e.get("telefono"),
-            "departamento": e.get("departamento"),
-            "ciudad": e.get("ciudad"),
-            "direccion": e.get("direccion"),
-            "sigla": e.get("sigla"),
-            "maxUsuarios": e.get("max_usuarios"),
-            "maxDependencias": e.get("max_dependencias")
-        })
-    return mapped
+    return res.data or []
+
+@router.post("/entities/upload-logo")
+async def upload_entity_logo(file: UploadFile = File(...)):
+    if not supabase_client: raise HTTPException(503, "Supabase disconnected")
+    content = await file.read()
+    ext = file.filename.split('.')[-1]
+    filename = f"logo_{int(datetime.now().timestamp())}.{ext}"
+    
+    # Upload to 'logos' bucket
+    try:
+        supabase_client.storage.from_("logos").upload(filename, content, {"content-type": file.content_type})
+        url = supabase_client.storage.from_("logos").get_public_url(filename)
+        return {"url": url}
+    except Exception as e:
+        raise HTTPException(500, f"Upload failed: {str(e)}")
 
 @router.post("/entities")
 async def create_entity(entity: EntityCreate):
     if not supabase_client: raise HTTPException(500, "DB disconnected")
     data = {
         "razon_social": entity.razonSocial,
-        "nit": entity.numeroDocumento or entity.nit or "000000000",
-        "email": entity.correo or entity.email,
-        "telefono": entity.telefono,
+        "numero_documento": entity.numeroDocumento,
+        "dv": entity.dv,
+        "correo": entity.correo,
+        "nombre_contacto": entity.nombreContacto,
+        "sector": entity.sector,
+        "tipo_ejecutor": entity.tipoEjecutor,
+        "tamano_empresa": entity.tamanoEmpresa,
+        "entidad_organizacional": entity.entidadOrganizacional,
+        "proyectos": entity.proyectos,
+        "num_dependencias": entity.numDependencias,
+        "num_proyectos": entity.numProyectos,
+        "logo_url": entity.logoUrl,
+        "tipo_entidad": entity.tipoEntidad,
+        "clasificacion": entity.clasificacion,
+        "tipo_documento": entity.tipoDocumento,
         "pais": entity.pais,
         "departamento": entity.departamento,
         "ciudad": entity.ciudad,
         "direccion": entity.direccion,
-        "sigla": entity.sigla,
+        "telefono": entity.telefono,
+        "celular": entity.celular,
+        "pagina_web": entity.paginaWeb,
+        "estado": entity.estado,
         "max_usuarios": entity.maxUsuarios,
         "max_dependencias": entity.maxDependencias,
-        "estado": entity.estado,
-        "ciiu": entity.ciiu
+        "max_proyectos": entity.maxProyectos
     }
     res = supabase_client.table("entities").insert(data).execute()
     if not res.data: raise HTTPException(500, "Error al crear entidad")
-    e = res.data[0]
-    return {"id": e["id"]}
+    return {"id": res.data[0]["id"]}
 
 @router.put("/entities/{entity_id}")
 async def update_entity(entity_id: str, entity: EntityCreate):
     if not supabase_client: raise HTTPException(500, "DB disconnected")
     data = {
         "razon_social": entity.razonSocial,
-        "nit": entity.numeroDocumento or entity.nit,
-        "email": entity.correo or entity.email,
-        "telefono": entity.telefono,
+        "numero_documento": entity.numeroDocumento,
+        "dv": entity.dv,
+        "correo": entity.correo,
+        "nombre_contacto": entity.nombreContacto,
+        "sector": entity.sector,
+        "tipo_ejecutor": entity.tipoEjecutor,
+        "tamano_empresa": entity.tamanoEmpresa,
+        "entidad_organizacional": entity.entidadOrganizacional,
+        "proyectos": entity.proyectos,
+        "num_dependencias": entity.numDependencias,
+        "num_proyectos": entity.numProyectos,
+        "logo_url": entity.logoUrl,
+        "tipo_entidad": entity.tipoEntidad,
+        "clasificacion": entity.clasificacion,
+        "tipo_documento": entity.tipoDocumento,
         "pais": entity.pais,
         "departamento": entity.departamento,
         "ciudad": entity.ciudad,
         "direccion": entity.direccion,
-        "sigla": entity.sigla,
+        "telefono": entity.telefono,
+        "celular": entity.celular,
+        "pagina_web": entity.paginaWeb,
+        "estado": entity.estado,
         "max_usuarios": entity.maxUsuarios,
         "max_dependencias": entity.maxDependencias,
-        "estado": entity.estado,
-        "ciiu": entity.ciiu
+        "max_proyectos": entity.maxProyectos
     }
-    # Remove none values to avoid overwriting with nulls if partial update
+    # Remove none values
     data = {k: v for k, v in data.items() if v is not None}
     
     res = supabase_client.table("entities").update(data).eq("id", entity_id).execute()
     if not res.data: raise HTTPException(404, "Entidad no encontrada")
-    e = res.data[0]
-    return {"id": e["id"]}
+    return {"id": res.data[0]["id"]}
 
 @router.delete("/entities/{entity_id}")
 async def delete_entity(entity_id: str):
