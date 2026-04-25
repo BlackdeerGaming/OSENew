@@ -487,7 +487,7 @@ export default function EntitiesView({ entities, setEntities }) {
             <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
               <ListFilter className="h-4 w-4 text-primary" /> Alcance Operativo
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               <div className="flex flex-col gap-3 justify-center">
                 <label className="flex items-center gap-3 cursor-pointer group">
                   <div className="relative">
@@ -515,6 +515,11 @@ export default function EntitiesView({ entities, setEntities }) {
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase">Nº Proyectos</label>
                 <input placeholder="Ej: 5" value={formData.numProyectos} onChange={e=>setFormData({...formData, numProyectos: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Nº Usuarios Entidad</label>
+                <input placeholder="Ej: 10" value={formData.maxUsuarios} onChange={e=>setFormData({...formData, maxUsuarios: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
               </div>
 
               <div className="space-y-1.5">
