@@ -242,6 +242,7 @@ class EntityCreate(BaseModel):
     razonSocial: str
     numeroDocumento: str
     dv: str | None = ""
+    ciiu: str | None = ""
     correo: str
     nombreContacto: str
     sector: str
@@ -1418,6 +1419,7 @@ async def create_entity(entity: EntityCreate):
         "razon_social": entity.razonSocial,
         "numero_documento": entity.numeroDocumento,
         "dv": entity.dv,
+        "ciiu": entity.ciiu,
         "correo": entity.correo,
         "nombre_contacto": entity.nombreContacto,
         "sector": entity.sector,
@@ -1454,6 +1456,7 @@ async def update_entity(entity_id: str, entity: EntityCreate):
         "razon_social": entity.razonSocial,
         "numero_documento": entity.numeroDocumento,
         "dv": entity.dv,
+        "ciiu": entity.ciiu,
         "correo": entity.correo,
         "nombre_contacto": entity.nombreContacto,
         "sector": entity.sector,
