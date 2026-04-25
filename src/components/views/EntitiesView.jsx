@@ -4,6 +4,13 @@ import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
 import ViewHeader from "../ui/ViewHeader";
 
+const locationData = {
+  "Colombia": ["Amazonas", "Antioquia", "Arauca", "Atlántico", "Bogotá D.C.", "Bolívar", "Boyacá", "Caldas", "Caquetá", "Casanare", "Cauca", "Cesar", "Chocó", "Córdoba", "Cundinamarca", "Guainía", "Guaviare", "Huila", "La Guajira", "Magdalena", "Meta", "Nariño", "Norte de Santander", "Putumayo", "Quindío", "Risaralda", "San Andrés y Providencia", "Santander", "Sucre", "Tolima", "Valle del Cauca", "Vaupés", "Vichada"],
+  "México": ["Aguascalientes", "Baja California", "Baja California Sur", "Campeche", "Chiapas", "Chihuahua", "Ciudad de México", "Coahuila", "Colima", "Durango", "Estado de México", "Guanajuato", "Guerrero", "Hidalgo", "Jalisco", "Michoacán", "Morelos", "Nayarit", "Nuevo León", "Oaxaca", "Puebla", "Querétaro", "Quintana Roo", "San Luis Potosí", "Sinaloa", "Sonora", "Tabasco", "Tamaulipas", "Tlaxcala", "Veracruz", "Yucatán", "Zacatecas"],
+  "España": ["Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria", "Castilla y León", "Castilla-La Mancha", "Cataluña", "Comunidad Valenciana", "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja"],
+  "Argentina": ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"]
+};
+
 export default function EntitiesView({ entities, setEntities }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,6 +59,8 @@ export default function EntitiesView({ entities, setEntities }) {
     if (!formData.sector) newErrors.sector = "Obligatorio";
     if (!formData.tipoEjecutor) newErrors.tipoEjecutor = "Obligatorio";
     if (!formData.tamanoEmpresa) newErrors.tamanoEmpresa = "Obligatorio";
+    if (!formData.pais) newErrors.pais = "Obligatorio";
+    if (!formData.departamento) newErrors.departamento = "Obligatorio";
     
     if (!formData.correo.trim()) {
       newErrors.correo = "Obligatorio";
@@ -135,7 +144,9 @@ export default function EntitiesView({ entities, setEntities }) {
       celular: ent.celular || "",
       paginaWeb: ent.paginaWeb || "",
       dv: ent.dv || "",
-      logoUrl: ent.logoUrl || "",
+      logoUrl: ent.logo_url || ent.logoUrl || "",
+      pais: ent.pais || "Colombia",
+      departamento: ent.departamento || "",
     });
     setLogoPreview(null);
     setErrors({});
@@ -277,7 +288,95 @@ export default function EntitiesView({ entities, setEntities }) {
       <div className="flex-1 overflow-auto p-5 md:p-7">
         <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
           
-          {/* Logo & Identity */}
+          {/* Core Data (Información Legal) - FIRST */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
+              <ShieldAlert className="h-4 w-4 text-primary" /> Información Legal
+            </h3>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
+              <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Doc.</label>
+                <select value={formData.tipoDocumento} onChange={e=>setFormData({...formData, tipoDocumento: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
+                  <option>NIT</option>
+                  <option>CC</option>
+                </select>
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Número *</label>
+                <div className="flex gap-2">
+                  <input value={formData.numeroDocumento} onChange={e=>setFormData({...formData, numeroDocumento: e.target.value})} className={cn("flex-1 h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.numeroDocumento ? "border-destructive/50" : "border-input")} />
+                  <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="w-12 h-9 bg-background border border-input rounded-md text-[13px] text-center" />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-muted-foreground uppercase">Nombre de Contacto *</label>
+              <input value={formData.nombreContacto} onChange={e=>setFormData({...formData, nombreContacto: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.nombreContacto ? "border-destructive/50" : "border-input")} />
+            </div>
+          </div>
+
+          {/* Contact & Location - SECOND */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><MapPin className="h-4 w-4 text-primary" /> Contacto y Ubicación</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">País *</label>
+                <select 
+                  value={formData.pais} 
+                  onChange={(e) => setFormData({...formData, pais: e.target.value, departamento: ""})} 
+                  className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.pais ? "border-destructive/50" : "border-input")}
+                >
+                  <option value="">Seleccione...</option>
+                  {Object.keys(locationData).map(country => (
+                    <option key={country} value={country}>{country}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Departamento *</label>
+                <select 
+                  value={formData.departamento} 
+                  onChange={(e) => setFormData({...formData, departamento: e.target.value})} 
+                  className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.departamento ? "border-destructive/50" : "border-input")}
+                  disabled={!formData.pais || !locationData[formData.pais]}
+                >
+                  <option value="">Seleccione...</option>
+                  {formData.pais && locationData[formData.pais] && locationData[formData.pais].map(dep => (
+                    <option key={dep} value={dep}>{dep}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Ciudad</label>
+                <input value={formData.ciudad} onChange={e=>setFormData({...formData, ciudad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Dirección</label>
+                <input value={formData.direccion} onChange={e=>setFormData({...formData, direccion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Correo *</label>
+                <input type="email" value={formData.correo} onChange={e=>setFormData({...formData, correo: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px]", errors.correo ? "border-destructive/50" : "border-input")} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase">Celular</label>
+                <input value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Logo & Identity (THIRD, spans 2 rows to fit nicely on the right) */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-5 lg:row-span-2">
             <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
               <Building2 className="h-4 w-4 text-primary" /> Identidad Visual
@@ -358,67 +457,7 @@ export default function EntitiesView({ entities, setEntities }) {
             </div>
           </div>
 
-          {/* Core Data */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
-              <ShieldAlert className="h-4 w-4 text-primary" /> Información Legal
-            </h3>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase">Razón Social *</label>
-              <input value={formData.razonSocial} onChange={e=>setFormData({...formData, razonSocial: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.razonSocial ? "border-destructive/50" : "border-input focus:ring-1 focus:ring-ring")} />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Doc.</label>
-                <select value={formData.tipoDocumento} onChange={e=>setFormData({...formData, tipoDocumento: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px] outline-none">
-                  <option>NIT</option>
-                  <option>CC</option>
-                </select>
-              </div>
-              <div className="space-y-1.5 col-span-2">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Número *</label>
-                <div className="flex gap-2">
-                  <input value={formData.numeroDocumento} onChange={e=>setFormData({...formData, numeroDocumento: e.target.value})} className={cn("flex-1 h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.numeroDocumento ? "border-destructive/50" : "border-input")} />
-                  <input placeholder="DV" value={formData.dv} onChange={e=>setFormData({...formData, dv: e.target.value})} className="w-12 h-9 bg-background border border-input rounded-md text-[13px] text-center" />
-                </div>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase">Nombre de Contacto *</label>
-              <input value={formData.nombreContacto} onChange={e=>setFormData({...formData, nombreContacto: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px] outline-none", errors.nombreContacto ? "border-destructive/50" : "border-input")} />
-            </div>
-          </div>
-
-          {/* Contact & Location */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3"><MapPin className="h-4 w-4 text-primary" /> Contacto y Ubicación</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Correo *</label>
-                <input type="email" value={formData.correo} onChange={e=>setFormData({...formData, correo: e.target.value})} className={cn("w-full h-9 px-3 bg-background border rounded-md text-[13px]", errors.correo ? "border-destructive/50" : "border-input")} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Celular</label>
-                <input value={formData.celular} onChange={e=>setFormData({...formData, celular: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase">Dirección</label>
-              <input value={formData.direccion} onChange={e=>setFormData({...formData, direccion: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Ciudad</label>
-                <input value={formData.ciudad} onChange={e=>setFormData({...formData, ciudad: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">Sitio Web</label>
-                <input value={formData.paginaWeb} onChange={e=>setFormData({...formData, paginaWeb: e.target.value})} className="w-full h-9 px-3 bg-background border border-input rounded-md text-[13px]" />
-              </div>
-            </div>
-          </div>
-
-          {/* Operational Scope */}
+          {/* Operational Scope - FOURTH (below 1 and 2, spanning 2 columns) */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-4 lg:col-span-2">
             <h3 className="text-[14px] font-bold flex items-center gap-2 border-b border-border pb-3">
               <ListFilter className="h-4 w-4 text-primary" /> Alcance Operativo
