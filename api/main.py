@@ -1417,10 +1417,10 @@ async def create_entity(entity: EntityCreate):
     if not supabase_client: raise HTTPException(500, "DB disconnected")
     data = {
         "razon_social": entity.razonSocial,
-        "numero_documento": entity.numeroDocumento,
+        "nit": entity.numeroDocumento,
         "dv": entity.dv,
         "ciiu": entity.ciiu,
-        "correo": entity.correo,
+        "email": entity.correo,
         "nombre_contacto": entity.nombreContacto,
         "sector": entity.sector,
         "tipo_ejecutor": entity.tipoEjecutor,
@@ -1454,10 +1454,10 @@ async def update_entity(entity_id: str, entity: EntityCreate):
     if not supabase_client: raise HTTPException(500, "DB disconnected")
     data = {
         "razon_social": entity.razonSocial,
-        "numero_documento": entity.numeroDocumento,
+        "nit": entity.numeroDocumento,
         "dv": entity.dv,
         "ciiu": entity.ciiu,
-        "correo": entity.correo,
+        "email": entity.correo,
         "nombre_contacto": entity.nombreContacto,
         "sector": entity.sector,
         "tipo_ejecutor": entity.tipoEjecutor,
