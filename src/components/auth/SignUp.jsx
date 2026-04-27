@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, Phone, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Phone, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import API_BASE_URL from '../../config/api';
 
@@ -15,6 +15,8 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
   });
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -173,26 +175,42 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary transition-colors" />
                   <input 
-                    type="password" 
+                    type={showPassword ? "text" : "password"} 
                     required
-                    className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/5"
+                    className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50/50 py-3.5 pl-12 pr-12 text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/5"
                     placeholder="••••••••"
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-300 hover:text-primary transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar *</label>
-                <input 
-                  type="password" 
-                  required
-                  className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50/50 py-3.5 px-5 text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/5"
-                  placeholder="••••••••"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                />
+                <div className="relative">
+                  <input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    required
+                    className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50/50 py-3.5 px-5 pr-12 text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/5"
+                    placeholder="••••••••"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-300 hover:text-primary transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
           </div>
 

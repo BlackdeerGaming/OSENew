@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Phone, Lock, Save, LayoutTemplate, LogOut } from 'lucide-react';
+import { User, Phone, Lock, Save, LayoutTemplate, LogOut, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function SettingsView({ currentUser, onUpdate, onLogout }) {
@@ -12,6 +12,8 @@ export default function SettingsView({ currentUser, onUpdate, onLogout }) {
   });
   const [status, setStatus] = useState('idle'); // 'idle' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const validatePassword = (pw) => {
     if (pw.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
@@ -135,34 +137,48 @@ export default function SettingsView({ currentUser, onUpdate, onLogout }) {
 
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-slate-700">Nueva Contraseña</label>
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Lock className="h-4 w-4 text-slate-400" />
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <Lock className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    className="w-full rounded-md border border-input bg-white py-2.5 pl-10 pr-10 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <input 
-                  type="password" 
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full rounded-md border border-input bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                />
-              </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-slate-700">Confirmar Nueva Contraseña</label>
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Lock className="h-4 w-4 text-slate-400" />
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <Lock className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    placeholder="••••••••"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                    className="w-full rounded-md border border-input bg-white py-2.5 pl-10 pr-10 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <input 
-                  type="password" 
-                  placeholder="••••••••"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                  className="w-full rounded-md border border-input bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                />
-              </div>
             </div>
             
           </div>

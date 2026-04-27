@@ -8,6 +8,7 @@ export default function ActivateAccount({ token, onActivate, onBackToLogin }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
   const [loadingInfo, setLoadingInfo] = useState(true);
@@ -146,13 +147,20 @@ export default function ActivateAccount({ token, onActivate, onBackToLogin }) {
                  <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                     <input 
-                      type={showPass ? "text" : "password"}
+                      type={showConfirmPass ? "text" : "password"}
                       required
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
                       placeholder="••••••••"
                       className="w-full bg-slate-50 border-slate-200 rounded-xl py-4 pl-12 pr-12 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
+                    <button 
+                      type="button"
+                      onClick={() => setShowConfirmPass(!showConfirmPass)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {showConfirmPass ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                  </div>
               </div>
            </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, LayoutDashboard, AlertCircle, Loader2, Check } from 'lucide-react';
+import { Mail, Lock, User, LayoutDashboard, AlertCircle, Loader2, Check, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 import { supabase } from '../../lib/supabase';
@@ -8,6 +8,7 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
   const [formData, setFormData] = useState({ identifier: initialEmail, password: '', rememberMe: false });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,13 +102,20 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
                 <Lock className="h-5 w-5 text-slate-400" />
               </div>
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 required
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-12 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
           </div>
 
