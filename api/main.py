@@ -392,14 +392,73 @@ class UserActivate(BaseModel):
 
 
 class LoginRequest(BaseModel):
-
     identifier: str
-
     password: str
-
     activationToken: str | None = None
-
     tokenExpiry: int | None = None
+
+@router.post("/login")
+async def login(req: LoginRequest):
+    """
+    Autentica al usuario contra Cognito y recupera su perfil de DynamoDB.
+    """
+    identifier = req.identifier.strip().lower()
+    
+    try:
+        # 1. Autenticar en Cognito
+        auth_result = await cognito.authenticate(identifier, req.password)
+        id_token = auth_result.get("IdToken")
+        
+        # 2. Buscar perfil en DynamoDB
+        is_superadmin = identifier in SUPERADMIN_EMAILS
+        
+        user_profile = None
+        # Escaneamos la tabla users para encontrar el email
+        users = await db.scan_table("users")
+        for u in users:
+            if u.get("email", "").lower() == identifier:
+                user_profile = u
+                break
+        
+        if not user_profile:
+            if is_superadmin:
+                user_profile = {
+                    "nombre": "Super Admin",
+                    "email": identifier,
+                    "role": "superadmin",
+                    "id": "sa-" + str(uuid.uuid4())[:8]
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado en la base de datos")
+
+        # 3. Normalizar roles y preparar respuesta
+        role = "superadmin" if is_superadmin else user_profile.get("role", "usuario")
+        
+        user_data = {
+            "id": user_profile.get("id") or user_profile.get("PK"),
+            "nombre": user_profile.get("nombre", "Usuario"),
+            "email": identifier,
+            "role": role,
+            "entidadId": user_profile.get("entidadId"),
+            "entidadIds": user_profile.get("entidadIds", []),
+            "iaDisponible": user_profile.get("iaDisponible", True)
+        }
+
+        entities_list = []
+        if role == "superadmin":
+            entities_list = await db.scan_table("entities")
+
+        return {
+            "user": user_data,
+            "token": id_token,
+            "entities": entities_list
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"ERROR LOGIN: {str(e)}")
+        raise HTTPException(status_code=401, detail="Credenciales inválidas o error de sistema")
 
 
 
@@ -436,8 +495,22 @@ class UserUpdate(BaseModel):
 
 
 class UserSignUp(BaseModel):
-
     nombre: str
+    email: str
+    password: str
+
+class UserActivate(BaseModel):
+    token: str
+    password: str
+
+class InvitationCreate(BaseModel):
+    email: str
+    entity_id: str
+    role: str = "usuario"
+
+class ActivityLogCreate(BaseModel):
+    message: str
+    user_name: str
 
     apellido: str | None = ""
 
@@ -915,6 +988,143 @@ async def get_entities(user: dict = Depends(get_current_user)):
     except Exception as e:
         print(f"Error listing entities: {e}")
         return []
+
+@router.get("/users")
+async def get_users(user: dict = Depends(get_current_user)):
+    """Lista los usuarios (solo para Superadmin o filtrado por entidad)."""
+    try:
+        if user.get("role") == SUPERADMIN_ROLE:
+            items = await db.scan_table("users")
+        else:
+            entity_id = user.get("entity_id")
+            # Query users by GSI if available, or scan and filter
+            all_users = await db.scan_table("users")
+            items = [u for u in all_users if u.get("entidadId") == entity_id or entity_id in (u.get("entidadIds") or [])]
+        return items
+    except Exception as e:
+        print(f"Error listing users: {e}")
+        return []
+
+@router.post("/users")
+async def create_user_endpoint(req: UserCreate, user: dict = Depends(require_super_admin)):
+    """Crea un nuevo usuario en DynamoDB (y Cognito)."""
+    try:
+        user_id = str(uuid.uuid4())
+        item = req.dict()
+        item["PK"] = f"USER#{user_id}"
+        item["SK"] = "PROFILE"
+        item["id"] = user_id
+        item["created_at"] = datetime.now().isoformat()
+        item["isActivated"] = False
+        await db.put_item("users", item)
+        return {"status": "ok", "id": user_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/users/{user_id}")
+async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depends(get_current_user)):
+    """Actualiza un usuario existente."""
+    # Check permissions
+    if user.get("role") != SUPERADMIN_ROLE and user.get("user_id") != user_id:
+        # Check if they are admin of the same entity
+        target_user = await db.get_item("users", f"USER#{user_id}", "PROFILE")
+        if not target_user or target_user.get("entidadId") != user.get("entity_id"):
+             raise HTTPException(status_code=403, detail="No autorizado")
+             
+    try:
+        pk, sk = f"USER#{user_id}", "PROFILE"
+        updates = req.dict(exclude_unset=True)
+        await db.update_item("users", pk, sk, updates)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/users/{user_id}")
+async def delete_user_endpoint(user_id: str, user: dict = Depends(require_super_admin)):
+    """Elimina un usuario de DynamoDB."""
+    try:
+        await db.delete_item("users", f"USER#{user_id}", "PROFILE")
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/invitations")
+async def get_invitations(user: dict = Depends(get_current_user)):
+    """Lista las invitaciones (solo para Superadmin o filtrado por entidad)."""
+    try:
+        if user.get("role") == SUPERADMIN_ROLE:
+            items = await db.scan_table("invitations")
+        else:
+            entity_id = user.get("entity_id")
+            all_invites = await db.scan_table("invitations")
+            items = [i for i in all_invites if i.get("entity_id") == entity_id]
+        return items
+    except Exception as e:
+        print(f"Error listing invitations: {e}")
+        return []
+
+@router.get("/invitations/my")
+async def get_my_invitations(user: dict = Depends(get_current_user)):
+    """Lista las invitaciones pendientes para el usuario actual."""
+    email = user.get("email")
+    if not email: return []
+    try:
+        all_invites = await db.scan_table("invitations")
+        return [i for i in all_invites if i.get("email", "").lower() == email.lower() and i.get("status") == "pending"]
+    except Exception as e:
+        print(f"Error fetching my invitations: {e}")
+        return []
+
+@router.post("/invitations")
+async def create_invitation(req: InvitationCreate, user: dict = Depends(get_current_user)):
+    """Crea una nueva invitación."""
+    if user.get("role") != SUPERADMIN_ROLE and user.get("entity_id") != req.entity_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    try:
+        invite_id = str(uuid.uuid4())
+        item = req.dict()
+        item["PK"] = f"INVITE#{invite_id}"
+        item["SK"] = "METADATA"
+        item["id"] = invite_id
+        item["status"] = "pending"
+        item["created_at"] = datetime.now().isoformat()
+        await db.put_item("invitations", item)
+        return {"status": "ok", "id": invite_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/activate")
+async def activate_user(req: UserActivate):
+    """Activa un usuario mediante token."""
+    try:
+        # En esta arquitectura simplificada, buscamos el usuario con ese token
+        all_users = await db.scan_table("users")
+        target_user = None
+        for u in all_users:
+            if u.get("activationToken") == req.token:
+                target_user = u
+                break
+        
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Token de activación inválido o expirado")
+            
+        # 1. Crear usuario en Cognito con la password dada
+        # (O si ya existe, habilitarlo)
+        
+        # 2. Actualizar en DynamoDB
+        pk = target_user["PK"]
+        sk = "PROFILE"
+        await db.update_item("users", pk, sk, {
+            "isActivated": True,
+            "activationToken": None,
+            "updated_at": datetime.now().isoformat()
+        })
+        
+        return {"status": "ok", "message": "Cuenta activada exitosamente"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/entities")
 async def create_entity(req: EntityCreate, user: dict = Depends(require_super_admin)):
@@ -1505,6 +1715,46 @@ async def save_chat_history(assistant: str, payload: ChatHistoryUpdate, user: di
     except Exception as e:
         print(f" Error guardando historial ({assistant}): {e}")
         return {"status": "error", "message": str(e)}
+
+@router.get("/activity-logs")
+async def get_activity_logs(user: dict = Depends(get_current_user)):
+    """Lista los registros de actividad para la entidad del usuario o todos si es superadmin."""
+    try:
+        if user.get("role") == SUPERADMIN_ROLE:
+            # Para superadmin, podemos escanear toda la tabla o filtrar por alguna lógica
+            items = await db.scan_table("activity_logs")
+        else:
+            entity_id = user.get("entity_id")
+            if not entity_id:
+                return []
+            items = await db.query_by_entity("activity_logs", entity_id, sk_prefix="LOG#")
+        
+        # Ordenar por fecha descendente
+        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return items[:50] # Limitar a los últimos 50 para el dashboard
+    except Exception as e:
+        print(f"Error fetching logs: {e}")
+        return []
+
+@router.post("/activity-logs")
+async def create_activity_log(req: ActivityLogCreate, user: dict = Depends(get_current_user)):
+    """Crea un nuevo registro de actividad."""
+    try:
+        entity_id = user.get("entity_id") or "GLOBAL"
+        log_id = str(uuid.uuid4())
+        item = {
+            "PK": entity_id,
+            "SK": f"LOG#{log_id}",
+            "id": log_id,
+            "entity_id": entity_id,
+            "message": req.message,
+            "user_name": req.user_name,
+            "created_at": datetime.now().isoformat()
+        }
+        await db.put_item("activity_logs", item)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/activity-logs/export")
 async def export_activity_logs(
