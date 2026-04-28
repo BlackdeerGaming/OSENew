@@ -980,10 +980,9 @@ function App() {
       }))
     };
     
-    // Si el login fue exitoso, guardamos el token también para persistencia si fuera necesario
-    if (data.access_token) {
-      normalizedUser.token = data.access_token;
-    }
+    console.log(" [DEBUG LOGIN] Respuesta cruda del servidor:", data);
+    normalizedUser.token = data.access_token || data.id_token || data.token;
+    console.log(" [DEBUG LOGIN] Usuario Normalizado con Token:", normalizedUser);
 
     setCurrentUser(normalizedUser);
     // Establecer la entidad inicial basada en el perfil del usuario
