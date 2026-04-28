@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, Hash, CheckCircle2, LayoutDashboard, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import API_BASE_URL from '../../config/api';
+import StatusModal from '../ui/StatusModal';
 
 export default function ResetPassword({ initialEmail = '', onReset, onNavigateToLogin }) {
   const [email, setEmail] = useState(initialEmail);
@@ -11,6 +12,8 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
 
   const validatePassword = (pw) => {
     if (pw.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
@@ -22,24 +25,22 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
     setErrorMsg('');
     
     if (!email || !code) {
-      setErrorMsg('Por favor completa todos los campos.');
-      setStatus('error');
+      setModalStatus({ isOpen: true, type: 'warning', message: 'Por favor completa todos los campos (Correo y Código).' });
       return;
     }
 
     const pwError = validatePassword(password);
     if (pwError) {
-      setErrorMsg(pwError);
-      setStatus('error');
+      setModalStatus({ isOpen: true, type: 'error', message: pwError });
       return;
     }
 
     if (password !== confirmPassword) {
-      setErrorMsg('Las contraseñas no coinciden.');
-      setStatus('error');
+      setModalStatus({ isOpen: true, type: 'error', message: 'Las contraseñas no coinciden.' });
       return;
     }
 
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Verificando código y actualizando contraseña...' });
     setStatus('loading');
 
     try {
@@ -47,7 +48,7 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email: email.strip ? email.strip().lower() : email.trim().toLowerCase(), 
+          email: email.trim().toLowerCase(), 
           code: code.trim(),
           new_password: password 
         })
@@ -56,15 +57,16 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
       const data = await response.json();
 
       if (response.ok) {
+        setModalStatus({ isOpen: true, type: 'success', message: 'Tu contraseña ha sido actualizada exitosamente.' });
         setStatus('success');
       } else {
-        setErrorMsg(data.detail || "Código inválido o error al restablecer.");
+        setModalStatus({ isOpen: true, type: 'error', message: data.detail || "Código inválido o error al restablecer." });
         setStatus('error');
       }
     } catch (error) {
       console.error("Error en reseteo:", error);
+      setModalStatus({ isOpen: true, type: 'error', message: "Ocurrió un error inesperado al conectar con el servidor." });
       setStatus('error');
-      setErrorMsg("Ocurrió un error inesperado. Intenta de nuevo.");
     }
   };
 
@@ -107,13 +109,6 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {status === 'error' && (
-            <div className="bg-destructive/10 border border-destructive/20 text-destructive p-3.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in shake-1">
-               <AlertCircle className="h-4 w-4" />
-               {errorMsg}
-            </div>
-          )}
-
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-slate-700">Correo Electrónico</label>
             <div className="relative">
@@ -206,6 +201,13 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
           </button>
         </form>
       </div>
+      
+      <StatusModal 
+        isOpen={modalStatus.isOpen} 
+        type={modalStatus.type} 
+        message={modalStatus.message} 
+        onResolve={() => setModalStatus(prev => ({ ...prev, isOpen: false }))} 
+      />
     </div>
   );
 }

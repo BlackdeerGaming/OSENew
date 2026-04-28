@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, User, Phone, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 
 import API_BASE_URL from '../../config/api';
+import StatusModal from '../ui/StatusModal';
 
 export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' }) {
   const [formData, setFormData] = useState({
@@ -14,24 +15,23 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
     confirmPassword: ''
   });
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
-  const [error, setError] = useState('');
+  const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    
     if (formData.password !== formData.confirmPassword) {
-      setError('Las contraseñas no coinciden.');
+      setModalStatus({ isOpen: true, type: 'error', message: 'Las contraseñas no coinciden.' });
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
+    if (formData.password.length < 8) {
+      setModalStatus({ isOpen: true, type: 'error', message: 'La contraseña debe tener al menos 8 caracteres para cumplir con la política de seguridad.' });
       return;
     }
 
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Creando tu cuenta y sincronizando con AWS Cloud...' });
     setStatus('loading');
     try {
       const response = await fetch(`${API_BASE_URL}/auth/signup`, {
@@ -50,15 +50,17 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
       const data = await response.json();
 
       if (response.ok) {
-        // Registro exitoso -> Auto-Login pasándole los datos al App.jsx
-        onSignUp(data); 
+        setModalStatus({ isOpen: true, type: 'success', message: '¡Cuenta creada con éxito! Bienvenido a OSE IA.' });
+        setTimeout(() => {
+          onSignUp(data); 
+        }, 1500);
       } else {
-        setError(data.detail || 'Error al crear la cuenta. Intenta con otro correo o usuario.');
+        setModalStatus({ isOpen: true, type: 'error', message: data.detail || 'Error al crear la cuenta. Intenta con otro correo o usuario.' });
         setStatus('error');
       }
     } catch (err) {
       console.error("SignUp error:", err);
-      setError('Error de conexión con el servidor.');
+      setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión con el servidor AWS.' });
       setStatus('error');
     } finally {
       if (status === 'loading') setStatus('idle');
@@ -82,12 +84,6 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="bg-rose-50 border border-rose-100 text-rose-600 p-4 rounded-2xl text-xs font-bold flex items-center gap-3 animate-in shake-1">
-               <AlertCircle className="h-5 w-5 shrink-0" />
-               {error}
-            </div>
-          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -220,6 +216,13 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
           </button>
         </div>
       </div>
+      
+      <StatusModal 
+        isOpen={modalStatus.isOpen} 
+        type={modalStatus.type} 
+        message={modalStatus.message} 
+        onResolve={() => setModalStatus(prev => ({ ...prev, isOpen: false }))} 
+      />
     </div>
   );
 }

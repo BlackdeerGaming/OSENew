@@ -80,7 +80,7 @@ const StatusModal = ({ isOpen, type, message, onResolve }) => {
             {/* Cloud Status Indicator */}
             <div className="mt-6 flex items-center gap-2 text-[10px] font-medium uppercase tracking-widest text-slate-400">
               <Cloud className="w-3 h-3" />
-              <span>Conexión Supabase Cloud</span>
+              <span>Conexión AWS Cloud</span>
             </div>
           </div>
         </motion.div>
