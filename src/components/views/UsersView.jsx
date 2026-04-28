@@ -267,36 +267,45 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     return false;
   });
 
-  // --- NORMALIZACIÓN Y BÚSQUEDA ---
-  const displayedUsers = filteredUsers.map(u => {
-    // Normalizar campos para visualización consistente en la tabla
-    const nombre = u.nombre || u.Nombre || u.first_name || u.name || (u.email || u.Email || "").split('@')[0];
-    const apellido = u.apellido || u.Apellido || u.last_name || "";
+  // --- NORMALIZACIÓN, DEDUPLICACIÓN Y BÚSQUEDA ---
+  const userMap = new Map();
+
+  filteredUsers.forEach(u => {
+    // Extraer ID real
+    const uid = u.id || (u.PK && u.PK.includes('#') ? u.PK.split('#')[1] : u.PK) || u.sub;
+    if (!uid) return;
+
+    // Normalizar
+    const nombre = u.nombre || u.Nombre || u.first_name || u.name || "";
     const email = u.email || u.Email || "";
     const perfil = u.perfil || u.Role || u.role || 'usuario';
     const isActivated = u.isActivated === true || u.isActivated === 'true' || u.IsActivated === true;
     
-    // Calcular nombre de entidad si falta
     let entidadNombre = u.entidadNombre || u.EntityName || "";
     if (!entidadNombre && (u.entidadId || u.entity_id)) {
       const entId = u.entidadId || u.entity_id;
       entidadNombre = entities.find(e => e.id === entId)?.razonSocial || "Entidad Desconocida";
-    } else if (!entidadNombre && u.entidadIds?.length > 0) {
-      entidadNombre = u.entidadIds
-        .map(id => entities.find(e => e.id === id)?.razonSocial)
-        .filter(Boolean).join(', ');
     }
 
-    return {
+    const normalized = {
       ...u,
-      displayNombre: `${nombre} ${apellido}`.trim(),
+      id: uid,
+      displayNombre: `${nombre} ${u.apellido || u.Apellido || ""}`.trim() || email.split('@')[0],
       displayEmail: email,
       displayPerfil: perfil,
       displayEstado: isActivated ? 'Activo' : 'Pendiente',
-      isActivated, // Mantener booleano para lógica
-      entidadNombre: entidadNombre || "N/A"
+      isActivated,
+      entidadNombre: entidadNombre || "N/A",
+      _completeness: (nombre ? 10 : 0) + (u.entidadId ? 5 : 0) // Para priorizar el mejor registro
     };
-  }).filter(u => 
+
+    // Si ya existe este ID, nos quedamos con el que tenga más datos
+    if (!userMap.has(uid) || normalized._completeness > userMap.get(uid)._completeness) {
+      userMap.set(uid, normalized);
+    }
+  });
+
+  const displayedUsers = Array.from(userMap.values()).filter(u => 
     u.displayNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.displayEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (u.username || "").toLowerCase().includes(searchQuery.toLowerCase())
