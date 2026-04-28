@@ -1000,9 +1000,8 @@ function App() {
       setSelectedEntityId(null);
     }
     
-    if (rememberMe) {
-      localStorage.setItem('ose_user', JSON.stringify(normalizedUser));
-    }
+    // Siempre guardamos en localStorage para persistencia en refrescos
+    localStorage.setItem('ose_user', JSON.stringify(normalizedUser));
     
     // Marcar de forma persistente que este navegador ya tiene un usuario registrado
     // Esto evita que las invitaciones vuelvan a abrir el formulario de "Crear Cuenta" en el futuro
