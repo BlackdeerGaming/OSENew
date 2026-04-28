@@ -435,8 +435,7 @@ async def login(req: LoginRequest):
         
         user_profile = None
         # Acceder a la tabla vía boto3 directamente
-        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION'))
-        users_table = dynamodb.Table(os.getenv('DYNAMODB_TABLE_NAME'))
+        users_table = db.get_table("users")
         
         # Intentar buscar por identifier (username o email)
         response = users_table.scan(FilterExpression=Attr('email').eq(identifier) | Attr('username').eq(identifier))
