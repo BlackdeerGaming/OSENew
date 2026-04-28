@@ -6,6 +6,7 @@ import jwt
 import os
 JWT_SECRET = os.getenv('JWT_SECRET', 'ose-ia-secret-key-2024-standard')
 JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
+SUPERADMIN_EMAILS = [e.strip().lower() for e in os.getenv('SUPERADMIN_EMAILS', '').split(',') if e.strip()]
 
 from .aws.cognito_auth import cognito
 
@@ -22,7 +23,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         
         if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
             payload['role'] = 'administrador'
-        elif raw_role == 'superadmin':
+        elif raw_role == 'superadmin' or payload.get('email', '').lower().strip() in SUPERADMIN_EMAILS:
             payload['role'] = 'superadmin'
         elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
             payload['role'] = 'usuario'
