@@ -145,8 +145,19 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
           </div>
         </form>
 
-        <div className="mt-8 text-center text-sm text-slate-400 italic">
-          <p>Para activar tu cuenta por primera vez, usa el enlace de invitación generado por un administrador.</p>
+        <div className="mt-8 text-center space-y-4">
+          <p className="text-sm text-slate-400 italic">
+            Para activar tu cuenta por primera vez, usa el enlace de invitación generado por un administrador.
+          </p>
+          <div className="pt-2 border-t border-slate-100">
+            <span className="text-xs text-slate-500">¿Aún no tienes cuenta? </span>
+            <button 
+              onClick={onNavigateToSignUp}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              Crear una cuenta aquí
+            </button>
+          </div>
         </div>
       </div>
     </div>
