@@ -30,6 +30,13 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
     role: 'usuario',
     ia_disponible: false
   });
+
+  // Auto-seleccionar la primera entidad si está vacío (especialmente para superadmins)
+  useEffect(() => {
+    if (showCreateModal && !newInvite.entity_id && adminEntities.length > 0) {
+      setNewInvite(prev => ({ ...prev, entity_id: adminEntities[0].id }));
+    }
+  }, [showCreateModal, adminEntities, newInvite.entity_id]);
   const [isCreating, setIsCreating] = useState(false);
 
   const [filterEntity, setFilterEntity] = useState('all');
