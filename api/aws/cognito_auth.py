@@ -96,9 +96,11 @@ class CognitoManager:
 
     async def sign_up(self, username, password, email, name, family_name=None, phone=None):
         try:
+            full_name = f"{name} {family_name}" if family_name else name
             user_attributes = [
                 {"Name": "email", "Value": email},
                 {"Name": "given_name", "Value": name},
+                {"Name": "name", "Value": full_name}
             ]
             if family_name:
                 user_attributes.append({"Name": "family_name", "Value": family_name})
