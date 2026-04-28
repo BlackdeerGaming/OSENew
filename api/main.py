@@ -1274,9 +1274,14 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
                 current_entities = user_data.get("entidadIds", [])
                 if entity_id not in current_entities:
                     current_entities.append(entity_id)
+                    invited_role = invite.get("role", "usuario")
+                    ia_enabled = invite.get("ia_disponible", False)
                     await db.update_item("users", user_pk, user_sk, {
                         "entidadIds": current_entities,
-                        "entidadId": current_entities[0] if current_entities else ""
+                        "entidadId": current_entities[0] if current_entities else "",
+                        "role": invited_role,
+                        "perfil": invited_role,
+                        "iaDisponible": ia_enabled
                     })
                     
         return {"status": "ok", "message": f"Invitación {new_status} exitosamente"}

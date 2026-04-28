@@ -404,6 +404,28 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   </select>
                 </div>
               </div>
+
+              {/* Opción de IA */}
+              <div className="flex items-center justify-between p-3 bg-secondary/5 rounded-lg border border-border/50">
+                <div className="space-y-0.5">
+                  <div className="text-[13px] font-semibold flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-primary" />
+                    Acceso a IA Neural
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">Permite al usuario usar herramientas de IA</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={newInvite.ia_disponible}
+                    disabled={currentUser?.role !== 'superadmin' && !(currentUser?.iaDisponible || currentUser?.ia_disponible)}
+                    onChange={e => setNewInvite({...newInvite, ia_disponible: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+
               <button onClick={handleCreateInvite} disabled={isCreating} className="w-full py-2.5 bg-primary text-primary-foreground rounded-md text-[13px] font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 mt-2">
                 {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {isCreating ? 'Enviando...' : 'Enviar Invitación'}
               </button>

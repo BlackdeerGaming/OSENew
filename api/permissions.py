@@ -48,6 +48,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         payload['user_id'] = user_id
         payload['email'] = verified_email
         payload['entity_id'] = user_record.get('entidadId') if user_record else payload.get('custom:entity_id')
+        payload['iaDisponible'] = user_record.get('iaDisponible', False) if user_record else False
             
         return payload
         
