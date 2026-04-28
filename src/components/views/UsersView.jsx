@@ -72,14 +72,25 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
 
   const handleEdit = (user) => {
+    // Extraer ID de forma robusta
+    const userId = user.id || (user.PK && user.PK.includes('#') ? user.PK.split('#')[1] : user.PK) || user.sub;
+    
     setNewUser({
-      ...user,
-      // Map isActivated/pending to Activo/Inactivo internal status for the toggle
+      id: userId,
+      tipoDocumento: user.tipoDocumento || user.document_type || '',
+      numeroDocumento: user.numeroDocumento || user.document_number || user.nit || '',
+      nombre: user.nombre || user.first_name || user.name || '',
+      apellido: user.apellido || user.last_name || '',
+      email: user.email || user.Email || '',
+      celular: user.celular || user.phone || '',
+      username: user.username || user.user_name || user.email || '',
       estado: user.isActivated ? 'Activo' : 'Inactivo',
-      iaDisponible: !!user.iaDisponible,
-      entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : [])
+      perfil: user.perfil || user.role || 'usuario',
+      entidadId: user.entidadId || user.entity_id || null,
+      entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : []),
+      iaDisponible: !!user.iaDisponible
     });
-    setEditingUserId(user.id);
+    setEditingUserId(userId);
     setShowModal(true);
     setActiveTab('info');
   };
@@ -104,92 +115,101 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
     const entidadSelected = entities.find(e => e.id === (newUser.entidadIds[0]));
     
-    // Generación de Token de Invitación (30 min)
-    const token = Math.random().toString(36).substring(2, 11).toUpperCase();
-    const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
+    const userBase = {
+      ...newUser,
+      entidadId: newUser.entidadIds[0] || newUser.entidadId || null,
+      entidadNombre: newUser.entidadIds
+        .map(id => entities.find(e => e.id === id)?.razonSocial)
+        .filter(Boolean).join(', '),
+      entidadIds: newUser.entidadIds
+    };
 
-    setUsers(prev => {
-       const userBase = {
-         ...newUser,
-         // entidadId is the first entity (default) for backward compat
-         entidadId: newUser.entidadIds[0] || newUser.entidadId || null,
-         entidadNombre: newUser.entidadIds
-           .map(id => entities.find(e => e.id === id)?.razonSocial)
-           .filter(Boolean).join(', '),
-         entidadIds: newUser.entidadIds
-       };
+    if (editingUserId) {
+      // --- MODO EDICIÓN ---
+      try {
+        const res = await fetch(`${API_BASE_URL}/users/${editingUserId}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({
+            ...userBase,
+            id: editingUserId
+          })
+        });
 
-       if (editingUserId) {
-          fetch(`${API_BASE_URL}/users/${editingUserId}`, {
-           method: 'PUT',
-           headers: { 
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${currentUser?.token}`
-           },
-           body: JSON.stringify({
-             ...userBase,
-             entidadIds: newUser.entidadIds
-           })
-         }).then(res => {
-           if (!res.ok) console.error("Error al actualizar usuario");
-         });
+        if (res.ok) {
+          setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...userBase, id: editingUserId } : u));
+          alert("Usuario actualizado con éxito");
+          resetModal();
+        } else {
+          const error = await res.json();
+          alert("Error al actualizar: " + (error.detail || "Desconocido"));
+        }
+      } catch (err) {
+        alert("Error de conexión al actualizar usuario");
+      }
+    } else {
+      // --- MODO CREACIÓN / INVITACIÓN ---
+      // Generación de Token de Invitación (30 min)
+      const token = Math.random().toString(36).substring(2, 11).toUpperCase();
+      const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
 
-         return prev.map(u => u.id === editingUserId ? { ...u, ...userBase, id: editingUserId } : u);
-       } else {
-          // CREAR EN BACKEND
-         const tempId = Date.now().toString();
-         const userToAdd = { 
-            ...userBase, 
-            id: tempId, 
-            fechaCreacion: new Date().toLocaleDateString(),
-            activationToken: token,
-            tokenExpiry: expiry,
-            isActivated: false,
-            password: ''
-         };
+      const tempId = Date.now().toString();
+      const userToAdd = { 
+        ...userBase, 
+        id: tempId, 
+        fechaCreacion: new Date().toLocaleDateString(),
+        activationToken: token,
+        tokenExpiry: expiry,
+        isActivated: false,
+        password: ''
+      };
 
-         fetch(`${API_BASE_URL}/users`, {
-           method: 'POST',
-           headers: { 
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${currentUser?.token}`
-           },
-           body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
-         }).then(async res => {
-           if (res.ok) {
-             // Después de crear exitosamente en la DB, enviar email
-             const finalLink = `${window.location.origin}/?token=${token}`; 
-             setGeneratedLink(finalLink);
-             setShowInviteModal(true);
-             setShowModal(false);
+      try {
+        const res = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
+        });
 
-             setEmailStatus('sending');
-             try {
-               const mailRes = await fetch(`${API_BASE_URL}/send-activation`, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                   email: newUser.email,
-                   nombre: newUser.nombre,
-                   link: finalLink
-                 })
-               });
-               setEmailStatus(mailRes.ok ? 'sent' : 'error');
-             } catch (e) {
-               console.error("Error enviando email:", e);
-               setEmailStatus('error');
-             }
-           } else {
-             const errorData = await res.json();
-             alert("Error al crear usuario: " + (errorData.detail || "Desconocido"));
-           }
-         });
+        if (res.ok) {
+          setUsers(prev => [...prev, userToAdd]);
+          
+          // Enviar email de activación SOLO para nuevos usuarios
+          const finalLink = `${window.location.origin}/?token=${token}`; 
+          setGeneratedLink(finalLink);
+          setShowInviteModal(true);
+          setShowModal(false);
 
-         return [...prev, userToAdd];
-       }
-    });
-
-    if (editingUserId) resetModal();
+          setEmailStatus('sending');
+          try {
+            const mailRes = await fetch(`${API_BASE_URL}/send-activation`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: newUser.email,
+                nombre: newUser.nombre,
+                link: finalLink
+              })
+            });
+            setEmailStatus(mailRes.ok ? 'sent' : 'error');
+          } catch (e) {
+            console.error("Error enviando email:", e);
+            setEmailStatus('error');
+          }
+        } else {
+          const errorData = await res.json();
+          alert("Error al crear usuario: " + (errorData.detail || "Desconocido"));
+        }
+      } catch (err) {
+        alert("Error de conexión al crear usuario");
+      }
+    }
   };
 
   const resetModal = () => {
