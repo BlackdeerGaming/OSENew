@@ -267,12 +267,39 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     return false;
   });
 
-  // --- BÚSQUEDA ---
-  const displayedUsers = filteredUsers.filter(u => 
-    (u.nombre?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.apellido?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.username?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+  // --- NORMALIZACIÓN Y BÚSQUEDA ---
+  const displayedUsers = filteredUsers.map(u => {
+    // Normalizar campos para visualización consistente en la tabla
+    const nombre = u.nombre || u.Nombre || u.first_name || u.name || (u.email || u.Email || "").split('@')[0];
+    const apellido = u.apellido || u.Apellido || u.last_name || "";
+    const email = u.email || u.Email || "";
+    const perfil = u.perfil || u.Role || u.role || 'usuario';
+    const isActivated = u.isActivated === true || u.isActivated === 'true' || u.IsActivated === true;
+    
+    // Calcular nombre de entidad si falta
+    let entidadNombre = u.entidadNombre || u.EntityName || "";
+    if (!entidadNombre && (u.entidadId || u.entity_id)) {
+      const entId = u.entidadId || u.entity_id;
+      entidadNombre = entities.find(e => e.id === entId)?.razonSocial || "Entidad Desconocida";
+    } else if (!entidadNombre && u.entidadIds?.length > 0) {
+      entidadNombre = u.entidadIds
+        .map(id => entities.find(e => e.id === id)?.razonSocial)
+        .filter(Boolean).join(', ');
+    }
+
+    return {
+      ...u,
+      displayNombre: `${nombre} ${apellido}`.trim(),
+      displayEmail: email,
+      displayPerfil: perfil,
+      displayEstado: isActivated ? 'Activo' : 'Pendiente',
+      isActivated, // Mantener booleano para lógica
+      entidadNombre: entidadNombre || "N/A"
+    };
+  }).filter(u => 
+    u.displayNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.displayEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.username || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -340,28 +367,28 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                   <tr key={user.id} className="hover:bg-slate-50/50 transition-colors bg-white">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                         <span className="font-medium text-slate-900">{user.nombre} {user.apellido}</span>
-                         <span className="text-[10px] text-muted-foreground font-mono">{user.email}</span>
+                         <span className="font-medium text-slate-900">{user.displayNombre}</span>
+                         <span className="text-[10px] text-muted-foreground font-mono">{user.displayEmail}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-600 font-medium">
-                      {user.entidadNombre || "N/A"}
+                      {user.entidadNombre}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider",
-                        user.perfil === 'administrador' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
+                        user.displayPerfil === 'administrador' || user.displayPerfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
                       )}>
-                        {user.perfil === 'administrador' ? 'Administrador' : user.perfil === 'usuario' ? 'Usuario' : (user.perfil || 'usuario')}
+                        {user.displayPerfil === 'administrador' ? 'Administrador' : user.displayPerfil === 'superadmin' ? 'Superadmin' : 'Usuario'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
-                        <div className={cn(
-                           "h-1.5 w-1.5 rounded-full",
-                           user.isActivated ? "bg-success" : "bg-warning"
-                        )} />
-                        <span className="text-xs font-medium text-slate-600">{user.isActivated ? "Activo" : "Pendiente"}</span>
+                         <div className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            user.isActivated ? "bg-success" : "bg-warning"
+                         )} />
+                         <span className="text-xs font-medium text-slate-600">{user.displayEstado}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
