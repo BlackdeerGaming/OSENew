@@ -970,7 +970,11 @@ function App() {
     else setSelectedTrdIds(new Set());
   };
 
-  const handleLogin = (user, rememberMe) => {
+  const handleLogin = (data, rememberMe) => {
+    // El backend de AWS devuelve { "user": {...}, "access_token": "..." }
+    // Debemos extraer el objeto 'user' real
+    const user = data.user || data; 
+    
     // Normalizar entidades anidadas si existen para soporte consistente de camelCase
     const normalizedUser = {
       ...user,
@@ -979,6 +983,12 @@ function App() {
         razonSocial: e.razonSocial || e.razon_social || e.nombre || ""
       }))
     };
+    
+    // Si el login fue exitoso, guardamos el token también para persistencia si fuera necesario
+    if (data.access_token) {
+      normalizedUser.token = data.access_token;
+    }
+
     setCurrentUser(normalizedUser);
     // Establecer la entidad inicial basada en el perfil del usuario
     // Prioridad: entidadId directo > entidadIds[0] > primera entidad disponible
@@ -991,7 +1001,7 @@ function App() {
     }
     
     if (rememberMe) {
-      localStorage.setItem('ose_user', JSON.stringify(user));
+      localStorage.setItem('ose_user', JSON.stringify(normalizedUser));
     }
     
     // Marcar de forma persistente que este navegador ya tiene un usuario registrado
