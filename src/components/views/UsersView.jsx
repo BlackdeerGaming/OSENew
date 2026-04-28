@@ -72,24 +72,30 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
 
   const handleEdit = (user) => {
+    console.log(" [DEBUG EDIT] Datos recibidos para editar:", user);
+    
     // Extraer ID de forma robusta
     const userId = user.id || (user.PK && user.PK.includes('#') ? user.PK.split('#')[1] : user.PK) || user.sub;
     
-    setNewUser({
+    const mappedUser = {
       id: userId,
-      tipoDocumento: user.tipoDocumento || user.document_type || '',
-      numeroDocumento: user.numeroDocumento || user.document_number || user.nit || '',
-      nombre: user.nombre || user.first_name || user.name || '',
-      apellido: user.apellido || user.last_name || '',
-      email: user.email || user.Email || '',
-      celular: user.celular || user.phone || '',
-      username: user.username || user.user_name || user.email || '',
-      estado: user.isActivated ? 'Activo' : 'Inactivo',
-      perfil: user.perfil || user.role || 'usuario',
-      entidadId: user.entidadId || user.entity_id || null,
-      entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : []),
-      iaDisponible: !!user.iaDisponible
-    });
+      tipoDocumento: user.tipoDocumento || user.document_type || user.TipoDocumento || '',
+      numeroDocumento: user.numeroDocumento || user.document_number || user.nit || user.NumeroDocumento || user.NIT || '',
+      nombre: user.nombre || user.first_name || user.name || user.Nombre || '',
+      apellido: user.apellido || user.last_name || user.Apellido || '',
+      email: user.email || user.Email || user.mail || '',
+      celular: user.celular || user.phone || user.Celular || user.telefono || '',
+      username: user.username || user.user_name || user.UserName || user.email || user.Email || '',
+      estado: (user.isActivated || user.IsActivated || user.estado === 'Activo') ? 'Activo' : 'Inactivo',
+      perfil: user.perfil || user.role || user.Role || user.Perfil || 'usuario',
+      entidadId: user.entidadId || user.entity_id || user.EntidadId || null,
+      entidadIds: user.entidadIds || (user.entidadId || user.entity_id ? [user.entidadId || user.entity_id] : []),
+      iaDisponible: !!(user.iaDisponible || user.IaDisponible || user.IA_Disponible)
+    };
+
+    console.log(" [DEBUG EDIT] Datos mapeados al formulario:", mappedUser);
+    
+    setNewUser(mappedUser);
     setEditingUserId(userId);
     setShowModal(true);
     setActiveTab('info');
