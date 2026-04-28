@@ -164,11 +164,24 @@ function App() {
     
     if (invId && invEmail) {
       const context = { id: invId, email: invEmail };
-      setInvitationContext(context);
-      localStorage.setItem('invitation_context', JSON.stringify(context));
-      
       const hasAccount = localStorage.getItem('ose_has_account') === 'true';
-      if (!currentUser) {
+      const savedUserStr = localStorage.getItem('ose_user');
+      let savedUser = null;
+      try { if (savedUserStr) savedUser = JSON.parse(savedUserStr); } catch(e){}
+      
+      if (savedUser && savedUser.token) {
+        // Usuario ya logueado en esta pestaña, aceptar directamente
+        fetch(`${API_BASE_URL}/invitations/${invId}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${savedUser.token}` },
+          body: JSON.stringify({ action: 'accept' })
+        }).then(res => {
+          if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+        }).catch(console.error);
+      } else {
+        // No logueado, forzar login/registro y guardar el contexto
+        setInvitationContext(context);
+        localStorage.setItem('invitation_context', JSON.stringify(context));
         if (hasAccount) setAuthView('login');
         else setAuthView('signup');
       }
@@ -1004,12 +1017,19 @@ function App() {
     localStorage.setItem('ose_has_account', 'true');
 
     if (invitationContext) {
-      setMainView('invitations');
+      // Auto-aceptar la invitación pendiente
+      fetch(`${API_BASE_URL}/invitations/${invitationContext.id}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${normalizedUser.token}` },
+          body: JSON.stringify({ action: 'accept' })
+      }).then(res => {
+          if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+      }).catch(console.error);
+      
       localStorage.removeItem('invitation_context');
       setInvitationContext(null);
-    } else {
-      setMainView('dashboard');
     }
+    setMainView('dashboard');
     
     // Limpiar otros estados de flujo para asegurar que no vuelvan a aparecer al desloguear
     setActivationToken(null);
