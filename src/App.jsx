@@ -110,6 +110,24 @@ function App() {
   const [entities, setEntities] = useState([]);
   const [users, setUsers] = useState([]);
 
+  const [funciones, setFunciones] = useState([]);
+  
+  useEffect(() => {
+    if (!currentUser?.entity_id) return;
+    const loadFunciones = async () => {
+      try {
+        const resp = await fetch(
+          `${API_BASE_URL}/trd/entity/${currentUser.entity_id}/funciones`,
+          { headers: { Authorization: `Bearer ${currentUser.token}` } }
+        );
+        if (resp.ok) setFunciones(await resp.json());
+      } catch (err) {
+        console.error("[App] Error cargando funciones:", err);
+      }
+    };
+    loadFunciones();
+  }, [currentUser]);
+
   // Manejar sesión de Google (Supabase OAuth)
   useEffect(() => {
     if (!supabase) return;
@@ -222,7 +240,14 @@ function App() {
         }
         if (entitiesRes.ok) {
           const data = await entitiesRes.json();
-          setEntities(data || []);
+          // Normalizar entidades para soportar camelCase y snake_case consistentemente
+          const normalized = (data || []).map(e => ({
+            ...e,
+            razonSocial: e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || "",
+            tipoEjecutor: e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def."
+          }));
+          setEntities(normalized);
         }
       } catch (err) {
         console.error("Error fetching initial data:", err);
@@ -294,16 +319,36 @@ function App() {
   } = useTRDData(currentUser, selectedEntityId);
 
   // UI State
-  const handleUpdateUserProfile = (updatedData) => {
-    // Actualizar en el array global
-    const updatedUsers = users.map(u => 
-      u.id === currentUser.id ? { ...u, ...updatedData } : u
-    );
-    setUsers(updatedUsers);
-    
-    // Actualizar el usuario actual en sesión
-    setCurrentUser(prev => ({ ...prev, ...updatedData }));
-    return { success: true };
+  const handleUpdateUserProfile = async (updatedData) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser.token}`
+        },
+        body: JSON.stringify(updatedData)
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al actualizar el perfil');
+      }
+
+      // Actualizar en el array global
+      const updatedUsers = users.map(u => 
+        u.id === currentUser.id ? { ...u, ...updatedData } : u
+      );
+      setUsers(updatedUsers);
+      
+      // Actualizar el usuario actual en sesión (manteniendo el token)
+      setCurrentUser(prev => ({ ...prev, ...updatedData }));
+      
+      return { success: true };
+    } catch (err) {
+      console.error("Error updating profile:", err);
+      return { success: false, message: err.message };
+    }
   };
 
   const [activeFormData, setActiveFormData] = useState({});
@@ -333,7 +378,7 @@ function App() {
   
   // Chat State (Moved up to avoid ReferenceError in effects)
   const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = React.useState(false); // Using React.useState just in case or ensure import
+  const [isTyping, setIsTyping] = useState(false);
   const [currentOptions, setCurrentOptions] = useState([]);
   
   // Dashboard Stats Logic
@@ -396,16 +441,6 @@ function App() {
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    if (currentUser) {
-      refreshActivityLogs();
-    }
-  }, [currentUser, refreshActivityLogs]);
-
-  useEffect(() => {
-    localStorage.setItem('ose_tokens_used', tokensUsed);
-  }, [tokensUsed]);
-
   // 🔥 PURGA ÚNICA DE CACHÉ / DATOS ANTIGUOS 🔥
   useEffect(() => {
     const hasPurged = localStorage.getItem('ose_data_purged_v3');
@@ -417,6 +452,16 @@ function App() {
       localStorage.setItem('ose_data_purged_v3', 'true');
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      refreshActivityLogs();
+    }
+  }, [currentUser, refreshActivityLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('ose_tokens_used', tokensUsed);
+  }, [tokensUsed]);
 
   const fetchLibraryStats = useCallback(async () => {
     if (!currentUser?.token) return;
@@ -836,10 +881,19 @@ function App() {
       setActiveFormData({});
       setFlowStep(0);
       await refreshData();
-      setModalStatus({ isOpen: true, type: 'success', message: 'El registro se ha guardado y sincronizado exitosamente en la nube.' });
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'success', 
+        message: `¡${entityLabel} guardada! El registro se ha sincronizado exitosamente en la nube.` 
+      });
     } catch (err) {
-      console.error(err);
-      setModalStatus({ isOpen: true, type: 'error', message: `Error en la sincronización: ${err.message}` });
+      console.error("Error en handleSave:", err);
+      // NO reseteamos setActiveFormData({}) aquí para que el usuario no pierda lo escrito
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'error', 
+        message: `Error de sincronización: ${err.message || 'No se pudo guardar el registro'}` 
+      });
     }
   };
 
@@ -959,7 +1013,15 @@ function App() {
   };
 
   const handleLogin = (user, rememberMe) => {
-    setCurrentUser(user);
+    // Normalizar entidades anidadas si existen para soporte consistente de camelCase
+    const normalizedUser = {
+      ...user,
+      entities: (user.entities || []).map(e => ({
+        ...e,
+        razonSocial: e.razonSocial || e.razon_social || e.nombre || ""
+      }))
+    };
+    setCurrentUser(normalizedUser);
     // Establecer la entidad inicial basada en el perfil del usuario
     // Prioridad: entidadId directo > entidadIds[0] > primera entidad disponible
     const entityFromUser = user.entidadId || user.entidadIds?.[0] || null;
@@ -1223,7 +1285,7 @@ function App() {
               <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'orgchart' && (
-              <OrgChartView dependencias={dependencias} currentUser={currentUser} onEdit={handleEdit} />
+              <OrgChartView dependencias={dependencias} currentUser={currentUser} entities={entities} onEdit={handleEdit} />
             )}
             {activeModule === 'series' && (
               <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
@@ -1232,7 +1294,7 @@ function App() {
               <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} currentUser={currentUser} />
+              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
@@ -1328,12 +1390,12 @@ function App() {
 
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && 
            !['Consulta', 'consulta', 'viewer'].includes(currentUser?.role || currentUser?.perfil || '') && (
-           <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-8">
+           <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-12">
              <button 
                onClick={handleSave}
-               className="flex items-center gap-2 bg-success text-success-foreground hover:bg-success/90 px-6 py-2.5 rounded-md shadow-md text-sm font-semibold transition-all transform active:scale-95"
+               className="flex items-center gap-3 bg-primary text-white hover:bg-primary/90 px-10 py-4 rounded-2xl shadow-xl shadow-primary/20 text-base font-black uppercase tracking-widest transition-all transform active:scale-95"
              >
-               <Save className="h-5 w-5" />
+               <Save className="h-6 w-6" />
                {activeFormData.id ? "Actualizar Registro" : "Guardar Registro"}
              </button>
            </div>

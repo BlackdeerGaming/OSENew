@@ -50,10 +50,20 @@ export default function EntitiesView({ entities, setEntities }) {
 
   const [errors, setErrors] = useState({});
 
-  const filteredEntities = entities.filter(ent =>
-    ent.razonSocial.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ent.numeroDocumento.includes(searchQuery)
-  );
+  const filteredEntities = (entities || []).map(e => ({
+    ...e,
+    razonSocial: e.razonSocial || e.razon_social || "",
+    numeroDocumento: e.numeroDocumento || e.nit || "",
+    nombreContacto: e.nombreContacto || e.nombre_contacto || "",
+    correo: e.correo || e.email || "",
+    tipoEjecutor: e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def.",
+    logoUrl: e.logoUrl || e.logo_url || "",
+    sector: e.sector || ""
+  })).filter(ent => {
+    const term = searchQuery.toLowerCase();
+    return ent.razonSocial.toLowerCase().includes(term) ||
+           ent.numeroDocumento.toLowerCase().includes(term);
+  });
 
   const handleEdit = (ent) => {
     setSelectedEntity(ent);
@@ -195,7 +205,7 @@ export default function EntitiesView({ entities, setEntities }) {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-medium text-foreground">{ent.razonSocial}</td>
+                      <td className="px-4 py-3 font-medium text-foreground">{ent.razonSocial || "Entidad Sin Nombre"}</td>
                       <td className="px-4 py-3 font-mono text-muted-foreground">{ent.numeroDocumento} {ent.dv && `-${ent.dv}`}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">

@@ -90,12 +90,19 @@ export function useTRDData(currentUser = null, entityId = null) {
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         console.error(`API Error [${method} dependencias]:`, errData);
-        throw new Error(errData.detail || 'Failed to save dependencia');
+        
+        // Extraer mensaje de error más legible
+        let detail = errData.detail || 'Error al guardar la dependencia';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "El código ingresado ya existe para esta entidad. Por favor usa uno diferente.";
+        }
+        
+        throw new Error(detail);
       }
       return await response.json();
     } catch (err) {
       console.error('❌ Error guardando dependencia:', err);
-      // Rollback optimism is complex, usually we just let it be or refreshData
+      // Re-lanzar para que el componente lo maneje (mostrar modal y no limpiar form)
       throw err;
     }
   };
@@ -132,7 +139,14 @@ export function useTRDData(currentUser = null, entityId = null) {
         headers: authHeaders(),
         body: JSON.stringify(mapSerieToDB(newRecord))
       });
-      if (!res.ok) throw new Error(`API Error [${method} series]`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        let detail = errData.detail || 'Error al guardar la serie';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "El código de serie ingresado ya existe para esta entidad.";
+        }
+        throw new Error(detail);
+      }
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando serie:', err);
@@ -163,7 +177,14 @@ export function useTRDData(currentUser = null, entityId = null) {
         headers: authHeaders(),
         body: JSON.stringify(mapSubserieToDB(newRecord))
       });
-      if (!res.ok) throw new Error(`API Error [${method} subseries]`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        let detail = errData.detail || 'Error al guardar la subserie';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "El código de subserie ingresado ya existe para esta entidad.";
+        }
+        throw new Error(detail);
+      }
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando subserie:', err);
@@ -193,7 +214,15 @@ export function useTRDData(currentUser = null, entityId = null) {
         headers: authHeaders(),
         body: JSON.stringify(mapTRDToDB(newRecord))
       });
-      if (!res.ok) throw new Error(`API Error [${method} trd_records]`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        let detail = errData.detail || 'Error al guardar la valoración TRD';
+        // TRD might not have a simple "code" but a unique constraint on dep+ser+sub
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "Ya existe una valoración para esta combinación de Dependencia/Serie/Subserie.";
+        }
+        throw new Error(detail);
+      }
       return await res.json();
     } catch (err) {
       console.error('❌ Error guardando TRD record:', err);

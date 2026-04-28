@@ -274,6 +274,33 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
           
           <div className="flex items-center gap-2 flex-wrap">
              <ViewToggle view={view} onChange={setView} />
+             
+             <div className="h-8 w-[1px] bg-border mx-1 hidden sm:block" />
+
+             <button 
+               onClick={() => onEdit('dependencias', {})}
+               className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-[10px] font-black uppercase transition-all border border-primary/20 shadow-sm"
+             >
+               <Building2 className="h-3.5 w-3.5" />
+               + Dependencia
+             </button>
+
+             <button 
+               onClick={() => onEdit('series', {})}
+               className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-[10px] font-black uppercase transition-all border border-primary/20 shadow-sm"
+             >
+               <FolderOpen className="h-3.5 w-3.5" />
+               + Serie
+             </button>
+
+             <button 
+               onClick={() => onEdit('subseries', {})}
+               className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-[10px] font-black uppercase transition-all border border-primary/20 shadow-sm"
+             >
+               <FileText className="h-3.5 w-3.5" />
+               + Subserie
+             </button>
+
              <button 
                onClick={resetFilters}
                className="text-[10px] font-black uppercase text-slate-400 hover:text-primary flex items-center gap-1.5 transition-colors px-2.5 py-1.5 hover:bg-primary/5 rounded-lg border border-transparent hover:border-primary/10"

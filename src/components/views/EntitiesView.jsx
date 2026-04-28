@@ -51,6 +51,74 @@ export default function EntitiesView({ entities, setEntities }) {
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState({});
 
+  const filteredEntities = (entities || []).map(e => {
+    // Normalizar campos: priorizar camelCase si tiene contenido, sino usar snake_case
+    const razonSocial = e.razonSocial || e.razon_social || "";
+    const numeroDocumento = e.numeroDocumento || e.nit || "";
+    const tipoEjecutor = e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def.";
+    const correo = e.correo || e.email || "";
+    const nombreContacto = e.nombreContacto || e.nombre_contacto || "";
+    const logoUrl = e.logoUrl || e.logo_url || "";
+    const sector = e.sector || "";
+    
+    return {
+      ...e,
+      razonSocial,
+      numeroDocumento,
+      tipoEjecutor,
+      correo,
+      nombreContacto,
+      logoUrl,
+      sector
+    };
+  }).filter(e => {
+    const term = (searchQuery || "").toLowerCase();
+    const razonSocial = e.razonSocial.toLowerCase();
+    const nit = e.numeroDocumento.toString();
+    return razonSocial.includes(term) || nit.includes(term);
+  });
+
+  const handleEdit = (ent) => {
+    setSelectedEntity(ent);
+    setFormData({
+      ...ent,
+      razonSocial: ent.razonSocial,
+      numeroDocumento: ent.numeroDocumento,
+      nombreContacto: ent.nombreContacto,
+      correo: ent.correo,
+      sector: ent.sector || "Nacional",
+      tipoEjecutor: ent.tipoEjecutor,
+      tamanoEmpresa: ent.tamanoEmpresa,
+      entidadOrganizacional: !!ent.entidadOrganizacional,
+      proyectos: !!ent.proyectos,
+      numDependencias: ent.numDependencias,
+      numProyectos: ent.numProyectos,
+      celular: ent.celular || "",
+      paginaWeb: ent.paginaWeb,
+      dv: ent.dv || "",
+      logoUrl: ent.logoUrl,
+      pais: ent.pais || "Colombia",
+      departamento: ent.departamento || "",
+    });
+    setLogoPreview(null);
+    setErrors({});
+    setView("edit");
+  };
+
+  const handleDelete = (id) => {
+    if (confirm("¿Estás seguro de eliminar esta entidad de forma permanente?")) {
+      fetch(`${API_BASE_URL}/entities/${id}`, {
+        method: 'DELETE'
+      }).then(res => {
+        if (res.ok) {
+          setEntities(entities.filter(a => a.id !== id));
+        } else {
+          alert("Error al eliminar la entidad.");
+        }
+      });
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
     if (!formData.razonSocial.trim()) newErrors.razonSocial = "Obligatorio";
@@ -74,22 +142,15 @@ export default function EntitiesView({ entities, setEntities }) {
   const handleLogoChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Preview
     const reader = new FileReader();
     reader.onloadend = () => setLogoPreview(reader.result);
     reader.readAsDataURL(file);
 
-    // Upload to S3 via API
     setIsUploading(true);
     const body = new FormData();
     body.append('file', file);
-
     try {
-      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
-        method: 'POST',
-        body
-      });
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { method: 'POST', body });
       if (res.ok) {
         const data = await res.json();
         setFormData({ ...formData, logoUrl: data.url });
@@ -128,52 +189,12 @@ export default function EntitiesView({ entities, setEntities }) {
     });
   };
 
-  const handleEdit = (ent) => {
-    setSelectedEntity(ent);
-    setFormData({
-      ...ent,
-      sector: ent.sector || "Nacional",
-      tipoEjecutor: ent.tipoEjecutor || "Entidad Pública",
-      tamanoEmpresa: ent.tamanoEmpresa || "Pequeña Empresa",
-      entidadOrganizacional: !!ent.entidadOrganizacional,
-      proyectos: !!ent.proyectos,
-      numDependencias: ent.numDependencias || "",
-      numProyectos: ent.numProyectos || "",
-      nombreContacto: ent.nombreContacto || "",
-      correo: ent.correo || ent.email || "",
-      celular: ent.celular || "",
-      paginaWeb: ent.paginaWeb || "",
-      dv: ent.dv || "",
-      logoUrl: ent.logo_url || ent.logoUrl || "",
-      pais: ent.pais || "Colombia",
-      departamento: ent.departamento || "",
-    });
-    setLogoPreview(null);
-    setErrors({});
-    setView("edit");
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm("¿Está seguro de eliminar esta entidad?")) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/entities/${id}`, { method: 'DELETE' });
-      if (res.ok) setEntities(entities.filter(e => e.id !== id));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const filteredEntities = entities.filter(e => 
-    e.razonSocial?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    e.numeroDocumento?.includes(searchQuery)
-  );
-
   if (view === "list") {
     return (
       <div className="flex flex-col h-full bg-background overflow-hidden">
         <ViewHeader
           icon={Building2}
-          title="Directorio de Entidades - V2.0"
+          title="Directorio de Entidades"
           subtitle="Gestión global de organizaciones y clientes"
           actions={
             <button
@@ -240,8 +261,8 @@ export default function EntitiesView({ entities, setEntities }) {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial}</span>
-                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.tipoEjecutor || 'Ejecutor No Def.'}</span>
+                      <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial || "Entidad Sin Nombre"}</span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.tipoEjecutor}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-mono text-[11px] bg-secondary/80 px-1.5 py-0.5 rounded border border-border">

@@ -1132,6 +1132,12 @@ async def create_entity(req: EntityCreate, user: dict = Depends(require_super_ad
     try:
         entity_id = str(uuid.uuid4())
         item = req.dict()
+
+        # Reparación: Check for duplicate NIT
+        all_entities = await db.scan_table("entities")
+        if any(e.get("numeroDocumento") == item["numeroDocumento"] for e in all_entities):
+            raise HTTPException(status_code=400, detail="Ya existe una entidad registrada con este número de documento.")
+
         item["PK"] = f"ENTITY#{entity_id}"
         item["SK"] = "METADATA"
         item["id"] = entity_id

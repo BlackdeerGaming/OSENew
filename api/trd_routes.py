@@ -124,6 +124,11 @@ async def create_dependencia_entity(
     if not data.get("id"):
         data["id"] = str(uuid.uuid4())
     
+    # Reparación: Check for duplicate code in same entity
+    all_deps = await db.scan_table("dependencias")
+    if any(d.get("entidad_id") == entity_id and d.get("codigo") == data["codigo"] for d in all_deps):
+        raise HTTPException(status_code=400, detail="El código de dependencia ya existe para esta entidad.")
+
     # Partition Key: entity_id, Sort Key: id (for dependencias)
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"DEP#{data['id']}"
@@ -200,6 +205,12 @@ async def create_serie_entity(
     data = payload.dict()
     data["entidad_id"] = entity_id
     if not data.get("id"): data["id"] = str(uuid.uuid4())
+
+    # Reparación: Check for duplicate code in same entity
+    all_series = await db.scan_table("series")
+    if any(s.get("entidad_id") == entity_id and s.get("codigo") == data["codigo"] for s in all_series):
+        raise HTTPException(status_code=400, detail="El código de serie ya existe para esta entidad.")
+
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"SER#{data['id']}"
     
@@ -254,6 +265,12 @@ async def create_subserie_entity(
     data = payload.dict()
     data["entidad_id"] = entity_id
     if not data.get("id"): data["id"] = str(uuid.uuid4())
+
+    # Reparación: Check for duplicate code in same entity
+    all_subs = await db.scan_table("subseries")
+    if any(s.get("entidad_id") == entity_id and s.get("codigo") == data["codigo"] for s in all_subs):
+        raise HTTPException(status_code=400, detail="El código de subserie ya existe para esta entidad.")
+
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"SUB#{data['id']}"
     
