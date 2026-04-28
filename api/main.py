@@ -1109,11 +1109,12 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
         # Enviar email via Resend API
         resend_api_key = os.getenv("RESEND_API_KEY")
         if resend_api_key:
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
             html_content = f"""
             <h2>Has sido invitado a colaborar en OSE IA</h2>
             <p>Se te ha invitado a unirte a la plataforma.</p>
             <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
-            <p><a href="https://ose-ia.vercel.app/?invitation_id={invite_id}&email={req.email}">Aceptar Invitación</a></p>
+            <p><a href="{frontend_url}/?invitation_id={invite_id}&email={req.email}">Aceptar Invitación</a></p>
             <br/>
             <p>Si no esperabas esta invitación, puedes ignorar este correo.</p>
             """
@@ -1219,11 +1220,12 @@ async def resend_invitation(invite_id: str, user: dict = Depends(get_current_use
             
         resend_api_key = os.getenv("RESEND_API_KEY")
         if resend_api_key:
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
             html_content = f"""
             <h2>Recordatorio: Has sido invitado a colaborar en OSE IA</h2>
             <p>Se te ha invitado a unirte a la plataforma.</p>
             <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
-            <p><a href="https://ose-ia.vercel.app/?invitation_id={invite_id}&email={invite.get('email', '')}">Aceptar Invitación</a></p>
+            <p><a href="{frontend_url}/?invitation_id={invite_id}&email={invite.get('email', '')}">Aceptar Invitación</a></p>
             """
             async with httpx.AsyncClient() as client:
                 await client.post(
