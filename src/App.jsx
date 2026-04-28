@@ -170,14 +170,19 @@ function App() {
       try { if (savedUserStr) savedUser = JSON.parse(savedUserStr); } catch(e){}
       
       if (savedUser && savedUser.token) {
-        // Usuario ya logueado en esta pestaña, aceptar directamente
-        fetch(`${API_BASE_URL}/invitations/${invId}/respond`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${savedUser.token}` },
-          body: JSON.stringify({ action: 'accept' })
-        }).then(res => {
-          if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
-        }).catch(console.error);
+        if (savedUser.email && savedUser.email.toLowerCase() !== invEmail.toLowerCase()) {
+          alert(`La invitación es para ${invEmail}, pero estás conectado como ${savedUser.email}. Por favor cierra sesión y conéctate con la cuenta correcta para aceptarla.`);
+        } else {
+          // Usuario logueado con el correo correcto, aceptar directamente
+          fetch(`${API_BASE_URL}/invitations/${invId}/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${savedUser.token}` },
+            body: JSON.stringify({ action: 'accept' })
+          }).then(res => {
+            if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+            else res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+          }).catch(console.error);
+        }
       } else {
         // No logueado, forzar login/registro y guardar el contexto
         setInvitationContext(context);
@@ -1017,15 +1022,19 @@ function App() {
     localStorage.setItem('ose_has_account', 'true');
 
     if (invitationContext) {
-      // Auto-aceptar la invitación pendiente
-      fetch(`${API_BASE_URL}/invitations/${invitationContext.id}/respond`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${normalizedUser.token}` },
-          body: JSON.stringify({ action: 'accept' })
-      }).then(res => {
-          if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
-      }).catch(console.error);
-      
+      if (normalizedUser.email && normalizedUser.email.toLowerCase() !== invitationContext.email.toLowerCase()) {
+        alert(`La invitación es para ${invitationContext.email}, pero te conectaste como ${normalizedUser.email}. No se puede aceptar la invitación.`);
+      } else {
+        // Auto-aceptar la invitación pendiente
+        fetch(`${API_BASE_URL}/invitations/${invitationContext.id}/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${normalizedUser.token}` },
+            body: JSON.stringify({ action: 'accept' })
+        }).then(res => {
+            if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+            else res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+        }).catch(console.error);
+      }
       localStorage.removeItem('invitation_context');
       setInvitationContext(null);
     }
