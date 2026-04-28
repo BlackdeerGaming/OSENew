@@ -20,10 +20,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         
         # Cognito attributes mapping (normalización)
         raw_role = str(payload.get('custom:role', payload.get('role', 'usuario'))).lower().strip()
+        # Recargar whitelist del entorno
+        current_whitelist = [e.strip().lower() for e in os.getenv('SUPERADMIN_EMAILS', '').split(',') if e.strip()]
         
         if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
             payload['role'] = 'administrador'
-        elif raw_role == 'superadmin' or payload.get('email', '').lower().strip() in SUPERADMIN_EMAILS:
+        elif raw_role == 'superadmin' or payload.get('email', '').lower().strip() in current_whitelist:
             payload['role'] = 'superadmin'
         elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
             payload['role'] = 'usuario'

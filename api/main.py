@@ -413,7 +413,14 @@ async def login(req: LoginRequest):
         id_token = auth_result.get("IdToken")
         
         # 2. Buscar perfil en DynamoDB
-        is_superadmin = identifier in SUPERADMIN_EMAILS
+        # Recargar lista de superadmins del entorno para asegurar que refleje cambios en .env
+        whitelist_raw = os.getenv("SUPERADMIN_EMAILS", "superadmin@ose.com,ivandchaves@gmail.com")
+        current_superadmins = [e.strip().lower() for e in whitelist_raw.split(",") if e.strip()]
+        
+        print(f"DEBUG LOGIN: Identifier={identifier}")
+        print(f"DEBUG LOGIN: SuperAdmin Whitelist={current_superadmins}")
+        is_superadmin = identifier in current_superadmins
+        print(f"DEBUG LOGIN: IsSuperAdmin={is_superadmin}")
         
         user_profile = None
         # Escaneamos la tabla users para encontrar el email
