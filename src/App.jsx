@@ -992,8 +992,8 @@ function App() {
     if (entityFromUser) {
       setSelectedEntityId(entityFromUser);
     } else if (user.role === 'superadmin') {
-      // superadmin: deja el selector libre, no forzamos ninguna entidad
-      setSelectedEntityId(null);
+      // superadmin: forzamos OSE Sistema Global (e0) como principal por defecto
+      setSelectedEntityId('e0');
     }
     
     // Siempre guardamos en localStorage para persistencia en refrescos
@@ -1035,15 +1035,25 @@ function App() {
   // Determine which entities the current user can see/select
   const userEntities = React.useMemo(() => {
     if (!currentUser) return entities;
-    if (currentUser.role === 'superadmin') return entities;
-    // If user has entidadIds (multi) use those, fall back to single entidadId
-    const ids = currentUser.entidadIds?.length > 0
-      ? currentUser.entidadIds
-      : currentUser.entidadId ? [currentUser.entidadId] : [];
-    return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
+    let available = entities;
+    if (currentUser.role !== 'superadmin') {
+      const ids = currentUser.entidadIds?.length > 0
+        ? currentUser.entidadIds
+        : currentUser.entidadId ? [currentUser.entidadId] : [];
+      available = ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
+    }
+    
+    // Sort to ensure "OSE Sistema Global" (e0) is always first, then alphabetical
+    return [...available].sort((a, b) => {
+      if (a.id === 'e0') return -1;
+      if (b.id === 'e0') return 1;
+      return (a.razonSocial || "").localeCompare(b.razonSocial || "");
+    });
   }, [currentUser, entities]);
 
-  const currentEntity = entities.find(e => e.id === selectedEntityId) || userEntities?.[0];
+  const currentEntity = entities.find(e => e.id === selectedEntityId) || 
+                        (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
+                        userEntities?.[0];
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
