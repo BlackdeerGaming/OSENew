@@ -72,14 +72,31 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
 
   const handleEdit = (user) => {
-    setNewUser({
-      ...user,
-      // Map isActivated/pending to Activo/Inactivo internal status for the toggle
-      estado: user.isActivated ? 'Activo' : 'Inactivo',
-      iaDisponible: !!user.iaDisponible,
-      entidadIds: user.entidadIds || (user.entidadId ? [user.entidadId] : [])
-    });
-    setEditingUserId(user.id);
+    console.log(" [DEBUG EDIT] Datos recibidos para editar:", user);
+    
+    // Extraer ID de forma robusta
+    const userId = user.id || (user.PK && user.PK.includes('#') ? user.PK.split('#')[1] : user.PK) || user.sub;
+    
+    const mappedUser = {
+      id: userId,
+      tipoDocumento: user.tipoDocumento || user.document_type || user.TipoDocumento || '',
+      numeroDocumento: user.numeroDocumento || user.document_number || user.nit || user.NumeroDocumento || user.NIT || '',
+      nombre: user.nombre || user.first_name || user.name || user.Nombre || '',
+      apellido: user.apellido || user.last_name || user.Apellido || '',
+      email: user.email || user.Email || user.mail || '',
+      celular: user.celular || user.phone || user.Celular || user.telefono || '',
+      username: user.username || user.user_name || user.UserName || user.email || user.Email || '',
+      estado: (user.isActivated || user.IsActivated || user.estado === 'Activo') ? 'Activo' : 'Inactivo',
+      perfil: user.perfil || user.role || user.Role || user.Perfil || 'usuario',
+      entidadId: user.entidadId || user.entity_id || user.EntidadId || null,
+      entidadIds: user.entidadIds || (user.entidadId || user.entity_id ? [user.entidadId || user.entity_id] : []),
+      iaDisponible: !!(user.iaDisponible || user.IaDisponible || user.IA_Disponible)
+    };
+
+    console.log(" [DEBUG EDIT] Datos mapeados al formulario:", mappedUser);
+    
+    setNewUser(mappedUser);
+    setEditingUserId(userId);
     setShowModal(true);
     setActiveTab('info');
   };
@@ -104,92 +121,101 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
     const entidadSelected = entities.find(e => e.id === (newUser.entidadIds[0]));
     
-    // Generación de Token de Invitación (30 min)
-    const token = Math.random().toString(36).substring(2, 11).toUpperCase();
-    const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
+    const userBase = {
+      ...newUser,
+      entidadId: newUser.entidadIds[0] || newUser.entidadId || null,
+      entidadNombre: newUser.entidadIds
+        .map(id => entities.find(e => e.id === id)?.razonSocial)
+        .filter(Boolean).join(', '),
+      entidadIds: newUser.entidadIds
+    };
 
-    setUsers(prev => {
-       const userBase = {
-         ...newUser,
-         // entidadId is the first entity (default) for backward compat
-         entidadId: newUser.entidadIds[0] || newUser.entidadId || null,
-         entidadNombre: newUser.entidadIds
-           .map(id => entities.find(e => e.id === id)?.razonSocial)
-           .filter(Boolean).join(', '),
-         entidadIds: newUser.entidadIds
-       };
+    if (editingUserId) {
+      // --- MODO EDICIÓN ---
+      try {
+        const res = await fetch(`${API_BASE_URL}/users/${editingUserId}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({
+            ...userBase,
+            id: editingUserId
+          })
+        });
 
-       if (editingUserId) {
-          fetch(`${API_BASE_URL}/users/${editingUserId}`, {
-           method: 'PUT',
-           headers: { 
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${currentUser?.token}`
-           },
-           body: JSON.stringify({
-             ...userBase,
-             entidadIds: newUser.entidadIds
-           })
-         }).then(res => {
-           if (!res.ok) console.error("Error al actualizar usuario");
-         });
+        if (res.ok) {
+          setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...userBase, id: editingUserId } : u));
+          alert("Usuario actualizado con éxito");
+          resetModal();
+        } else {
+          const error = await res.json();
+          alert("Error al actualizar: " + (error.detail || "Desconocido"));
+        }
+      } catch (err) {
+        alert("Error de conexión al actualizar usuario");
+      }
+    } else {
+      // --- MODO CREACIÓN / INVITACIÓN ---
+      // Generación de Token de Invitación (30 min)
+      const token = Math.random().toString(36).substring(2, 11).toUpperCase();
+      const expiry = Date.now() + (30 * 60 * 1000); // 30 minutos
 
-         return prev.map(u => u.id === editingUserId ? { ...u, ...userBase, id: editingUserId } : u);
-       } else {
-          // CREAR EN BACKEND
-         const tempId = Date.now().toString();
-         const userToAdd = { 
-            ...userBase, 
-            id: tempId, 
-            fechaCreacion: new Date().toLocaleDateString(),
-            activationToken: token,
-            tokenExpiry: expiry,
-            isActivated: false,
-            password: ''
-         };
+      const tempId = Date.now().toString();
+      const userToAdd = { 
+        ...userBase, 
+        id: tempId, 
+        fechaCreacion: new Date().toLocaleDateString(),
+        activationToken: token,
+        tokenExpiry: expiry,
+        isActivated: false,
+        password: ''
+      };
 
-         fetch(`${API_BASE_URL}/users`, {
-           method: 'POST',
-           headers: { 
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${currentUser?.token}`
-           },
-           body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
-         }).then(async res => {
-           if (res.ok) {
-             // Después de crear exitosamente en la DB, enviar email
-             const finalLink = `${window.location.origin}/?token=${token}`; 
-             setGeneratedLink(finalLink);
-             setShowInviteModal(true);
-             setShowModal(false);
+      try {
+        const res = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({ ...userToAdd, entidadIds: newUser.entidadIds })
+        });
 
-             setEmailStatus('sending');
-             try {
-               const mailRes = await fetch(`${API_BASE_URL}/send-activation`, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                   email: newUser.email,
-                   nombre: newUser.nombre,
-                   link: finalLink
-                 })
-               });
-               setEmailStatus(mailRes.ok ? 'sent' : 'error');
-             } catch (e) {
-               console.error("Error enviando email:", e);
-               setEmailStatus('error');
-             }
-           } else {
-             const errorData = await res.json();
-             alert("Error al crear usuario: " + (errorData.detail || "Desconocido"));
-           }
-         });
+        if (res.ok) {
+          setUsers(prev => [...prev, userToAdd]);
+          
+          // Enviar email de activación SOLO para nuevos usuarios
+          const finalLink = `${window.location.origin}/?token=${token}`; 
+          setGeneratedLink(finalLink);
+          setShowInviteModal(true);
+          setShowModal(false);
 
-         return [...prev, userToAdd];
-       }
-    });
-
-    if (editingUserId) resetModal();
+          setEmailStatus('sending');
+          try {
+            const mailRes = await fetch(`${API_BASE_URL}/send-activation`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: newUser.email,
+                nombre: newUser.nombre,
+                link: finalLink
+              })
+            });
+            setEmailStatus(mailRes.ok ? 'sent' : 'error');
+          } catch (e) {
+            console.error("Error enviando email:", e);
+            setEmailStatus('error');
+          }
+        } else {
+          const errorData = await res.json();
+          alert("Error al crear usuario: " + (errorData.detail || "Desconocido"));
+        }
+      } catch (err) {
+        alert("Error de conexión al crear usuario");
+      }
+    }
   };
 
   const resetModal = () => {
@@ -247,12 +273,48 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     return false;
   });
 
-  // --- BÚSQUEDA ---
-  const displayedUsers = filteredUsers.filter(u => 
-    (u.nombre?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.apellido?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-    (u.username?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+  // --- NORMALIZACIÓN, DEDUPLICACIÓN Y BÚSQUEDA ---
+  const userMap = new Map();
+
+  filteredUsers.forEach(u => {
+    // Extraer ID real
+    const uid = u.id || (u.PK && u.PK.includes('#') ? u.PK.split('#')[1] : u.PK) || u.sub;
+    if (!uid) return;
+
+    // Normalizar
+    const nombre = u.nombre || u.Nombre || u.first_name || u.name || "";
+    const email = u.email || u.Email || "";
+    const perfil = u.perfil || u.Role || u.role || 'usuario';
+    const isActivated = u.isActivated === true || u.isActivated === 'true' || u.IsActivated === true;
+    
+    let entidadNombre = u.entidadNombre || u.EntityName || "";
+    if (!entidadNombre && (u.entidadId || u.entity_id)) {
+      const entId = u.entidadId || u.entity_id;
+      entidadNombre = entities.find(e => e.id === entId)?.razonSocial || "Entidad Desconocida";
+    }
+
+    const normalized = {
+      ...u,
+      id: uid,
+      displayNombre: `${nombre} ${u.apellido || u.Apellido || ""}`.trim() || email.split('@')[0],
+      displayEmail: email,
+      displayPerfil: perfil,
+      displayEstado: isActivated ? 'Activo' : 'Pendiente',
+      isActivated,
+      entidadNombre: entidadNombre || "N/A",
+      _completeness: (nombre ? 10 : 0) + (u.entidadId ? 5 : 0) // Para priorizar el mejor registro
+    };
+
+    // Si ya existe este ID, nos quedamos con el que tenga más datos
+    if (!userMap.has(uid) || normalized._completeness > userMap.get(uid)._completeness) {
+      userMap.set(uid, normalized);
+    }
+  });
+
+  const displayedUsers = Array.from(userMap.values()).filter(u => 
+    u.displayNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.displayEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.username || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -320,28 +382,28 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                   <tr key={user.id} className="hover:bg-slate-50/50 transition-colors bg-white">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                         <span className="font-medium text-slate-900">{user.nombre} {user.apellido}</span>
-                         <span className="text-[10px] text-muted-foreground font-mono">{user.email}</span>
+                         <span className="font-medium text-slate-900">{user.displayNombre}</span>
+                         <span className="text-[10px] text-muted-foreground font-mono">{user.displayEmail}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-600 font-medium">
-                      {user.entidadNombre || "N/A"}
+                      {user.entidadNombre}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider",
-                        user.perfil === 'administrador' || user.perfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
+                        user.displayPerfil === 'administrador' || user.displayPerfil === 'superadmin' ? "bg-primary/10 text-primary border-primary/20" : "bg-slate-100 text-slate-500 border-slate-200"
                       )}>
-                        {user.perfil === 'administrador' ? 'Administrador' : user.perfil === 'usuario' ? 'Usuario' : (user.perfil || 'usuario')}
+                        {user.displayPerfil === 'administrador' ? 'Administrador' : user.displayPerfil === 'superadmin' ? 'Superadmin' : 'Usuario'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
-                        <div className={cn(
-                           "h-1.5 w-1.5 rounded-full",
-                           user.isActivated ? "bg-success" : "bg-warning"
-                        )} />
-                        <span className="text-xs font-medium text-slate-600">{user.isActivated ? "Activo" : "Pendiente"}</span>
+                         <div className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            user.isActivated ? "bg-success" : "bg-warning"
+                         )} />
+                         <span className="text-xs font-medium text-slate-600">{user.displayEstado}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
