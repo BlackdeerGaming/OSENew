@@ -184,11 +184,10 @@ function App() {
           }).catch(console.error);
         }
       } else {
-        // No logueado, forzar login/registro y guardar el contexto
+        // No logueado, forzar a la pantalla de registro (crear cuenta) y guardar el contexto
         setInvitationContext(context);
         localStorage.setItem('invitation_context', JSON.stringify(context));
-        if (hasAccount) setAuthView('login');
-        else setAuthView('signup');
+        setAuthView('signup');
       }
     }
 
@@ -1162,6 +1161,7 @@ function App() {
           <SignUp 
             onSignUp={(userData) => handleLogin(userData, true)} 
             onNavigateToLogin={() => setAuthView('login')} 
+            initialEmail={invitationContext?.email}
           />
         )}
         {authView === 'activate' && (
