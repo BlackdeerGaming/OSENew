@@ -2,6 +2,9 @@ import boto3
 import os
 import jwt
 import requests
+import hmac
+import hashlib
+import base64
 from fastapi import HTTPException
 from typing import Dict, Any, Optional
 
@@ -10,9 +13,21 @@ class CognitoManager:
         self.region = os.getenv("AWS_REGION", "us-east-1")
         self.user_pool_id = os.getenv("COGNITO_USER_POOL_ID")
         self.client_id = os.getenv("COGNITO_CLIENT_ID")
+        self.client_secret = os.getenv("COGNITO_CLIENT_SECRET")
         self.client = boto3.client("cognito-idp", region_name=self.region)
         self.jwks_url = f"https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}/.well-known/jwks.json"
         self._jwks = None
+
+    def _get_secret_hash(self, username: str) -> str:
+        if not self.client_secret:
+            return None
+        msg = username + self.client_id
+        dig = hmac.new(
+            str(self.client_secret).encode('utf-8'), 
+            msg.encode('utf-8'), 
+            digestmod=hashlib.sha256
+        ).digest()
+        return base64.b64encode(dig).decode()
 
     def get_jwks(self):
         if not self._jwks:
@@ -21,13 +36,18 @@ class CognitoManager:
 
     async def authenticate(self, username, password) -> Dict:
         try:
+            auth_params = {
+                "USERNAME": username,
+                "PASSWORD": password
+            }
+            secret_hash = self._get_secret_hash(username)
+            if secret_hash:
+                auth_params["SECRET_HASH"] = secret_hash
+
             response = self.client.initiate_auth(
                 ClientId=self.client_id,
                 AuthFlow="USER_PASSWORD_AUTH",
-                AuthParameters={
-                    "USERNAME": username,
-                    "PASSWORD": password
-                }
+                AuthParameters=auth_params
             )
             return response.get("AuthenticationResult")
         except self.client.exceptions.NotAuthorizedException:
@@ -37,21 +57,29 @@ class CognitoManager:
 
     async def forgot_password(self, username: str):
         try:
-            return self.client.forgot_password(
-                ClientId=self.client_id,
-                Username=username
-            )
+            params = {
+                "ClientId": self.client_id,
+                "Username": username
+            }
+            secret_hash = self._get_secret_hash(username)
+            if secret_hash:
+                params["SecretHash"] = secret_hash
+            return self.client.forgot_password(**params)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
     async def confirm_forgot_password(self, username: str, confirmation_code: str, new_password: str):
         try:
-            return self.client.confirm_forgot_password(
-                ClientId=self.client_id,
-                Username=username,
-                ConfirmationCode=confirmation_code,
-                Password=new_password
-            )
+            params = {
+                "ClientId": self.client_id,
+                "Username": username,
+                "ConfirmationCode": confirmation_code,
+                "Password": new_password
+            }
+            secret_hash = self._get_secret_hash(username)
+            if secret_hash:
+                params["SecretHash"] = secret_hash
+            return self.client.confirm_forgot_password(**params)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
