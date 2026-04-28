@@ -1,6 +1,7 @@
 import os
 
 import re
+from typing import List, Optional, Dict, Any
 
 import base64
 import boto3
@@ -522,8 +523,11 @@ class UserUpdate(BaseModel):
 
 class UserSignUp(BaseModel):
     nombre: str
+    apellido: Optional[str] = None
+    username: str
     email: str
     password: str
+    phone: Optional[str] = None
 
 class UserActivate(BaseModel):
     token: str
@@ -2008,16 +2012,35 @@ async def export_activity_logs(
 async def signup(req: UserSignUp):
     # Crea un nuevo usuario en AWS Cognito y DynamoDB
     email = req.email.strip().lower()
+    
+    # 1. Registrar en Cognito
+    try:
+        await cognito.sign_up(
+            username=req.username,
+            password=req.password,
+            email=email,
+            name=req.nombre
+        )
+    except Exception as e:
+        # Si el error es de FastAPI HTTPException, relanzarlo
+        if hasattr(e, "status_code"):
+            raise e
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 2. Guardar perfil en DynamoDB
     new_user = {
         "PK": f"USER#{str(uuid.uuid4())}",
         "SK": "PROFILE",
         "nombre": req.nombre,
+        "apellido": req.apellido,
+        "username": req.username,
         "email": email,
+        "phone": req.phone,
         "role": "usuario",
         "created_at": datetime.now().isoformat()
     }
     await db.put_item("users", new_user)
-    return {"status": "ok", "message": "Usuario registrado exitosamente"}
+    return {"status": "ok", "message": "Usuario registrado exitosamente en AWS"}
 
 @router.post("/request-reset")
 async def request_reset(req: PasswordResetRequest):

@@ -94,6 +94,36 @@ class CognitoManager:
             print(f" [AUTH] Error decodificando token: {str(e)}")
             raise HTTPException(status_code=401, detail=f"Token invalido: {str(e)}")
 
+    async def sign_up(self, username, password, email, name):
+        try:
+            params = {
+                "ClientId": self.client_id,
+                "Username": username,
+                "Password": password,
+                "UserAttributes": [
+                    {"Name": "email", "Value": email},
+                    {"Name": "name", "Value": name}
+                ]
+            }
+            secret_hash = self._get_secret_hash(username)
+            if secret_hash:
+                params["SecretHash"] = secret_hash
+            
+            response = self.client.sign_up(**params)
+            
+            # Auto-confirmar usuario para agilizar el flujo (opcional, requiere permisos admin)
+            try:
+                self.client.admin_confirm_sign_up(
+                    UserPoolId=self.user_pool_id,
+                    Username=username
+                )
+            except Exception as e:
+                print(f"No se pudo auto-confirmar: {e}")
+                
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     async def get_user_attributes(self, access_token: str) -> Dict:
         response = self.client.get_user(AccessToken=access_token)
         attrs = {attr["Name"]: attr["Value"] for attr in response["UserAttributes"]}
