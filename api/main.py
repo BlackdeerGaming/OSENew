@@ -1270,7 +1270,7 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
         # Si fue aceptada, añadir la entidad al usuario actual
         if req.action == "accept":
             entity_id = invite.get("entity_id")
-            user_pk = user.get("PK")
+            user_pk = f"USER#{user.get('user_id')}"
             user_sk = "PROFILE"
             user_data = await db.get_item("users", user_pk, user_sk)
             
