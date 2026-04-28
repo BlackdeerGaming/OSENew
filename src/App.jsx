@@ -128,15 +128,7 @@ function App() {
     loadFunciones();
   }, [currentUser]);
 
-          }
-        }
-      }
-    });
 
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
-  }, [currentUser, modalStatus.isOpen]);
 
   // Detectar tokens en la URL
   useEffect(() => {
