@@ -51,10 +51,30 @@ export default function EntitiesView({ entities, setEntities }) {
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const filteredEntities = (entities || []).filter(e => {
+  const filteredEntities = (entities || []).map(e => {
+    // Normalizar campos: priorizar camelCase si tiene contenido, sino usar snake_case
+    const razonSocial = e.razonSocial || e.razon_social || "";
+    const numeroDocumento = e.numeroDocumento || e.nit || "";
+    const tipoEjecutor = e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def.";
+    const correo = e.correo || e.email || "";
+    const nombreContacto = e.nombreContacto || e.nombre_contacto || "";
+    const logoUrl = e.logoUrl || e.logo_url || "";
+    const sector = e.sector || "";
+    
+    return {
+      ...e,
+      razonSocial,
+      numeroDocumento,
+      tipoEjecutor,
+      correo,
+      nombreContacto,
+      logoUrl,
+      sector
+    };
+  }).filter(e => {
     const term = (searchQuery || "").toLowerCase();
-    const razonSocial = (e.razonSocial || "").toLowerCase();
-    const nit = (e.numeroDocumento || "").toString();
+    const razonSocial = e.razonSocial.toLowerCase();
+    const nit = e.numeroDocumento.toString();
     return razonSocial.includes(term) || nit.includes(term);
   });
 
@@ -62,19 +82,21 @@ export default function EntitiesView({ entities, setEntities }) {
     setSelectedEntity(ent);
     setFormData({
       ...ent,
+      razonSocial: ent.razonSocial,
+      numeroDocumento: ent.numeroDocumento,
+      nombreContacto: ent.nombreContacto,
+      correo: ent.correo,
       sector: ent.sector || "Nacional",
-      tipoEjecutor: ent.tipoEjecutor || "Entidad Pública",
-      tamanoEmpresa: ent.tamanoEmpresa || "Pequeña Empresa",
+      tipoEjecutor: ent.tipoEjecutor,
+      tamanoEmpresa: ent.tamanoEmpresa,
       entidadOrganizacional: !!ent.entidadOrganizacional,
       proyectos: !!ent.proyectos,
-      numDependencias: ent.num_dependencias || ent.numDependencias || "",
-      numProyectos: ent.num_proyectos || ent.numProyectos || "",
-      nombreContacto: ent.nombre_contacto || ent.nombreContacto || "",
-      correo: ent.correo || ent.email || "",
+      numDependencias: ent.numDependencias,
+      numProyectos: ent.numProyectos,
       celular: ent.celular || "",
-      paginaWeb: ent.pagina_web || ent.paginaWeb || "",
+      paginaWeb: ent.paginaWeb,
       dv: ent.dv || "",
-      logoUrl: ent.logo_url || ent.logoUrl || "",
+      logoUrl: ent.logoUrl,
       pais: ent.pais || "Colombia",
       departamento: ent.departamento || "",
     });
@@ -239,8 +261,8 @@ export default function EntitiesView({ entities, setEntities }) {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial}</span>
-                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.tipoEjecutor || 'Ejecutor No Def.'}</span>
+                      <span className="font-semibold text-foreground block leading-tight">{ent.razonSocial || "Entidad Sin Nombre"}</span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">{ent.tipoEjecutor}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-mono text-[11px] bg-secondary/80 px-1.5 py-0.5 rounded border border-border">

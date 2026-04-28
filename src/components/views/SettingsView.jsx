@@ -22,7 +22,7 @@ export default function SettingsView({ currentUser, onUpdate, onLogout }) {
     return null;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setStatus('idle');
@@ -48,11 +48,14 @@ export default function SettingsView({ currentUser, onUpdate, onLogout }) {
     };
     if (formData.password) updatedData.password = formData.password;
 
-    const result = onUpdate(updatedData);
+    const result = await onUpdate(updatedData);
     if (result.success) {
       setStatus('success');
       setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
       setTimeout(() => setStatus('idle'), 3000);
+    } else {
+      setErrorMsg(result.message || "Error al actualizar el perfil.");
+      setStatus('error');
     }
   };
 

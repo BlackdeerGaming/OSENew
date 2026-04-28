@@ -120,10 +120,16 @@ async def create_dependencia_entity(
     # Insert into Supabase DB
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("dependencias").upsert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create dependencia")
-    record = res.data[0]
+    try:
+        res = supabase_client.table("dependencias").upsert(data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to create dependencia")
+        record = res.data[0]
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate key value violates unique constraint" in error_msg:
+             raise HTTPException(status_code=400, detail="El código de dependencia ya existe para esta entidad.")
+        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
     # Cloud upload (synchronous – block on error)
     try:
         path = upload_record(
@@ -196,10 +202,16 @@ async def create_serie_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("series").upsert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create serie")
-    record = res.data[0]
+    try:
+        res = supabase_client.table("series").upsert(data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to create serie")
+        record = res.data[0]
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate key value violates unique constraint" in error_msg:
+             raise HTTPException(status_code=400, detail="El código de serie ya existe para esta entidad.")
+        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
     try:
         path = upload_record(supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
         # supabase_client.table("series").update({"cloud_key": path}).eq("id", record["id"]).execute()
@@ -251,10 +263,16 @@ async def create_subserie_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("subseries").upsert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create subserie")
-    record = res.data[0]
+    try:
+        res = supabase_client.table("subseries").upsert(data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to create subserie")
+        record = res.data[0]
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate key value violates unique constraint" in error_msg:
+             raise HTTPException(status_code=400, detail="El código de subserie ya existe para esta entidad.")
+        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
     try:
         path = upload_record(supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
         # supabase_client.table("subseries").update({"cloud_key": path}).eq("id", record["id"]).execute()
@@ -306,10 +324,16 @@ async def create_trd_record_entity(
     require_entity_admin(user, entity_id)
     data = payload.dict()
     data["entidad_id"] = entity_id
-    res = supabase_client.table("trd_records").upsert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create TRD record")
-    record = res.data[0]
+    try:
+        res = supabase_client.table("trd_records").upsert(data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to create TRD record")
+        record = res.data[0]
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate key value violates unique constraint" in error_msg:
+             raise HTTPException(status_code=400, detail="Ya existe una valoración para esta combinación de códigos.")
+        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
     try:
         path = upload_record(supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
         # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record["id"]).execute()

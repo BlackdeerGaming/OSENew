@@ -38,6 +38,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import HumanMessage, SystemMessage
 from supabase import create_client, Client
+import postgrest
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -229,6 +230,9 @@ class UserUpdate(BaseModel):
     entidadIds: list[str] | None = None
     isActivated: bool | None = None
     iaDisponible: bool | None = None
+    password: str | None = None
+    username: str | None = None
+    celular: str | None = None
 
 class UserSignUp(BaseModel):
     nombre: str
@@ -1317,6 +1321,9 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     if user.entidadId is not None: data["entidad_id"] = user.entidadId
     if user.isActivated is not None: data["is_activated"] = user.isActivated
     if user.iaDisponible is not None: data["ia_disponible"] = user.iaDisponible
+    if user.password is not None: data["password"] = user.password
+    if user.username is not None: data["username"] = user.username
+    if user.celular is not None: data["celular"] = user.celular
     
     res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
     
@@ -1485,9 +1492,14 @@ async def update_entity(entity_id: str, entity: EntityCreate):
     # Remove none values
     data = {k: v for k, v in data.items() if v is not None}
     
-    res = supabase_client.table("entities").update(data).eq("id", entity_id).execute()
-    if not res.data: raise HTTPException(404, "Entidad no encontrada")
-    return {"id": res.data[0]["id"]}
+    try:
+        res = supabase_client.table("entities").update(data).eq("id", entity_id).execute()
+        if not res.data: raise HTTPException(404, "Entidad no encontrada")
+        return {"id": res.data[0]["id"]}
+    except postgrest.exceptions.APIError as e:
+        if e.code == "23505":  # Unique violation
+            raise HTTPException(409, f"El NIT {entity.numeroDocumento} ya está registrado para otra entidad.")
+        raise HTTPException(500, f"Error de base de datos: {str(e)}")
 
 @router.delete("/entities/{entity_id}")
 async def delete_entity(entity_id: str):

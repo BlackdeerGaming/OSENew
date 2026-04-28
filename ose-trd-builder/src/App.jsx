@@ -101,7 +101,16 @@ function App() {
           fetch(`${API_BASE_URL}/entities`),
           fetch(`${API_BASE_URL}/users`)
         ]);
-        if (entRes.ok) setEntities(await entRes.json());
+        if (entRes.ok) {
+          const data = await entRes.json();
+          const normalized = (data || []).map(e => ({
+            ...e,
+            razonSocial: e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || "",
+            tipoEjecutor: e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def."
+          }));
+          setEntities(normalized);
+        }
         if (userRes.ok) setUsers(await userRes.json());
       } catch (err) {
         console.error("Error fetching initial data:", err);
@@ -605,7 +614,14 @@ function App() {
   };
 
   const handleLogin = (user) => {
-    setCurrentUser(user);
+    const normalizedUser = {
+      ...user,
+      entities: (user.entities || []).map(e => ({
+        ...e,
+        razonSocial: e.razonSocial || e.razon_social || e.nombre || ""
+      }))
+    };
+    setCurrentUser(normalizedUser);
     setAuthView('dashboard');
   };
 

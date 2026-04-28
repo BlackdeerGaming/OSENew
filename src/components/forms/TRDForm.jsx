@@ -34,11 +34,21 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-card rounded-xl border border-border shadow-sm max-w-4xl w-full mx-auto">
-      <div className="border-b border-border pb-4 mb-2">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">
-          {data?.id ? "Editar Valoración TRD" : "Nueva Valoración TRD"}
-        </h2>
-        <p className="text-sm text-muted-foreground">Formulario de registro de Tiempos de Retención y Disposición Documental.</p>
+      <div className="border-b border-border pb-4 mb-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">
+            {data?.id ? "Editar Valoración TRD" : "Nueva Valoración TRD"}
+          </h2>
+          <p className="text-sm text-muted-foreground">Formulario de registro de Tiempos de Retención y Disposición Documental.</p>
+        </div>
+        {data?.id && (
+          <button 
+            onClick={() => onChange({})} 
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
+          >
+            + Nueva Valoración
+          </button>
+        )}
       </div>
 
       {/* Top Filter Section */}
