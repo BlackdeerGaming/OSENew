@@ -413,22 +413,36 @@ async def login(req: LoginRequest):
         id_token = auth_result.get("IdToken")
         
         # 2. Buscar perfil en DynamoDB
-        # Recargar lista de superadmins del entorno para asegurar que refleje cambios en .env
+        # Decodificar el IdToken para obtener el email verificado de Cognito
+        import jwt as pyjwt
+        try:
+            token_payload = pyjwt.decode(id_token, options={"verify_signature": False})
+            verified_email = token_payload.get("email", "").lower().strip()
+        except:
+            verified_email = ""
+
+        # Recargar lista de superadmins del entorno
         whitelist_raw = os.getenv("SUPERADMIN_EMAILS", "superadmin@ose.com,ivandchaves@gmail.com")
         current_superadmins = [e.strip().lower() for e in whitelist_raw.split(",") if e.strip()]
         
-        print(f"DEBUG LOGIN: Identifier={identifier}")
-        print(f"DEBUG LOGIN: SuperAdmin Whitelist={current_superadmins}")
-        is_superadmin = identifier in current_superadmins
+        # Superadmin si el identificador O el email verificado están en la lista
+        is_superadmin = (identifier in current_superadmins) or (verified_email in current_superadmins)
+        
+        print(f"DEBUG LOGIN: Identifier={identifier}, VerifiedEmail={verified_email}")
         print(f"DEBUG LOGIN: IsSuperAdmin={is_superadmin}")
         
         user_profile = None
-        # Escaneamos la tabla users para encontrar el email
-        users = await db.scan_table("users")
-        for u in users:
-            if u.get("email", "").lower() == identifier:
-                user_profile = u
-                break
+        # Intentar buscar por identifier (username o email)
+        response = users_table.scan(FilterExpression=Attr('email').eq(identifier) | Attr('username').eq(identifier))
+        items = response.get('Items', [])
+        
+        # Si no se encuentra y tenemos un email verificado, intentar buscar por ese email
+        if not items and verified_email:
+            response = users_table.scan(FilterExpression=Attr('email').eq(verified_email))
+            items = response.get('Items', [])
+
+        if items:
+            user_profile = items[0]
         
         if not user_profile:
             if is_superadmin:
