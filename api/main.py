@@ -323,25 +323,18 @@ class ChatHistoryRequest(BaseModel):
 
 
 class UserCreate(BaseModel):
-
     nombre: str
-
     apellido: str | None = ""
-
     email: str
-
-    username: str
-
+    username: str | None = ""
     perfil: str
-
+    tipoDocumento: str | None = ""
+    numeroDocumento: str | None = ""
+    celular: str | None = ""
     entidadId: str | None = None
-
     entidadIds: list[str] | None = None
-
     activationToken: str | None = None
-
     tokenExpiry: int | None = None
-
     iaDisponible: bool | None = False
 
 
@@ -510,21 +503,18 @@ class GoogleAuthRequest(BaseModel):
 
 
 class UserUpdate(BaseModel):
-
     nombre: str | None = None
-
     apellido: str | None = None
-
+    email: str | None = None
+    username: str | None = None
+    tipoDocumento: str | None = None
+    numeroDocumento: str | None = None
+    celular: str | None = None
     estado: str | None = None
-
     perfil: str | None = None
-
     entidadId: str | None = None
-
     entidadIds: list[str] | None = None
-
     isActivated: bool | None = None
-
     iaDisponible: bool | None = None
 
 
