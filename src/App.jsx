@@ -210,8 +210,11 @@ function App() {
           console.log(` [FETCH] Recibidas ${eData.length} entidades`);
           setEntities(eData.map(e => ({
             ...e,
-            razonSocial: e.razonSocial || e.razon_social || "",
-            numeroDocumento: e.numeroDocumento || e.nit || ""
+            id: e.id || e.PK || e.entity_id || "",
+            razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+            nombre: e.nombre || e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+            nit: e.nit || e.numeroDocumento || e.NIT || ""
           })));
         }
         
@@ -985,9 +988,11 @@ function App() {
     console.log(" [DEBUG LOGIN] Usuario Normalizado con Token:", normalizedUser);
 
     setCurrentUser(normalizedUser);
-    // Establecer la entidad inicial basada en el perfil del usuario
-    // Prioridad: entidadId directo > entidadIds[0] > primera entidad disponible
-    const entityFromUser = user.entidadId || user.entidadIds?.[0] || null;
+    
+    // 🔥 Corregir el ID "None" que viene de DynamoDB
+    let entityFromUser = user.entidadId || user.entity_id || user.entidadIds?.[0] || null;
+    if (entityFromUser === "None" || entityFromUser === "null") entityFromUser = null;
+
     if (entityFromUser) {
       setSelectedEntityId(entityFromUser);
     } else if (user.role === 'superadmin') {
