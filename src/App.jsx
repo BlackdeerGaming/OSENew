@@ -37,7 +37,7 @@ import StatusModal from './components/ui/StatusModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
 import { exportTRDToExcel } from './utils/excelUtils';
 import { normalizeText } from './utils/stringUtils';
-import { supabase } from './lib/supabase';
+
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -1558,7 +1558,7 @@ function App() {
                     isRefreshing={isRefreshingDashboard}
                   />
                 )}
-                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
+                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} currentUser={currentUser} />}
                 {mainView === 'import' && (
                   <TRDImportView 
                     onImportComplete={executeAgentActions} 

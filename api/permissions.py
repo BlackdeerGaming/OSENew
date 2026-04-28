@@ -55,6 +55,7 @@ def require_entity_admin(user: dict, entity_id: str):
     
     return True
 
-def require_super_admin(user: dict):
+def require_super_admin(user: dict = Depends(get_current_user)):
     if user.get('role') != 'superadmin':
         raise HTTPException(status_code=403, detail='Super admin required')
+    return user

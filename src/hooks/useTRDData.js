@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+
 import API_BASE_URL from '../config/api';
 
 export function useTRDData(currentUser = null, entityId = null) {

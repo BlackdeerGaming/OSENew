@@ -11,7 +11,7 @@ const locationData = {
   "Argentina": ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"]
 };
 
-export default function EntitiesView({ entities, setEntities }) {
+export default function EntitiesView({ entities, setEntities, currentUser }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -108,7 +108,8 @@ export default function EntitiesView({ entities, setEntities }) {
   const handleDelete = (id) => {
     if (confirm("¿Estás seguro de eliminar esta entidad de forma permanente?")) {
       fetch(`${API_BASE_URL}/entities/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       }).then(res => {
         if (res.ok) {
           setEntities(entities.filter(a => a.id !== id));
@@ -150,7 +151,11 @@ export default function EntitiesView({ entities, setEntities }) {
     const body = new FormData();
     body.append('file', file);
     try {
-      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { method: 'POST', body });
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { 
+        method: 'POST', 
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
+        body 
+      });
       if (res.ok) {
         const data = await res.json();
         setFormData({ ...formData, logoUrl: data.url });
@@ -169,7 +174,10 @@ export default function EntitiesView({ entities, setEntities }) {
 
     fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${currentUser?.token}`
+      },
       body: JSON.stringify(formData)
     }).then(async res => {
       if (res.ok) {
