@@ -1103,10 +1103,15 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
     try:
         invite_id = str(uuid.uuid4())
         item = req.dict()
+        
+        # Obtener nombre de la entidad para que el receptor sepa quién lo invita
+        entity_data = await db.get_item("entities", f"ENTITY#{req.entity_id}", "METADATA")
+        item["entity_name"] = entity_data.get("nombre") if entity_data else "Entidad OSE"
+        
         item["PK"] = f"INVITE#{invite_id}"
         item["SK"] = "METADATA"
         item["id"] = invite_id
-        item["status"] = "pending"
+        item["status"] = "pendiente"
         item["created_at"] = datetime.now().isoformat()
         
         # Enviar email via Resend API

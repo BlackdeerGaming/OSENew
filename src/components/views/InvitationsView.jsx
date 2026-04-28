@@ -336,7 +336,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                         </div>
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-[14px] font-semibold">{activeTab === 'received' ? inv.entity_name : inv.email}</h3>
+                            <h3 className="text-[14px] font-semibold">{activeTab === 'received' ? (inv.entity_name || "Invitación de Entidad") : inv.email}</h3>
                             <span className="px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider border bg-secondary">{inv.status}</span>
                             <span className="text-[10px] text-muted-foreground font-medium uppercase">{inv.role}</span>
                           </div>
@@ -347,7 +347,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                         </div>
                       </div>
                       <div className="flex items-center gap-2 justify-end">
-                        {activeTab === 'received' && inv.status === 'pendiente' && (
+                        {activeTab === 'received' && (inv.status === 'pendiente' || inv.status === 'pending') && (
                           <>
                             <button onClick={() => handleResponse(inv.id, 'reject')} className="px-3 py-1.5 rounded-md border border-input text-[11.5px] font-semibold hover:bg-destructive/10 hover:text-destructive">Rechazar</button>
                             <button onClick={() => handleResponse(inv.id, 'accept')} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-[11.5px] font-semibold">Aceptar</button>
