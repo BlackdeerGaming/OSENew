@@ -1164,10 +1164,8 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
         if entity_id and entity_id != 'all':
             all_invites = [i for i in all_invites if i.get("entity_id") == entity_id]
             
-        if archived:
-            all_invites = [i for i in all_invites if i.get("status") in ["cancelada", "rechazada", "vencida"]]
-        else:
-            all_invites = [i for i in all_invites if i.get("status") not in ["cancelada", "rechazada", "vencida"]]
+        # Filtrar por el campo booleano 'archived'
+        all_invites = [i for i in all_invites if i.get("archived", False) == archived]
             
         return all_invites
     except Exception as e:
@@ -1189,8 +1187,7 @@ async def archive_invitation(invite_id: str, req: ArchiveRequest, user: dict = D
     try:
         pk = f"INVITE#{invite_id}"
         sk = "METADATA"
-        new_status = "cancelada" if req.archived else "pending"
-        await db.update_item("invitations", pk, sk, {"status": new_status})
+        await db.update_item("invitations", pk, sk, {"archived": req.archived})
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1198,11 +1195,10 @@ async def archive_invitation(invite_id: str, req: ArchiveRequest, user: dict = D
 @router.post("/invitations/bulk-archive")
 async def bulk_archive_invitations(req: BulkArchiveRequest, user: dict = Depends(get_current_user)):
     try:
-        new_status = "cancelada" if req.archived else "pending"
         for invite_id in req.ids:
             pk = f"INVITE#{invite_id}"
             sk = "METADATA"
-            await db.update_item("invitations", pk, sk, {"status": new_status})
+            await db.update_item("invitations", pk, sk, {"archived": req.archived})
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2018,8 +2014,9 @@ async def signup(req: UserSignUp):
     email = req.email.strip().lower()
     
     # 1. Registrar en Cognito
+    cognito_id = None
     try:
-        await cognito.sign_up(
+        resp = await cognito.sign_up(
             username=req.username,
             password=req.password,
             email=email,
@@ -2027,16 +2024,16 @@ async def signup(req: UserSignUp):
             family_name=req.apellido,
             phone=req.phone
         )
+        cognito_id = resp.get("UserSub")
     except Exception as e:
-        # Si el error es de FastAPI HTTPException, relanzarlo
-        if hasattr(e, "status_code"):
-            raise e
+        if hasattr(e, "status_code"): raise e
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 2. Guardar perfil en DynamoDB
+    # 2. Guardar perfil en DynamoDB (Sincronizado con el ID de Cognito)
     new_user = {
-        "PK": f"USER#{str(uuid.uuid4())}",
+        "PK": f"USER#{cognito_id}",
         "SK": "PROFILE",
+        "id": cognito_id,
         "nombre": req.nombre,
         "apellido": req.apellido,
         "username": req.username,
