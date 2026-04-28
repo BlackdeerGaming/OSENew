@@ -110,6 +110,9 @@ app = FastAPI(title="OSE IA - AWS Serverless SaaS")
 
 handler = Mangum(app)
 
+#  Endpoints 
+router = APIRouter(prefix="/api")
+
 
 
 app.add_middleware(
@@ -903,11 +906,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
 
 
-#  Endpoints 
 
-
-
-router = APIRouter(prefix="/api")
 
 
 
