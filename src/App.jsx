@@ -137,118 +137,83 @@ function App() {
 
 
 
-  // Detectar tokens en la URL
+  // 1. Detectar tokens en la URL y manejar redirecciones de invitación
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     
-    // Activación de cuenta
     const actToken = params.get('token');
     if (actToken) {
       setActivationToken(actToken);
       setAuthView('activate');
     }
 
-    // Recuperación de contraseña
     const rstToken = params.get('reset_token');
     if (rstToken) {
       setResetToken(rstToken);
       setAuthView('reset-password');
     }
 
-    // Invitaciones Manuales (Flujo externo)
     const invId = params.get('invitation_id');
     const invEmail = params.get('email');
     
-    let processedAny = !!(actToken || rstToken || (invId && invEmail));
-
     if (invId && invEmail) {
       const context = { id: invId, email: invEmail };
       setInvitationContext(context);
       localStorage.setItem('invitation_context', JSON.stringify(context));
       
-      // 🔥 CRÍTICO: Si el usuario ya tiene cuenta (marcado por ose_has_account), NO lo mandamos a registro.
-      // Lo mandamos a LOGIN para que entre con su cuenta existente.
       const hasAccount = localStorage.getItem('ose_has_account') === 'true';
-      
       if (!currentUser) {
-        if (hasAccount) {
-          setAuthView('login');
-          console.log("👋 Usuario existente detectado. Redirigiendo a Login en lugar de Registro.");
-        } else {
-          setAuthView('signup');
-          console.log("✨ Nuevo usuario invitado detectado. Redirigiendo a Registro.");
-        }
+        if (hasAccount) setAuthView('login');
+        else setAuthView('signup');
       }
     }
 
-    // 🔥 Limpiar la URL una vez procesados los parámetros para evitar bucles en re-renders o logout
-    if (processedAny) {
+    // Limpiar URL
+    if (actToken || rstToken || (invId && invEmail)) {
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
-      console.log("🧹 URL limpiada de parámetros de autenticación/invitación");
     }
-    if (currentUser) {
-      fetchData();
-    }
-  }, [currentUser]); // 🔥 Ahora se ejecuta cuando el usuario está listo
+  }, []);
 
-  // Cargar usuarios y entidades iniciales desde el backend cuando el usuario cambia
+  // 2. Cargar datos iniciales (Usuarios, Entidades, Invitaciones)
   useEffect(() => {
+    if (!currentUser?.token) return;
+
     const fetchData = async () => {
       try {
-        const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
-        console.log(" [FETCH] Llamando a API con cabeceras:", { 
-          hasToken: !!currentUser?.token,
-          tokenPrefix: currentUser?.token ? currentUser.token.substring(0, 10) + "..." : "NINGUNO"
-        });
-        const [usersRes, entitiesRes] = await Promise.all([
+        const headers = { 'Authorization': `Bearer ${currentUser.token}` };
+        console.log(" [FETCH] Cargando datos iniciales con token...");
+
+        const [usersRes, entitiesRes, invRes] = await Promise.all([
           fetch(`${API_BASE_URL}/users`, { headers }),
-          fetch(`${API_BASE_URL}/entities`, { headers })
+          fetch(`${API_BASE_URL}/entities`, { headers }),
+          fetch(`${API_BASE_URL}/invitations/my`, { headers })
         ]);
 
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsers(data || []);
-        }
+        if (usersRes.ok) setUsers(await usersRes.json());
         if (entitiesRes.ok) {
           const data = await entitiesRes.json();
-          // Normalizar entidades para soportar camelCase y snake_case consistentemente
-          const normalized = (data || []).map(e => ({
+          setEntities(data.map(e => ({
             ...e,
             razonSocial: e.razonSocial || e.razon_social || "",
-            numeroDocumento: e.numeroDocumento || e.nit || "",
-            tipoEjecutor: e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def."
-          }));
-          setEntities(normalized);
+            numeroDocumento: e.numeroDocumento || e.nit || ""
+          })));
+        }
+        if (invRes.ok) {
+          const data = await invRes.json();
+          setPendingInvitationsCount(data.length || 0);
         }
       } catch (err) {
         console.error("Error fetching initial data:", err);
       }
     };
 
-    if (currentUser?.token) {
-      fetchData();
-    }
-  }, [currentUser]);
-
-  // Polling for invitations
-  useEffect(() => {
-    if (!currentUser?.token) return;
-    const fetchInvitations = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/invitations/my`, {
-          headers: { 'Authorization': `Bearer ${currentUser.token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPendingInvitationsCount(data.length || 0);
-        }
-      } catch (e) { console.error("Error polling invitations:", e); }
-    };
-    fetchInvitations();
-    const interval = setInterval(fetchInvitations, 60000); // 1 min
+    fetchData();
+    
+    // Polling de invitaciones cada minuto
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser?.token]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {
