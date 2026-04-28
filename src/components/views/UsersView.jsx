@@ -103,7 +103,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
 
   const handleSaveUsuario = async () => {
     // Validaciones
-    if (!newUser.nombre || !newUser.email || !newUser.numeroDocumento || !newUser.username) {
+    if (!newUser.nombre || !newUser.email || !newUser.username) {
        alert("Error: Completa la información de usuario básica.");
        setActiveTab('info');
        return;
@@ -495,7 +495,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                  <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <div className="space-y-1.5">
-                          <label className="text-sm font-semibold text-slate-700">Tipo de Documento *</label>
+                          <label className="text-sm font-semibold text-slate-700">Tipo de Documento</label>
                           <select 
                             value={newUser.tipoDocumento}
                             onChange={e=>setNewUser({...newUser, tipoDocumento: e.target.value})}
@@ -508,7 +508,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                           </select>
                        </div>
                        <div className="space-y-1.5">
-                          <label className="text-sm font-semibold text-slate-700">Número de Documento *</label>
+                          <label className="text-sm font-semibold text-slate-700">Número de Documento</label>
                           <input 
                             type="text"
                             value={newUser.numeroDocumento}
