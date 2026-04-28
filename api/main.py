@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, Backgro
 from fastapi.middleware.cors import CORSMiddleware
 
 from mangum import Mangum
+import httpx
 
 from .permissions import get_current_user, require_super_admin, require_entity_admin
 
@@ -1104,8 +1105,96 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
         item["id"] = invite_id
         item["status"] = "pending"
         item["created_at"] = datetime.now().isoformat()
+        
+        # Enviar email via Resend API
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if resend_api_key:
+            html_content = f"""
+            <h2>Has sido invitado a colaborar en OSE IA</h2>
+            <p>Se te ha invitado a unirte a la plataforma.</p>
+            <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
+            <p><a href="https://ose-ia.vercel.app/?invitation_id={invite_id}&email={req.email}">Aceptar Invitación</a></p>
+            <br/>
+            <p>Si no esperabas esta invitación, puedes ignorar este correo.</p>
+            """
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>"),
+                        "to": req.email,
+                        "subject": "Invitación a OSE IA",
+                        "html": html_content
+                    }
+                )
+        
         await db.put_item("invitations", item)
         return {"status": "ok", "id": invite_id}
+    except Exception as e:
+        print(f"Error creando invitación: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/invitations/sent")
+async def get_sent_invitations(archived: bool = False, entity_id: str = None, user: dict = Depends(get_current_user)):
+    """Lista las invitaciones enviadas."""
+    try:
+        all_invites = await db.scan_table("invitations")
+        
+        # Administradores solo ven las invitaciones de su entidad
+        if user.get("role") != SUPERADMIN_ROLE:
+            all_invites = [i for i in all_invites if i.get("entity_id") == user.get("entity_id")]
+            
+        if entity_id and entity_id != 'all':
+            all_invites = [i for i in all_invites if i.get("entity_id") == entity_id]
+            
+        if archived:
+            all_invites = [i for i in all_invites if i.get("status") in ["cancelada", "rechazada", "vencida"]]
+        else:
+            all_invites = [i for i in all_invites if i.get("status") not in ["cancelada", "rechazada", "vencida"]]
+            
+        return all_invites
+    except Exception as e:
+        print(f"Error fetching sent invitations: {e}")
+        return []
+
+class EmailActivationRequest(BaseModel):
+    email: str
+    nombre: str | None = None
+    link: str
+
+@router.post("/send-activation")
+async def send_activation(req: EmailActivationRequest):
+    """Envía el email de activación de cuenta."""
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if not resend_api_key:
+        print("RESEND_API_KEY no configurada. Saltando envío de email.")
+        return {"status": "ok", "detail": "Resend no configurado"}
+        
+    html_content = f"""
+    <h2>Bienvenido a OSE IA</h2>
+    <p>Hola {req.nombre or ''}, tu cuenta ha sido creada exitosamente.</p>
+    <p>Para activar tu cuenta y establecer tu contraseña, haz clic en el siguiente enlace:</p>
+    <p><a href="{req.link}">Activar mi cuenta</a></p>
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
+                json={
+                    "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>"),
+                    "to": req.email,
+                    "subject": "Activa tu cuenta de OSE IA",
+                    "html": html_content
+                }
+            )
+            if resp.status_code >= 400:
+                print(f"Error Resend: {resp.text}")
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"Error enviando activación: {e}")
+        return {"status": "error", "detail": str(e)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
