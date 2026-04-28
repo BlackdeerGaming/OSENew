@@ -1158,6 +1158,120 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
         print(f"Error fetching sent invitations: {e}")
         return []
 
+class ArchiveRequest(BaseModel):
+    archived: bool
+
+class BulkArchiveRequest(BaseModel):
+    ids: list[str]
+    archived: bool
+
+class RespondRequest(BaseModel):
+    action: str
+
+@router.patch("/invitations/{invite_id}/archive")
+async def archive_invitation(invite_id: str, req: ArchiveRequest, user: dict = Depends(get_current_user)):
+    try:
+        pk = f"INVITE#{invite_id}"
+        sk = "METADATA"
+        new_status = "cancelada" if req.archived else "pending"
+        await db.update_item("invitations", pk, sk, {"status": new_status})
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/invitations/bulk-archive")
+async def bulk_archive_invitations(req: BulkArchiveRequest, user: dict = Depends(get_current_user)):
+    try:
+        new_status = "cancelada" if req.archived else "pending"
+        for invite_id in req.ids:
+            pk = f"INVITE#{invite_id}"
+            sk = "METADATA"
+            await db.update_item("invitations", pk, sk, {"status": new_status})
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/invitations/{invite_id}")
+async def delete_invitation(invite_id: str, user: dict = Depends(get_current_user)):
+    try:
+        pk = f"INVITE#{invite_id}"
+        sk = "METADATA"
+        await db.delete_item("invitations", pk, sk)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/invitations/{invite_id}/resend")
+async def resend_invitation(invite_id: str, user: dict = Depends(get_current_user)):
+    try:
+        pk = f"INVITE#{invite_id}"
+        sk = "METADATA"
+        invite = await db.get_item("invitations", pk, sk)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+            
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if resend_api_key:
+            html_content = f"""
+            <h2>Recordatorio: Has sido invitado a colaborar en OSE IA</h2>
+            <p>Se te ha invitado a unirte a la plataforma.</p>
+            <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
+            <p><a href="https://ose-ia.vercel.app/?invitation_id={invite_id}&email={invite.get('email', '')}">Aceptar Invitación</a></p>
+            """
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>"),
+                        "to": invite.get("email"),
+                        "subject": "Recordatorio: Invitación a OSE IA",
+                        "html": html_content
+                    }
+                )
+        return {"status": "ok"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/invitations/{invite_id}/respond")
+async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = Depends(get_current_user)):
+    try:
+        pk = f"INVITE#{invite_id}"
+        sk = "METADATA"
+        invite = await db.get_item("invitations", pk, sk)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+            
+        if invite.get("email", "").lower() != user.get("email", "").lower():
+            raise HTTPException(status_code=403, detail="No autorizado para responder a esta invitación")
+            
+        new_status = "aceptada" if req.action == "accept" else "rechazada"
+        await db.update_item("invitations", pk, sk, {"status": new_status})
+        
+        # Si fue aceptada, añadir la entidad al usuario actual
+        if req.action == "accept":
+            entity_id = invite.get("entity_id")
+            user_pk = user.get("PK")
+            user_sk = "PROFILE"
+            user_data = await db.get_item("users", user_pk, user_sk)
+            
+            if user_data:
+                current_entities = user_data.get("entidadIds", [])
+                if entity_id not in current_entities:
+                    current_entities.append(entity_id)
+                    await db.update_item("users", user_pk, user_sk, {
+                        "entidadIds": current_entities,
+                        "entidadId": current_entities[0] if current_entities else ""
+                    })
+                    
+        return {"status": "ok", "message": f"Invitación {new_status} exitosamente"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class EmailActivationRequest(BaseModel):
     email: str
     nombre: str | None = None
