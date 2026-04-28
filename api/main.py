@@ -1055,6 +1055,36 @@ async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depen
         pk, sk = f"USER#{user_id}", "PROFILE"
         updates = req.dict(exclude_unset=True)
         await db.update_item("users", pk, sk, updates)
+        
+        # Enviar notificación por correo
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        target_email = updates.get("email")
+        if not target_email:
+            current_user = await db.get_item("users", pk, sk)
+            target_email = current_user.get("email")
+
+        if resend_api_key and target_email:
+            try:
+                import resend
+                resend.api_key = resend_api_key
+                resend.Emails.send({
+                    "from": "OSE IA <notificaciones@ose-ia.com>",
+                    "to": target_email,
+                    "subject": "Actualización de tu Perfil en OSE IA",
+                    "html": f"""
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+                            <h2 style="color: #00bfa5;">¡Hola! 👋</h2>
+                            <p>Te informamos que un administrador ha actualizado la información de tu perfil en la plataforma <strong>OSE IA</strong>.</p>
+                            <p>Si no reconoces esta actividad, por favor contacta a soporte técnico de tu entidad.</p>
+                            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+                            <p style="font-size: 12px; color: #64748b;">Este es un mensaje automático de OSE IA - Plataforma de Gestión Documental Inteligente.</p>
+                        </div>
+                    """
+                })
+                print(f" [EMAIL] Notificación de actualización enviada a {target_email}")
+            except Exception as e:
+                print(f" [EMAIL] Error enviando notificación: {e}")
+
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

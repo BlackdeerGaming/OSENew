@@ -77,6 +77,8 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     // Extraer ID de forma robusta
     const userId = user.id || (user.PK && user.PK.includes('#') ? user.PK.split('#')[1] : user.PK) || user.sub;
     
+    const isActivated = user.isActivated === true || user.isActivated === 'true' || user.IsActivated === true;
+
     const mappedUser = {
       id: userId,
       tipoDocumento: user.tipoDocumento || user.document_type || user.TipoDocumento || '',
@@ -86,7 +88,8 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
       email: user.email || user.Email || user.mail || '',
       celular: user.celular || user.phone || user.Celular || user.telefono || '',
       username: user.username || user.user_name || user.UserName || user.email || user.Email || '',
-      estado: (user.isActivated || user.IsActivated || user.estado === 'Activo') ? 'Activo' : 'Inactivo',
+      estado: isActivated ? 'Activo' : 'Inactivo',
+      isActivated: isActivated,
       perfil: user.perfil || user.role || user.Role || user.Perfil || 'usuario',
       entidadId: user.entidadId || user.entity_id || user.EntidadId || null,
       entidadIds: user.entidadIds || (user.entidadId || user.entity_id ? [user.entidadId || user.entity_id] : []),
