@@ -18,29 +18,31 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         # Verify using Cognito logic
         payload = cognito.verify_token(token)
         
-        # Cognito attributes mapping (normalización)
-        raw_role = str(payload.get('custom:role', payload.get('role', 'usuario'))).lower().strip()
+        # Email verificado del token (Nota: AccessToken no tiene email, IdToken sí)
+        verified_email = payload.get('email', '').lower().strip()
+        
         # Recargar whitelist del entorno
         current_whitelist = [e.strip().lower() for e in os.getenv('SUPERADMIN_EMAILS', '').split(',') if e.strip()]
         
-        # Email verificado del token
-        verified_email = payload.get('email', '').lower().strip()
+        # Cognito attributes mapping (normalización)
+        raw_role = str(payload.get('custom:role', payload.get('role', 'usuario'))).lower().strip()
         
         if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
             payload['role'] = 'administrador'
         elif raw_role == 'superadmin' or verified_email in current_whitelist or verified_email == "ivandchaves@gmail.com":
             payload['role'] = 'superadmin'
-        elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
-            payload['role'] = 'usuario'
         else:
-            payload['role'] = raw_role
+            payload['role'] = 'usuario'
             
         # Ensure sub and entity_id are present as per existing logic
-        payload['user_id'] = payload.get('sub')
+        payload['user_id'] = payload.get('sub', 'unknown')
         payload['entity_id'] = payload.get('custom:entity_id', payload.get('entity_id'))
             
         return payload
+    except HTTPException as he:
+        raise he
     except Exception as e:
+        print(f" [PERMISSIONS] Error validando usuario: {str(e)}")
         raise HTTPException(status_code=401, detail=f'Invalid authentication token: {str(e)}')
 
 def require_entity_admin(user: dict, entity_id: str):

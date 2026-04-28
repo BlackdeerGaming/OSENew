@@ -84,13 +84,15 @@ class CognitoManager:
             raise HTTPException(status_code=400, detail=str(e))
 
     def verify_token(self, token: str) -> Dict:
-        # Simplified token verification. In production, use jose or verify against JWKS
+        """Verifica un token de Cognito (IdToken o AccessToken) sin validar firma para desarrollo local"""
         try:
-            # We skip full JWKS verification here for brevity, but it should be implemented
+            # En desarrollo saltamos la validación de firma JWKS por simplicidad
+            # pero nos aseguramos de que el token sea un JWT válido
             decoded = jwt.decode(token, options={"verify_signature": False})
             return decoded
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        except Exception as e:
+            print(f" [AUTH] Error decodificando token: {str(e)}")
+            raise HTTPException(status_code=401, detail=f"Token invalido: {str(e)}")
 
     async def get_user_attributes(self, access_token: str) -> Dict:
         response = self.client.get_user(AccessToken=access_token)
