@@ -128,40 +128,6 @@ function App() {
     loadFunciones();
   }, [currentUser]);
 
-  // Manejar sesión de Google (Supabase OAuth)
-  useEffect(() => {
-    if (!supabase) return;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Solo actuar si es un evento de login y no tenemos usuario interno
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !currentUser) {
-        if (session.user.app_metadata.provider === 'google') {
-          try {
-            setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con Google...' });
-            
-            const response = await fetch(`${API_BASE_URL}/auth/google`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: session.user.email,
-                nombre: session.user.user_metadata.full_name || session.user.user_metadata.name || "Usuario",
-                apellido: "",
-                uid: session.user.id
-              })
-            });
-
-            if (response.ok) {
-              const userData = await response.json();
-              handleLogin(userData, true); 
-              setModalStatus({ isOpen: false, type: 'loading', message: '' });
-            } else {
-              const error = await response.json();
-              setModalStatus({ isOpen: true, type: 'error', message: error.detail || 'Error al sincronizar con el servidor.' });
-              await supabase.auth.signOut();
-            }
-          } catch (err) {
-            console.error("Google sync error:", err);
-            setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión durante la sincronización.' });
           }
         }
       }
@@ -854,7 +820,7 @@ function App() {
   };
 
   const handleSave = async () => {
-    setModalStatus({ isOpen: true, type: 'loading', message: 'Guardando y sincronizando con Supabase Cloud...' });
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Guardando y sincronizando con AWS Cloud...' });
     const isUpdate = !!activeFormData.id;
     const record = isUpdate ? activeFormData : { ...activeFormData, id: Date.now().toString() };
 
@@ -1054,7 +1020,7 @@ function App() {
   };
   
   const handleLogout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    // Limpiar tokens locales
     setCurrentUser(null);
     setAuthView('login');
     setMainView('dashboard');
