@@ -90,7 +90,13 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('ose_user');
     try {
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const user = JSON.parse(saved);
+      // 🔥 Solo restauramos si tiene un TOKEN válido. Si no, es una sesión fantasma.
+      if (user && user.token) {
+        return user;
+      }
+      return null;
     } catch (e) {
       return null;
     }
