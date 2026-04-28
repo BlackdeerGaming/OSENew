@@ -23,12 +23,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         verified_email = payload.get('email', '').lower().strip()
         user_id = payload.get('sub', payload.get('username'))
         
-        # 3. Si no hay email (es un AccessToken), buscamos al usuario en DynamoDB
+        # 3. SIEMPRE buscamos al usuario en DynamoDB para tener el Rol y Entidad actualizados
         user_record = None
-        if not verified_email and user_id:
-            # Buscamos en la tabla de usuarios usando el prefijo correcto
+        if user_id:
             user_record = await db.get_item("users", f"USER#{user_id}", "PROFILE")
-            if user_record:
+            if user_record and not verified_email:
                 verified_email = user_record.get('email', '').lower().strip()
         
         # 4. Determinar el Rol (Prioridad: DynamoDB > Whitelist > Token)
