@@ -187,6 +187,10 @@ function App() {
     const fetchData = async () => {
       try {
         const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
+        console.log(" [FETCH] Llamando a API con cabeceras:", { 
+          hasToken: !!currentUser?.token,
+          tokenPrefix: currentUser?.token ? currentUser.token.substring(0, 10) + "..." : "NINGUNO"
+        });
         const [usersRes, entitiesRes] = await Promise.all([
           fetch(`${API_BASE_URL}/users`, { headers }),
           fetch(`${API_BASE_URL}/entities`, { headers })

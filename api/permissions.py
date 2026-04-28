@@ -14,6 +14,7 @@ security = HTTPBearer()
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
+    print(f" [AUTH] Recibido token: {token[:15]}...")
     try:
         # 1. Decodificar el token (IdToken o AccessToken)
         payload = cognito.verify_token(token)
