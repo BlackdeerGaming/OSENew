@@ -12,7 +12,11 @@ from .aws.cognito_auth import cognito
 
 security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def get_current_user(request: Request):
+    # --- DIAGNÓSTICO DE CABECERAS ---
+    auth_header = request.headers.get("Authorization")
+    print(f" [DEBUG] Authorization Header: {auth_header}")
+    
     # --- BYPASS TOTAL TEMPORAL PARA DIAGNÓSTICO ---
     print(" !!! ALERTA: BYPASS TOTAL DE SEGURIDAD ACTIVADO !!!")
     return {
