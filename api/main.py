@@ -1843,3 +1843,13 @@ async def root_main():
 
 if __name__ == '__main__':
     uvicorn.run(app, host='0.0.0.0', port=8000)
+@app.get("/api/debug-auth")
+async def debug_auth(user: dict = Depends(get_current_user)):
+    whitelist_raw = os.getenv("SUPERADMIN_EMAILS", "superadmin@ose.com,ivandchaves@gmail.com")
+    current_whitelist = [e.strip().lower() for e in whitelist_raw.split(",") if e.strip()]
+    return {
+        "user_claims": user,
+        "superadmin_whitelist": current_whitelist,
+        "is_in_whitelist": user.get("email", "").lower().strip() in current_whitelist,
+        "final_role_assigned": user.get("role")
+    }
