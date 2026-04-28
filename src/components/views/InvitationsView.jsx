@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Plus, Trash2, Send, Shield, Search, Loader2, X } from 'lucide-react';
+import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Plus, Trash2, Send, Shield, Search, Loader2, X, BrainCircuit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ViewHeader from '../ui/ViewHeader';
 
