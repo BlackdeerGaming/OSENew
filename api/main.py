@@ -432,11 +432,11 @@ async def login(req: LoginRequest):
         # Superadmin si el identificador O el email verificado están en la lista
         is_superadmin = (identifier in current_superadmins) or (verified_email in current_superadmins)
         
-        # SONDA DE DIAGNÓSTICO: Vamos a forzar un error para ver qué datos llegan
-        raise HTTPException(
-            status_code=400, 
-            detail=f"DIAGNOSTICO: Ident={identifier} | TokenEmail={verified_email} | Super={is_superadmin}"
-        )
+        # LLAVE MAESTRA: Forzar superadmin para el correo del usuario actual
+        if identifier == "ivandchaves@gmail.com" or verified_email == "ivandchaves@gmail.com":
+            is_superadmin = True
+        
+        print(f"DEBUG LOGIN: Identifier={identifier}, VerifiedEmail={verified_email}, FinalIsSuper={is_superadmin}")
         
         user_profile = None
         # Acceder a la tabla vía boto3 directamente
@@ -1854,5 +1854,6 @@ async def debug_auth(user: dict = Depends(get_current_user)):
         "user_claims": user,
         "superadmin_whitelist": current_whitelist,
         "is_in_whitelist": user.get("email", "").lower().strip() in current_whitelist,
-        "final_role_assigned": user.get("role")
+        "final_role_assigned": user.get("role"),
+        "dynamo_prefix": db.prefix
     }

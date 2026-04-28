@@ -10,7 +10,9 @@ class DynamoDBManager:
         self.prefix = os.getenv("DYNAMODB_TABLE_PREFIX", "ose_")
 
     def get_table(self, table_name: str):
-        return self.dynamodb.Table(f"{self.prefix}{table_name}")
+        full_name = f"{self.prefix}{table_name}"
+        print(f" [DYNAMO] Accediendo a tabla: {full_name}")
+        return self.dynamodb.Table(full_name)
 
     async def get_item(self, table: str, pk_value: str, sk_value: Optional[str] = None) -> Optional[Dict]:
         table_obj = self.get_table(table)
