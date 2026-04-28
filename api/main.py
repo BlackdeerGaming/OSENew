@@ -2019,7 +2019,9 @@ async def signup(req: UserSignUp):
             username=req.username,
             password=req.password,
             email=email,
-            name=req.nombre
+            name=req.nombre,
+            family_name=req.apellido,
+            phone=req.phone
         )
     except Exception as e:
         # Si el error es de FastAPI HTTPException, relanzarlo

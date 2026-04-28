@@ -94,16 +94,22 @@ class CognitoManager:
             print(f" [AUTH] Error decodificando token: {str(e)}")
             raise HTTPException(status_code=401, detail=f"Token invalido: {str(e)}")
 
-    async def sign_up(self, username, password, email, name):
+    async def sign_up(self, username, password, email, name, family_name=None, phone=None):
         try:
+            user_attributes = [
+                {"Name": "email", "Value": email},
+                {"Name": "given_name", "Value": name},
+            ]
+            if family_name:
+                user_attributes.append({"Name": "family_name", "Value": family_name})
+            if phone:
+                user_attributes.append({"Name": "phone_number", "Value": phone})
+            
             params = {
                 "ClientId": self.client_id,
                 "Username": username,
                 "Password": password,
-                "UserAttributes": [
-                    {"Name": "email", "Value": email},
-                    {"Name": "name", "Value": name}
-                ]
+                "UserAttributes": user_attributes
             }
             secret_hash = self._get_secret_hash(username)
             if secret_hash:
