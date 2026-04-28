@@ -87,7 +87,14 @@ const TRDFORM_FLOW = [
 function App() {
   // Auth State
   const [authView, setAuthView] = useState('login'); 
-  const [currentUser, setCurrentUser] = useState(null); 
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('ose_user');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  }); 
   const [activationToken, setActivationToken] = useState(null);
   const [resetToken, setResetToken] = useState(null);
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
@@ -180,7 +187,10 @@ function App() {
       window.history.replaceState({}, document.title, cleanUrl);
       console.log("🧹 URL limpiada de parámetros de autenticación/invitación");
     }
-  }, []); // 🔥 Corregido: Solo se ejecuta una vez al montar la aplicación
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]); // 🔥 Ahora se ejecuta cuando el usuario está listo
 
   // Cargar usuarios y entidades iniciales desde el backend cuando el usuario cambia
   useEffect(() => {
@@ -215,7 +225,10 @@ function App() {
         console.error("Error fetching initial data:", err);
       }
     };
-    if (currentUser) fetchData();
+
+    if (currentUser?.token) {
+      fetchData();
+    }
   }, [currentUser]);
 
   // Polling for invitations
