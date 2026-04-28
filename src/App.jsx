@@ -1030,22 +1030,7 @@ function App() {
     localStorage.removeItem('invitation_context');
   };
 
-  // Restore session from localStorage if present
-  useEffect(() => {
-    const savedUser = localStorage.getItem('ose_user');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        if (user.entidadId) setSelectedEntityId(user.entidadId);
-        else if (user.entidadIds?.length > 0) setSelectedEntityId(user.entidadIds[0]);
-        setAuthView('dashboard');
-        console.log("♻️ Sesión recuperada de localStorage");
-      } catch (e) {
-        localStorage.removeItem('ose_user');
-      }
-    }
-  }, []);
+  // Restore session logic removed - now handled by initial state in useState
 
   // Determine which entities the current user can see/select
   const userEntities = React.useMemo(() => {
