@@ -1118,7 +1118,7 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
             <p>Si no esperabas esta invitación, puedes ignorar este correo.</p>
             """
             async with httpx.AsyncClient() as client:
-                await client.post(
+                resp = await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
                     json={
@@ -1128,6 +1128,13 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
                         "html": html_content
                     }
                 )
+                print(f"Resend HTTP Status: {resp.status_code}")
+                if resp.status_code >= 400:
+                    print(f"Resend Error Detail: {resp.text}")
+                    raise HTTPException(status_code=500, detail=f"Error del servicio de correos: {resp.text}")
+        else:
+            print("WARNING: RESEND_API_KEY not found in environment")
+            raise HTTPException(status_code=500, detail="El servidor no tiene configurada la clave de correos.")
         
         await db.put_item("invitations", item)
         return {"status": "ok", "id": invite_id}
