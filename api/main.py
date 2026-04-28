@@ -1004,7 +1004,6 @@ async def debug_vars():
 @router.get("/entities")
 async def get_entities(user: dict = Depends(get_current_user)):
     """Lista todas las entidades (solo para Superadmin o filtrado por entidad)."""
-    print(f" [API] get_entities llamado por usuario con rol: {user.get('role')}")
     try:
         if user.get("role") == SUPERADMIN_ROLE:
             items = await db.scan_table("entities")
@@ -1012,7 +1011,6 @@ async def get_entities(user: dict = Depends(get_current_user)):
             entity_id = user.get("entity_id")
             item = await db.get_item("entities", f"ENTITY#{entity_id}", "METADATA")
             items = [item] if item else []
-        print(f" [API] Enviando {len(items)} entidades")
         return items
     except Exception as e:
         print(f"Error listing entities: {e}")
@@ -1021,7 +1019,6 @@ async def get_entities(user: dict = Depends(get_current_user)):
 @router.get("/users")
 async def get_users(user: dict = Depends(get_current_user)):
     """Lista los usuarios (solo para Superadmin o filtrado por entidad)."""
-    print(f" [API] get_users llamado por usuario con rol: {user.get('role')}")
     try:
         if user.get("role") == SUPERADMIN_ROLE:
             items = await db.scan_table("users")
@@ -1029,7 +1026,6 @@ async def get_users(user: dict = Depends(get_current_user)):
             entity_id = user.get("entity_id")
             all_users = await db.scan_table("users")
             items = [u for u in all_users if u.get("entidadId") == entity_id or entity_id in (u.get("entidadIds") or [])]
-        print(f" [API] Enviando {len(items)} usuarios")
         return items
     except Exception as e:
         print(f"Error listing users: {e}")

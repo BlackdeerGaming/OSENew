@@ -201,13 +201,11 @@ function App() {
 
         if (usersRes.ok) {
           const uData = await usersRes.json();
-          console.log(` [FETCH] Recibidos ${uData.length} usuarios`);
           setUsers(uData);
         }
         
         if (entitiesRes.ok) {
           const eData = await entitiesRes.json();
-          console.log(` [FETCH] Recibidas ${eData.length} entidades`);
           setEntities(eData.map(e => ({
             ...e,
             id: e.id || e.PK || e.entity_id || "",
@@ -983,9 +981,7 @@ function App() {
       }))
     };
     
-    console.log(" [DEBUG LOGIN] Respuesta cruda del servidor:", data);
     normalizedUser.token = data.access_token || data.id_token || data.token;
-    console.log(" [DEBUG LOGIN] Usuario Normalizado con Token:", normalizedUser);
 
     setCurrentUser(normalizedUser);
     
