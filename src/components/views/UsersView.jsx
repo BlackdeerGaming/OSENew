@@ -34,7 +34,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
         },
         body: JSON.stringify({
           email: inviteEmail,
-          entity_id: selectedEntityId || currentUser?.entidadId || 'e0'
+          entity_id: selectedEntityId || currentUser?.entity_id || currentUser?.entidadId
         })
       });
 

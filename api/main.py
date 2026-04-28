@@ -108,7 +108,7 @@ from .aws.s3_storage import s3_client
 
 app = FastAPI(title="OSE IA - AWS Serverless SaaS")
 
-handler = Mangum(app)
+
 
 #  Endpoints 
 router = APIRouter(prefix="/api")
@@ -1795,6 +1795,8 @@ async def health_check():
     return {"status": "ok", "message": "OSE Backend AWS Serverless ready"}
 
 app.include_router(router)
+
+handler = Mangum(app)
 
 @app.get("/")
 async def root_main():
