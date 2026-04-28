@@ -109,6 +109,16 @@ export default function ForgotPassword({ onNavigateToLogin, onIssueToken }) {
             <ArrowLeft className="h-4 w-4" />
             Volver al Inicio de Sesión
           </button>
+
+          <div className="text-center pt-4 border-t border-slate-100">
+            <button 
+              type="button"
+              onClick={() => onIssueToken()} 
+              className="text-xs font-bold text-primary hover:underline uppercase tracking-widest"
+            >
+              ¿Ya tienes un código? Haz clic aquí
+            </button>
+          </div>
         </form>
       </div>
     </div>

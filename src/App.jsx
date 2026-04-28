@@ -1145,11 +1145,12 @@ function App() {
         {authView === 'forgot-password' && (
           <ForgotPassword 
             onNavigateToLogin={() => setAuthView('login')} 
+            onIssueToken={() => setAuthView('reset-password')}
           />
         )}
         {authView === 'reset-password' && (
           <ResetPassword 
-            token={resetToken} 
+            initialEmail={currentUser?.email || ""}
             onReset={handleResetPassword} 
             onNavigateToLogin={() => setAuthView('login')} 
           />

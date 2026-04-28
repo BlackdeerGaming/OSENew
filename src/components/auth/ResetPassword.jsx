@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, CheckCircle2, LayoutDashboard, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Hash, CheckCircle2, LayoutDashboard, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import API_BASE_URL from '../../config/api';
 
-export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
+export default function ResetPassword({ initialEmail = '', onReset, onNavigateToLogin }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -12,8 +14,6 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
 
   const validatePassword = (pw) => {
     if (pw.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
-    if (!/[0-9]/.test(pw)) return "La contraseña debe incluir al menos un número.";
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pw)) return "La contraseña debe incluir al menos un carácter especial.";
     return null;
   };
 
@@ -21,6 +21,12 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
     e.preventDefault();
     setErrorMsg('');
     
+    if (!email || !code) {
+      setErrorMsg('Por favor completa todos los campos.');
+      setStatus('error');
+      return;
+    }
+
     const pwError = validatePassword(password);
     if (pwError) {
       setErrorMsg(pwError);
@@ -40,19 +46,19 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
       const response = await fetch(`${API_BASE_URL}/perform-reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, new_password: password })
+        body: JSON.stringify({ 
+          email: email.strip ? email.strip().lower() : email.trim().toLowerCase(), 
+          code: code.trim(),
+          new_password: password 
+        })
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const result = onReset(token, password);
-        if (result.success) {
-          setStatus('success');
-        } else {
-          setErrorMsg(result.message);
-          setStatus('error');
-        }
+        setStatus('success');
       } else {
-        setErrorMsg("Error al restablecer la contraseña. El enlace puede haber expirado.");
+        setErrorMsg(data.detail || "Código inválido o error al restablecer.");
         setStatus('error');
       }
     } catch (error) {
@@ -94,9 +100,9 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
             <div className="mx-auto bg-gradient-to-br from-primary to-primary/80 text-primary-foreground h-16 w-16 flex items-center justify-center rounded-2xl shadow-lg mb-6">
                 <Lock className="h-8 w-8" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Nueva Contraseña</h1>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Restablecer Contraseña</h1>
             <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-              Define tu nueva contraseña de acceso. Asegúrate de que sea segura.
+              Ingresa el código que recibiste en tu correo y tu nueva contraseña.
             </p>
         </div>
 
@@ -107,6 +113,41 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
                {errorMsg}
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">Correo Electrónico</label>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Mail className="h-5 w-5 text-slate-400" />
+              </div>
+              <input 
+                type="email" 
+                required
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="tu@correo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">Código de Confirmación</label>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Hash className="h-5 w-5 text-slate-400" />
+              </div>
+              <input 
+                type="text" 
+                required
+                maxLength={6}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="123456"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </div>
+          </div>
 
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-slate-700">Nueva Contraseña</label>
@@ -130,7 +171,6 @@ export default function ResetPassword({ token, onReset, onNavigateToLogin }) {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 pl-1 font-medium">Mín. 8 caracteres, un número y un símbolo.</p>
           </div>
 
           <div className="space-y-1.5">

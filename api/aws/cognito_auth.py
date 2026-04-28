@@ -35,6 +35,26 @@ class CognitoManager:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    async def forgot_password(self, username: str):
+        try:
+            return self.client.forgot_password(
+                ClientId=self.client_id,
+                Username=username
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def confirm_forgot_password(self, username: str, confirmation_code: str, new_password: str):
+        try:
+            return self.client.confirm_forgot_password(
+                ClientId=self.client_id,
+                Username=username,
+                ConfirmationCode=confirmation_code,
+                Password=new_password
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     def verify_token(self, token: str) -> Dict:
         # Simplified token verification. In production, use jose or verify against JWKS
         try:

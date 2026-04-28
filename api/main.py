@@ -560,15 +560,11 @@ class EntityCreate(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
-
     email: str
 
-
-
 class PerformResetRequest(BaseModel):
-
-    token: str
-
+    email: str
+    code: str
     new_password: str
 
 
@@ -1789,6 +1785,20 @@ async def signup(req: UserSignUp):
     }
     await db.put_item("users", new_user)
     return {"status": "ok", "message": "Usuario registrado exitosamente"}
+
+@router.post("/request-reset")
+async def request_reset(req: PasswordResetRequest):
+    await cognito.forgot_password(req.email.strip().lower())
+    return {"message": "Si el correo existe, se ha enviado un código de recuperación."}
+
+@router.post("/perform-reset")
+async def perform_reset(req: PerformResetRequest):
+    await cognito.confirm_forgot_password(
+        req.email.strip().lower(),
+        req.code.strip(),
+        req.new_password
+    )
+    return {"message": "Contraseña actualizada exitosamente."}
 
 @router.get("/health-check")
 async def health_check():
