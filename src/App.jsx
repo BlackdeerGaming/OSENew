@@ -177,12 +177,15 @@ function App() {
 
   // 2. Cargar datos iniciales (Usuarios, Entidades, Invitaciones)
   useEffect(() => {
-    if (!currentUser?.token) return;
+    if (!currentUser?.token) {
+      console.log(" [FETCH] Esperando token para cargar datos...");
+      return;
+    }
 
     const fetchData = async () => {
       try {
         const headers = { 'Authorization': `Bearer ${currentUser.token}` };
-        console.log(" [FETCH] Cargando datos iniciales con token...");
+        console.log(" [FETCH] Cargando datos iniciales...");
 
         const [usersRes, entitiesRes, invRes] = await Promise.all([
           fetch(`${API_BASE_URL}/users`, { headers }),
@@ -190,30 +193,35 @@ function App() {
           fetch(`${API_BASE_URL}/invitations/my`, { headers })
         ]);
 
-        if (usersRes.ok) setUsers(await usersRes.json());
+        if (usersRes.ok) {
+          const uData = await usersRes.json();
+          console.log(` [FETCH] Recibidos ${uData.length} usuarios`);
+          setUsers(uData);
+        }
+        
         if (entitiesRes.ok) {
-          const data = await entitiesRes.json();
-          setEntities(data.map(e => ({
+          const eData = await entitiesRes.json();
+          console.log(` [FETCH] Recibidas ${eData.length} entidades`);
+          setEntities(eData.map(e => ({
             ...e,
             razonSocial: e.razonSocial || e.razon_social || "",
             numeroDocumento: e.numeroDocumento || e.nit || ""
           })));
         }
+        
         if (invRes.ok) {
-          const data = await invRes.json();
-          setPendingInvitationsCount(data.length || 0);
+          const iData = await invRes.json();
+          setPendingInvitationsCount(iData.length || 0);
         }
       } catch (err) {
-        console.error("Error fetching initial data:", err);
+        console.error("Error fetching data:", err);
       }
     };
 
     fetchData();
-    
-    // Polling de invitaciones cada minuto
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [currentUser?.token]);
+  }, [currentUser?.token, currentUser?.id]); // Escuchar cambios en token e ID
 
   const handleActivateUser = async (token, newPassword) => {
     try {
