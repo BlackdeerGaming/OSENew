@@ -3,6 +3,8 @@ import os
 import re
 
 import base64
+import boto3
+from boto3.dynamodb.conditions import Attr, Key
 
 from dotenv import load_dotenv
 
@@ -414,11 +416,13 @@ async def login(req: LoginRequest):
         
         # 2. Buscar perfil en DynamoDB
         # Decodificar el IdToken para obtener el email verificado de Cognito
-        import jwt as pyjwt
         try:
+            # Importamos jwt localmente si es necesario o usamos el global
+            import jwt as pyjwt
             token_payload = pyjwt.decode(id_token, options={"verify_signature": False})
             verified_email = token_payload.get("email", "").lower().strip()
-        except:
+        except Exception as e:
+            print(f"ERROR DECODING TOKEN: {str(e)}")
             verified_email = ""
 
         # Recargar lista de superadmins del entorno
@@ -432,6 +436,10 @@ async def login(req: LoginRequest):
         print(f"DEBUG LOGIN: IsSuperAdmin={is_superadmin}")
         
         user_profile = None
+        # Acceder a la tabla vía boto3 directamente
+        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION'))
+        users_table = dynamodb.Table(os.getenv('DYNAMODB_TABLE_NAME'))
+        
         # Intentar buscar por identifier (username o email)
         response = users_table.scan(FilterExpression=Attr('email').eq(identifier) | Attr('username').eq(identifier))
         items = response.get('Items', [])
