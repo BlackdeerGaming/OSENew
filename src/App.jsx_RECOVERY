@@ -1,0 +1,40 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+// ... (omitiendo importaciones por brevedad pero asumiendo que están ahí)
+
+function App() {
+  // ... (omitiendo estados previos)
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!currentUser?.token) return;
+      
+      try {
+        const headers = { 'Authorization': `Bearer ${currentUser.token}` };
+        console.log(" [FETCH] Cargando datos con token...");
+        
+        const [usersRes, entitiesRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/users`, { headers }),
+          fetch(`${API_BASE_URL}/entities`, { headers })
+        ]);
+
+        if (usersRes.ok) setUsers(await usersRes.json());
+        if (entitiesRes.ok) {
+          const data = await entitiesRes.json();
+          const normalized = data.map(e => ({
+            ...e,
+            razonSocial: e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || ""
+          }));
+          setEntities(normalized);
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
+      }
+    };
+
+    fetchData();
+  }, [currentUser?.token]);
+
+  // ... rest of component
+}

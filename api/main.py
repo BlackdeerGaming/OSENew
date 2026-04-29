@@ -1154,11 +1154,14 @@ async def get_my_invitations(user: dict = Depends(get_current_user)):
         
         my_invites = []
         for i in all_invites:
-            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id) and i.get("status") in ["pendiente", "pending"]:
+            # Incluimos todas las invitaciones (pendientes, aceptadas, rechazadas) para persistencia
+            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id):
                 if not i.get("entity_name"):
                     i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
                 my_invites.append(i)
         
+        # Ordenar por fecha (más recientes primero)
+        my_invites.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return my_invites
     except Exception as e:
         print(f"Error fetching my invitations: {e}")
@@ -1362,13 +1365,12 @@ async def resend_invitation(invite_id: str, user: dict = Depends(get_current_use
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/invitations/{invite_id}/public")
-async def get_invitation_public(invite_id: str):
-    """Obtiene detalles de una invitación sin estar logueado."""
+@router.get("/invitations/check/{token}")
+async def check_invitation_public(token: str):
+    """Verifica una invitación de forma pública (para el landing page)."""
     try:
-        pk = f"INVITE#{invite_id}"
-        sk = "METADATA"
-        invite = await db.get_item("invitations", pk, sk)
+        all_invites = await db.scan_table("invitations")
+        invite = next((i for i in all_invites if i.get("token") == token), None)
         if not invite:
             raise HTTPException(status_code=404, detail="Invitación no encontrada")
         
@@ -1377,16 +1379,24 @@ async def get_invitation_public(invite_id: str):
         all_users = await db.scan_table("users")
         user_exists = any(u.get("email", "").lower().strip() == email for u in all_users)
         
+        # Obtener nombre de la entidad si no está
+        entity_name = invite.get("entity_name")
+        if not entity_name:
+            entity = await db.get_item("entities", f"ENTITY#{invite.get('entity_id')}", "METADATA")
+            entity_name = entity.get("razonSocial") or entity.get("nombre") if entity else "Entidad OSE"
+
         return {
             "id": invite.get("id"),
             "email": invite.get("email"),
             "entity_id": invite.get("entity_id"),
-            "entity_name": invite.get("entity_name", "Entidad OSE"),
+            "entity_name": entity_name,
             "role": invite.get("role", "usuario"),
             "status": invite.get("status"),
-            "user_exists": user_exists
+            "user_exists": user_exists,
+            "sender_id": invite.get("created_by")
         }
     except Exception as e:
+        if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/invitations/{invite_id}/respond")
@@ -1402,9 +1412,30 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
             raise HTTPException(status_code=403, detail="No autorizado para responder a esta invitación")
             
         new_status = "aceptada" if req.action == "accept" else "rechazada"
-        await db.update_item("invitations", pk, sk, {"status": new_status})
+        await db.update_item("invitations", pk, sk, {
+            "status": new_status,
+            "recipient_user_id": user.get("user_id"),
+            "responded_at": datetime.now().isoformat()
+        })
         
-        # Si fue aceptada, añadir la entidad al usuario actual
+        # 1. SI FUE RECHAZADA: Notificar al remitente
+        if req.action == "reject":
+            sender_id = invite.get("created_by")
+            if sender_id:
+                sender_data = await db.get_item("users", f"USER#{sender_id}", "PROFILE")
+                sender_email = sender_data.get("email") if sender_data else None
+                if sender_email:
+                    try:
+                        await send_rejection_notification(
+                            sender_email=sender_email,
+                            recipient_email=user.get("email"),
+                            entity_name=invite.get("entity_name", "Entidad OSE"),
+                            recipient_name=user.get("nombre") or user.get("email")
+                        )
+                    except Exception as e:
+                        print(f"Error enviando notificación de rechazo: {e}")
+
+        # 2. SI FUE ACEPTADA: Añadir la entidad al usuario actual
         if req.action == "accept":
             entity_id = invite.get("entity_id")
             user_pk = f"USER#{user.get('user_id')}"
@@ -1421,13 +1452,12 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
                     # Prioridad de roles: superadmin > administrador > usuario
                     current_role = user_data.get("role", "usuario")
                     final_role = current_role
-                    # Solo subir de rango si es necesario
-                    if current_role == 'usuario' and invited_role in ('admin', 'administrador', 'superadmin'):
+                    if current_role == 'usuario' and invited_role in ('admin', 'administrador'):
                         final_role = 'administrador'
                     
                     await db.update_item("users", user_pk, user_sk, {
                         "entidadIds": current_entities,
-                        "entidadId": current_entities[0] if current_entities else "",
+                        # No cambiamos entidadId principal para no forzar cambio de contexto brusco si no quiere
                         "role": final_role,
                         "perfil": final_role,
                         "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled

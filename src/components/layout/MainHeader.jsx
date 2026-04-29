@@ -37,13 +37,14 @@ export default function MainHeader({
           {/* Entity selector */}
           {userEntities?.length > 1 && (
             <div className="hidden md:flex items-center gap-2">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Contexto:</span>
               <select
                 value={selectedEntityId || ""}
                 onChange={(e) => onSelectEntity(e.target.value)}
-                className="text-[12px] font-medium bg-secondary text-foreground border border-input rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+                className="text-[12px] font-bold bg-secondary/80 text-foreground border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all hover:bg-secondary cursor-pointer min-w-[140px]"
               >
                 {userEntities.map(ent => (
-                  <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla}</option>
+                  <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.sigla || "Entidad"}</option>
                 ))}
               </select>
             </div>
