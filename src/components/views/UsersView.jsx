@@ -30,7 +30,8 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser?.token}`
+          'Authorization': `Bearer ${currentUser?.token}`,
+          'x-entity-context': selectedEntityId || ''
         },
         body: JSON.stringify({
           email: inviteEmail,

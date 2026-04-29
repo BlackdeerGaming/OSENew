@@ -1587,6 +1587,7 @@ function App() {
                     API_BASE_URL={API_BASE_URL}
                     onNavigate={setMainView}
                     entities={entities}
+                    selectedEntityId={selectedEntityId}
                   />
                 )}
                 

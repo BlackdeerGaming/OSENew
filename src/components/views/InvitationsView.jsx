@@ -3,7 +3,7 @@ import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Pl
 import { cn } from '@/lib/utils';
 import ViewHeader from '../ui/ViewHeader';
 
-export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [] }) {
+export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [], selectedEntityId }) {
   const [activeTab, setActiveTab] = useState('received'); // 'received' | 'sent'
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +76,10 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       }
       
       const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
-        headers: { "Authorization": `Bearer ${currentUser.token}` }
+        headers: { 
+          "Authorization": `Bearer ${currentUser.token}`,
+          "x-entity-context": selectedEntityId || ''
+        }
       });
       if (res.ok) {
         const data = await res.json();
@@ -100,7 +103,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser.token}`
+          'Authorization': `Bearer ${currentUser.token}`,
+          'x-entity-context': selectedEntityId || ''
         },
         body: JSON.stringify(newInvite)
       });
@@ -109,7 +113,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       if (res.ok) {
         setMessage({ type: 'success', text: "Invitación enviada con éxito." });
         setShowCreateModal(false);
-        setNewInvite({ email: '', entity_id: currentUser?.entidadId || '', role: 'usuario', ia_disponible: false });
+        setNewInvite({ email: '', entity_id: selectedEntityId || currentUser?.entidadId || '', role: 'usuario', ia_disponible: false });
         if (activeTab === 'sent') fetchData();
       } else {
         alert(data.detail || "Error al enviar invitación");
