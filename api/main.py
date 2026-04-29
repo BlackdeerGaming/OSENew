@@ -1122,16 +1122,18 @@ async def get_my_invitations(user: dict = Depends(get_current_user)):
     if not email: return []
     try:
         all_invites = await db.scan_table("invitations")
+        all_entities = await db.scan_table("entities")
+        entity_map = {e.get("id"): e.get("nombre") for e in all_entities}
+        
         user_id = user.get("user_id")
         
-        my_invites = [
-            i for i in all_invites 
-            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id)
-            and i.get("status") in ["pendiente", "pending"]
-        ]
+        my_invites = []
+        for i in all_invites:
+            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id) and i.get("status") in ["pendiente", "pending"]:
+                if not i.get("entity_name"):
+                    i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
+                my_invites.append(i)
         
-        # Las invitaciones RECIBIDAS son privadas por Email, no necesitan filtro de entidad
-        # Esto permite que un admin vea invitaciones enviadas por el superadmin desde cualquier contexto
         return my_invites
     except Exception as e:
         print(f"Error fetching my invitations: {e}")
@@ -1199,6 +1201,8 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
     """Lista las invitaciones enviadas."""
     try:
         all_invites = await db.scan_table("invitations")
+        all_entities = await db.scan_table("entities")
+        entity_map = {e.get("id"): e.get("nombre") for e in all_entities}
         
         # Administradores solo ven sus PROPIAS invitaciones dentro de su entidad
         if user.get("role") != SUPERADMIN_ROLE:
@@ -1209,6 +1213,11 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
             
         # Filtrar por el campo booleano 'archived'
         all_invites = [i for i in all_invites if i.get("archived", False) == archived]
+        
+        # Asegurar entity_name
+        for i in all_invites:
+            if not i.get("entity_name"):
+                i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
             
         return all_invites
     except Exception as e:
