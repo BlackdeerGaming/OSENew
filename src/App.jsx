@@ -201,33 +201,59 @@ function App() {
     const invId = params.get('invitation_id');
     const invEmail = params.get('email');
     
-    let processedAny = !!(actToken || rstToken || (invId && invEmail));
-
     if (invId && invEmail) {
       const context = { id: invId, email: invEmail };
-      setInvitationContext(context);
       localStorage.setItem('invitation_context', JSON.stringify(context));
+      setInvitationContext(context);
       
-      // 🔥 CRÍTICO: Si el usuario ya tiene cuenta (marcado por ose_has_account), NO lo mandamos a registro.
-      // Lo mandamos a LOGIN para que entre con su cuenta existente.
-      const hasAccount = localStorage.getItem('ose_has_account') === 'true';
+      const savedUserStr = localStorage.getItem('ose_user');
+      let savedUser = null;
+      try { if (savedUserStr) savedUser = JSON.parse(savedUserStr); } catch(e){}
       
-      if (!currentUser) {
-        if (hasAccount) {
-          setAuthView('login');
-          console.log("👋 Usuario existente detectado. Redirigiendo a Login en lugar de Registro.");
+      if (savedUser && savedUser.token) {
+        // Ya logueado, intentar procesar
+        if (savedUser.email && savedUser.email.toLowerCase() !== invEmail.toLowerCase()) {
+          alert(`La invitación es para ${invEmail}, pero estás conectado como ${savedUser.email}. Por favor cierra sesión y conéctate con la cuenta correcta.`);
         } else {
-          setAuthView('signup');
-          console.log("✨ Nuevo usuario invitado detectado. Redirigiendo a Registro.");
+          // Aceptar automáticamente o navegar a la vista de invitaciones
+          setMainView('invitations');
+          setAuthView('dashboard');
         }
+      } else {
+        // No logueado, verificar existencia antes de redirigir
+        const checkInvite = async () => {
+          try {
+            const resp = await fetch(`${API_BASE_URL}/invitations/${invId}/public`);
+            if (resp.ok) {
+              const details = await resp.json();
+              if (details.user_exists) {
+                console.log("👋 Usuario existente detectado via invitación. Redirigiendo a Login.");
+                setAuthView('login');
+                setModalStatus({ 
+                  isOpen: true, 
+                  type: 'info', 
+                  message: 'Ya tienes una cuenta registrada. Por favor inicia sesión para aceptar tu invitación.' 
+                });
+                setTimeout(() => setModalStatus(prev => ({ ...prev, isOpen: false })), 4000);
+              } else {
+                console.log("✨ Nuevo usuario detectado via invitación. Redirigiendo a Registro.");
+                setAuthView('signup');
+              }
+            } else {
+               setAuthView('signup'); // Fallback
+            }
+          } catch (e) {
+            setAuthView('signup');
+          }
+        };
+        checkInvite();
       }
     }
 
-    // 🔥 Limpiar la URL una vez procesados los parámetros para evitar bucles en re-renders o logout
-    if (processedAny) {
+    // Limpiar URL
+    if (actToken || rstToken || (invId && invEmail)) {
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
-      console.log("🧹 URL limpiada de parámetros de autenticación/invitación");
     }
   }, []); // 🔥 Corregido: Solo se ejecuta una vez al montar la aplicación
 
