@@ -1853,8 +1853,12 @@ async def get_sent_invitations(entity_id: str | None = None, archived: bool = Fa
         if entity_id:
             query = query.eq("entity_id", entity_id)
     else:
-        target_id = entity_id or current_user.get("entity_id")
-        query = query.eq("entity_id", target_id).eq("inviter_id", current_user.get("user_id"))
+        # Para administradores multi-entidad, permitir ver lo que enviaron en CUALQUIERA de sus entidades
+        allowed_ids = current_user.get("allowed_entities", [])
+        if not allowed_ids:
+            allowed_ids = [current_user.get("entity_id")]
+            
+        query = query.in_("entity_id", allowed_ids).eq("inviter_id", current_user.get("user_id"))
     res = query.order("created_at", desc=True).execute()
     return [{
         "id": inv["id"],
