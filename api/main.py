@@ -1099,6 +1099,29 @@ async def activate_user(req: UserActivate):
         print(f" Error activando usuario: {e}")
         raise HTTPException(500, f"Error interno: {str(e)}")
 
+@router.get("/users/profile")
+async def get_user_profile(user: dict = Depends(get_current_user)):
+    """Retorna el perfil completo del usuario actual, incluyendo entidades permitidas."""
+    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
+    user_id = user.get("user_id")
+    res = supabase_client.table("profiles").select("*").eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(404, "Perfil no encontrado")
+    
+    user_data = res.data[0]
+    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_id).execute()
+    entidad_ids = [e["entity_id"] for e in entities_res.data]
+    
+    return {
+        "id": user_data["id"],
+        "nombre": user_data["nombre"],
+        "email": user_data["email"],
+        "role": user_data["perfil"],
+        "entidadId": user_data.get("entidad_id"),
+        "entidadIds": entidad_ids,
+        "iaDisponible": user_data.get("ia_disponible", True)
+    }
+
 @router.post("/login")
 async def login(req: LoginRequest):
     if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
@@ -1814,13 +1837,19 @@ async def create_invitation(req: InvitationCreate, current_user: dict = Depends(
     return {"status": "success", "message": "Invitación enviada", "invitation": invitation}
 
 @router.get("/invitations/my")
-async def get_my_invitations(current_user: dict = Depends(get_current_user)):
+async def get_my_invitations(archived: bool = False, current_user: dict = Depends(get_current_user)):
     """Lista las invitaciones recibidas por el usuario logueado"""
     if not supabase_client: return []
     email = current_user.get("email", "").lower()
     if not email: return []
-    # Devolver todas las invitaciones, no solo pendientes, para persistencia
-    res = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)").eq("email", email).execute()
+    
+    # Filtrar por email y estado de archivado
+    query = supabase_client.table("invitations")\
+        .select("*, entities(razon_social, sigla), profiles(nombre, apellido)")\
+        .eq("email", email)\
+        .eq("archived", archived)
+        
+    res = query.execute()
     now = datetime.now(timezone.utc)
     valid_invitations = []
     for inv in res.data:
@@ -2039,9 +2068,12 @@ async def archive_invitation(inv_id: str, req: InvitationArchive, current_user: 
         raise HTTPException(404, "Invitación no encontrada")
     
     inv = inv_res.data[0]
+    recipient_email = inv.get("email", "").lower()
+    is_recipient = (current_user.get("email", "").lower() == recipient_email)
+
     if current_user.get("role") != SUPERADMIN_ROLE:
-        if inv.get("inviter_id") != current_user.get("user_id"):
-            raise HTTPException(403, "No tienes permisos para archivar esta invitaciÃ³n (no eres el creador)")
+        if inv.get("inviter_id") != current_user.get("user_id") and not is_recipient:
+            raise HTTPException(403, "No tienes permisos para archivar esta invitación")
 
     res = supabase_client.table("invitations").update({"archived": req.archived}).eq("id", inv_id).execute()
     return {"status": "ok", "archived": req.archived}

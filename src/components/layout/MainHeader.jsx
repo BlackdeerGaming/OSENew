@@ -99,7 +99,7 @@ export default function MainHeader({
       {userEntities?.length > 1 && (
         <div className="flex md:hidden w-full px-4 pb-2">
           <select
-            value={selectedEntityId}
+            value={selectedEntityId || ""}
             onChange={(e) => onSelectEntity(e.target.value)}
             className="w-full text-[12px] font-medium bg-secondary text-foreground border border-input rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
           >

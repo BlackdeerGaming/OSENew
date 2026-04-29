@@ -37,7 +37,7 @@ import StatusModal from './components/ui/StatusModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
 import { exportTRDToExcel } from './utils/excelUtils';
 import { normalizeText } from './utils/stringUtils';
-import { supabase } from './lib/supabase';
+
 
 const DEPS_FLOW = [
   { field: 'nombre', query: 'Vamos a crear una nueva dependencia. ¿Cuál es el nombre?', type: 'text', quick: [] },
@@ -87,7 +87,20 @@ const TRDFORM_FLOW = [
 function App() {
   // Auth State
   const [authView, setAuthView] = useState('login'); 
-  const [currentUser, setCurrentUser] = useState(null); 
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('ose_user');
+    try {
+      if (!saved) return null;
+      const user = JSON.parse(saved);
+      // 🔥 Solo restauramos si tiene un TOKEN válido. Si no, es una sesión fantasma.
+      if (user && user.token) {
+        return user;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }); 
   const [activationToken, setActivationToken] = useState(null);
   const [resetToken, setResetToken] = useState(null);
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
@@ -135,69 +148,24 @@ function App() {
     loadFunciones();
   }, [currentUser?.token, selectedEntityId, authHeaders]);
 
-  // Manejar sesión de Google (Supabase OAuth)
-  useEffect(() => {
-    if (!supabase) return;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Solo actuar si es un evento de login y no tenemos usuario interno
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !currentUser) {
-        if (session.user.app_metadata.provider === 'google') {
-          try {
-            setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con Google...' });
-            
-            const response = await fetch(`${API_BASE_URL}/auth/google`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: session.user.email,
-                nombre: session.user.user_metadata.full_name || session.user.user_metadata.name || "Usuario",
-                apellido: "",
-                uid: session.user.id
-              })
-            });
 
-            if (response.ok) {
-              const userData = await response.json();
-              handleLogin(userData, true); 
-              setModalStatus({ isOpen: false, type: 'loading', message: '' });
-            } else {
-              const error = await response.json();
-              setModalStatus({ isOpen: true, type: 'error', message: error.detail || 'Error al sincronizar con el servidor.' });
-              await supabase.auth.signOut();
-            }
-          } catch (err) {
-            console.error("Google sync error:", err);
-            setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión durante la sincronización.' });
-          }
-        }
-      }
-    });
-
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
-  }, [currentUser, modalStatus.isOpen]);
-
-  // Detectar tokens en la URL
+  // 1. Detectar tokens en la URL y manejar redirecciones de invitación
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     
-    // Activación de cuenta
     const actToken = params.get('token');
     if (actToken) {
       setActivationToken(actToken);
       setAuthView('activate');
     }
 
-    // Recuperación de contraseña
     const rstToken = params.get('reset_token');
     if (rstToken) {
       setResetToken(rstToken);
       setAuthView('reset-password');
     }
 
-    // Invitaciones Manuales (Flujo externo)
     const invId = params.get('invitation_id');
     const invEmail = params.get('email');
     
@@ -255,57 +223,56 @@ function App() {
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
     }
-  }, []); // 🔥 Corregido: Solo se ejecuta una vez al montar la aplicación
+  }, []);
 
-  // Cargar usuarios y entidades iniciales desde el backend cuando el usuario cambia
+  // 2. Cargar datos iniciales (Usuarios, Entidades, Invitaciones)
   useEffect(() => {
+    if (!currentUser?.token) {
+      console.log(" [FETCH] Esperando token para cargar datos...");
+      return;
+    }
+
     const fetchData = async () => {
       try {
-        const [usersRes, entitiesRes] = await Promise.all([
+        const headers = { 'Authorization': `Bearer ${currentUser.token}` };
+        console.log(" [FETCH] Cargando datos iniciales...");
+
+        const [usersRes, entitiesRes, invRes] = await Promise.all([
           fetch(`${API_BASE_URL}/users`, { headers: authHeaders }),
-          fetch(`${API_BASE_URL}/entities`, { headers: authHeaders })
+          fetch(`${API_BASE_URL}/entities`, { headers: authHeaders }),
+          fetch(`${API_BASE_URL}/invitations/my`, { headers: authHeaders })
         ]);
 
         if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsers(data || []);
+          const uData = await usersRes.json();
+          setUsers(uData);
         }
+        
         if (entitiesRes.ok) {
-          const data = await entitiesRes.json();
-          // Normalizar entidades para soportar camelCase y snake_case consistentemente
-          const normalized = (data || []).map(e => ({
+          const eData = await entitiesRes.json();
+          setEntities(eData.map(e => ({
             ...e,
-            razonSocial: e.razonSocial || e.razon_social || "",
-            numeroDocumento: e.numeroDocumento || e.nit || "",
-            tipoEjecutor: e.tipoEjecutor || e.tipo_ejecutor || "Ejecutor No Def."
-          }));
-          setEntities(normalized);
+            id: e.id || e.PK || e.entity_id || "",
+            razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+            nombre: e.nombre || e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+            nit: e.nit || e.numeroDocumento || e.NIT || ""
+          })));
+        }
+        
+        if (invRes.ok) {
+          const iData = await invRes.json();
+          setPendingInvitationsCount(iData.length || 0);
         }
       } catch (err) {
-        console.error("Error fetching initial data:", err);
+        console.error("Error fetching data:", err);
       }
     };
-    if (currentUser) fetchData();
-  }, [currentUser, selectedEntityId, authHeaders]);
 
-  // Polling for invitations
-  useEffect(() => {
-    if (!currentUser?.token) return;
-    const fetchInvitations = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/invitations/my`, {
-          headers: { 'Authorization': `Bearer ${currentUser.token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPendingInvitationsCount(data.length || 0);
-        }
-      } catch (e) { console.error("Error polling invitations:", e); }
-    };
-    fetchInvitations();
-    const interval = setInterval(fetchInvitations, 60000); // 1 min
+    if (currentUser) fetchData();
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId, authHeaders]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {
@@ -380,6 +347,24 @@ function App() {
     } catch (err) {
       console.error("Error updating profile:", err);
       return { success: false, message: err.message };
+    }
+  };
+
+  const refreshUserProfile = async () => {
+    if (!currentUser?.token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
+        headers: { 'Authorization': `Bearer ${currentUser.token}` }
+      });
+      if (response.ok) {
+        const freshUser = await response.json();
+        const updatedUser = { ...currentUser, ...freshUser };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('ose_user', JSON.stringify(updatedUser));
+        console.log(" [App] Perfil actualizado exitosamente.");
+      }
+    } catch (err) {
+      console.error("Error refreshing profile:", err);
     }
   };
 
@@ -886,7 +871,7 @@ function App() {
   };
 
   const handleSave = async () => {
-    setModalStatus({ isOpen: true, type: 'loading', message: 'Guardando y sincronizando con Supabase Cloud...' });
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Guardando y sincronizando con AWS Cloud...' });
     const isUpdate = !!activeFormData.id;
     const record = isUpdate ? activeFormData : { ...activeFormData, id: Date.now().toString() };
 
@@ -1044,7 +1029,11 @@ function App() {
     else setSelectedTrdIds(new Set());
   };
 
-  const handleLogin = (user, rememberMe) => {
+  const handleLogin = (data, rememberMe) => {
+    // El backend de AWS devuelve { "user": {...}, "access_token": "..." }
+    // Debemos extraer el objeto 'user' real
+    const user = data.user || data; 
+    
     // Normalizar entidades anidadas si existen para soporte consistente de camelCase
     const normalizedUser = {
       ...user,
@@ -1053,32 +1042,51 @@ function App() {
         razonSocial: e.razonSocial || e.razon_social || e.nombre || ""
       }))
     };
+    
+    normalizedUser.token = data.access_token || data.id_token || data.token;
+
     setCurrentUser(normalizedUser);
-    // Establecer la entidad inicial basada en el perfil del usuario
-    // Prioridad: entidadId directo > entidadIds[0] > primera entidad disponible
-    const entityFromUser = user.entidadId || user.entidadIds?.[0] || null;
+    
+    // 🔥 Corregir el ID "None" que viene de DynamoDB
+    let entityFromUser = user.entidadId || user.entity_id || user.entidadIds?.[0] || null;
+    if (entityFromUser === "None" || entityFromUser === "null") entityFromUser = null;
+
     if (entityFromUser) {
       setSelectedEntityId(entityFromUser);
     } else if (user.role === 'superadmin') {
-      // superadmin: deja el selector libre, no forzamos ninguna entidad
-      setSelectedEntityId(null);
+      // superadmin: forzamos OSE Sistema Global (e0) como principal por defecto
+      setSelectedEntityId('e0');
     }
     
-    if (rememberMe) {
-      localStorage.setItem('ose_user', JSON.stringify(user));
-    }
+    // Siempre guardamos en localStorage para persistencia en refrescos
+    localStorage.setItem('ose_user', JSON.stringify(normalizedUser));
     
     // Marcar de forma persistente que este navegador ya tiene un usuario registrado
     // Esto evita que las invitaciones vuelvan a abrir el formulario de "Crear Cuenta" en el futuro
     localStorage.setItem('ose_has_account', 'true');
 
     if (invitationContext) {
-      setMainView('invitations');
+      if (normalizedUser.email && normalizedUser.email.toLowerCase() !== invitationContext.email.toLowerCase()) {
+        alert(`La invitación es para ${invitationContext.email}, pero te conectaste como ${normalizedUser.email}. No se puede aceptar la invitación.`);
+      } else {
+        // Auto-aceptar la invitación pendiente
+        fetch(`${API_BASE_URL}/invitations/${invitationContext.id}/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${normalizedUser.token}` },
+            body: JSON.stringify({ action: 'accept' })
+        }).then(res => {
+            if (res.ok) {
+              alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+              refreshUserProfile();
+            } else {
+              res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+            }
+        }).catch(console.error);
+      }
       localStorage.removeItem('invitation_context');
       setInvitationContext(null);
-    } else {
-      setMainView('dashboard');
     }
+    setMainView('dashboard');
     
     // Limpiar otros estados de flujo para asegurar que no vuelvan a aparecer al desloguear
     setActivationToken(null);
@@ -1086,7 +1094,7 @@ function App() {
   };
   
   const handleLogout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    // Limpiar tokens locales
     setCurrentUser(null);
     setAuthView('login');
     setMainView('dashboard');
@@ -1099,35 +1107,32 @@ function App() {
     localStorage.removeItem('invitation_context');
   };
 
-  // Restore session from localStorage if present
-  useEffect(() => {
-    const savedUser = localStorage.getItem('ose_user');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        if (user.entidadId) setSelectedEntityId(user.entidadId);
-        else if (user.entidadIds?.length > 0) setSelectedEntityId(user.entidadIds[0]);
-        setAuthView('dashboard');
-        console.log("♻️ Sesión recuperada de localStorage");
-      } catch (e) {
-        localStorage.removeItem('ose_user');
-      }
-    }
-  }, []);
+  // Restore session logic removed - now handled by initial state in useState
 
   // Determine which entities the current user can see/select
   const userEntities = React.useMemo(() => {
     if (!currentUser) return entities;
-    if (currentUser.role === 'superadmin') return entities;
-    // If user has entidadIds (multi) use those, fall back to single entidadId
-    const ids = currentUser.entidadIds?.length > 0
-      ? currentUser.entidadIds
-      : currentUser.entidadId ? [currentUser.entidadId] : [];
-    return ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
+    let available = entities;
+    if (currentUser.role !== 'superadmin') {
+      const ids = currentUser.entidadIds?.length > 0
+        ? currentUser.entidadIds
+        : currentUser.entidadId ? [currentUser.entidadId] : [];
+      available = ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
+    }
+    
+    // Sort to ensure "OSE Sistema Global" (e0) is always first, then alphabetical
+    return [...available].sort((a, b) => {
+      if (a.id === 'e0') return -1;
+      if (b.id === 'e0') return 1;
+      return (a.razonSocial || "").localeCompare(b.razonSocial || "");
+    });
   }, [currentUser, entities]);
 
-  const currentEntity = entities.find(e => e.id === selectedEntityId) || userEntities?.[0];
+  console.log(" [App] userEntities:", userEntities.length, "Selected:", selectedEntityId);
+
+  const currentEntity = entities.find(e => e.id === selectedEntityId) || 
+                        (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
+                        userEntities?.[0];
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
@@ -1207,6 +1212,7 @@ function App() {
           <SignUp 
             onSignUp={(userData) => handleLogin(userData, true)} 
             onNavigateToLogin={() => setAuthView('login')} 
+            initialEmail={invitationContext?.email}
           />
         )}
         {authView === 'activate' && (
@@ -1219,11 +1225,12 @@ function App() {
         {authView === 'forgot-password' && (
           <ForgotPassword 
             onNavigateToLogin={() => setAuthView('login')} 
+            onIssueToken={() => setAuthView('reset-password')}
           />
         )}
         {authView === 'reset-password' && (
           <ResetPassword 
-            token={resetToken} 
+            initialEmail={currentUser?.email || ""}
             onReset={handleResetPassword} 
             onNavigateToLogin={() => setAuthView('login')} 
           />
@@ -1590,7 +1597,7 @@ function App() {
                     isRefreshing={isRefreshingDashboard}
                   />
                 )}
-                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} />}
+                {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} currentUser={currentUser} />}
                 {mainView === 'import' && (
                   <TRDImportView 
                     onImportComplete={executeAgentActions} 
@@ -1614,6 +1621,9 @@ function App() {
                     onNavigate={setMainView}
                     entities={entities}
                     selectedEntityId={selectedEntityId}
+                    onInviteResponded={(id, action) => {
+                      if (action === 'accept') refreshUserProfile();
+                    }}
                   />
                 )}
                 

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Plus, Trash2, Send, Shield, Search, Loader2, X } from 'lucide-react';
+import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Plus, Trash2, Send, Shield, Search, Loader2, X, BrainCircuit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ViewHeader from '../ui/ViewHeader';
 
-export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [], selectedEntityId }) {
+export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [], selectedEntityId, onInviteResponded }) {
   const [activeTab, setActiveTab] = useState('received'); // 'received' | 'sent'
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,10 +26,19 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newInvite, setNewInvite] = useState({
     email: '',
-    entity_id: currentUser?.entidadId || '',
+    entity_id: selectedEntityId || currentUser?.entidadId || '',
     role: 'usuario',
     ia_disponible: false
   });
+
+  // Auto-seleccionar la primera entidad si está vacío (especialmente para superadmins)
+  useEffect(() => {
+    if (showCreateModal && !newInvite.entity_id && selectedEntityId) {
+      setNewInvite(prev => ({ ...prev, entity_id: selectedEntityId }));
+    } else if (showCreateModal && !newInvite.entity_id && adminEntities.length > 0) {
+      setNewInvite(prev => ({ ...prev, entity_id: adminEntities[0].id }));
+    }
+  }, [showCreateModal, adminEntities, newInvite.entity_id, selectedEntityId]);
   const [isCreating, setIsCreating] = useState(false);
 
   const [filterEntity, setFilterEntity] = useState('all');
@@ -70,8 +79,9 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
     try {
       let endpoint = activeTab === 'received' ? '/invitations/my' : '/invitations/sent';
       const params = new URLSearchParams();
+      params.append('archived', filterArchived);
+      
       if (activeTab === 'sent') {
-        params.append('archived', filterArchived);
         if (filterEntity !== 'all') params.append('entity_id', filterEntity);
       }
       
@@ -113,7 +123,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       if (res.ok) {
         setMessage({ type: 'success', text: "Invitación enviada con éxito." });
         setShowCreateModal(false);
-        setNewInvite({ email: '', entity_id: selectedEntityId || currentUser?.entidadId || '', role: 'usuario', ia_disponible: false });
+        setNewInvite({ email: '', entity_id: currentUser?.entidadId || '', role: 'usuario', ia_disponible: false });
         if (activeTab === 'sent') fetchData();
       } else {
         alert(data.detail || "Error al enviar invitación");
@@ -179,6 +189,7 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       if (res.ok) {
         setMessage({ type: 'success', text: data.message });
         setInvitations(prev => prev.filter(inv => inv.id !== id));
+        if (onInviteResponded) onInviteResponded(id, action);
       } else {
         setMessage({ type: 'error', text: data.detail || 'Error al procesar.' });
       }
@@ -304,19 +315,17 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
           </div>
         ) : (
           <div className="space-y-4">
-            {activeTab === 'sent' && (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex p-0.5 bg-secondary/50 rounded-md border border-border">
                   <button onClick={() => setFilterArchived(false)} className={cn("px-4 py-1.5 rounded-md text-[11.5px] font-semibold", !filterArchived ? "bg-card text-primary shadow-sm" : "text-muted-foreground")}>Activas</button>
                   <button onClick={() => setFilterArchived(true)} className={cn("px-4 py-1.5 rounded-md text-[11.5px] font-semibold", filterArchived ? "bg-card text-primary shadow-sm" : "text-muted-foreground")}>Archivadas</button>
                 </div>
-                {selectedIds.size > 0 && (
+                {selectedIds.size > 0 && activeTab === 'sent' && (
                   <button onClick={() => handleBulkArchive(!filterArchived)} disabled={isArchiving} className="px-3 py-1.5 bg-foreground text-background rounded-md text-[11.5px] font-semibold hover:bg-primary transition-all flex items-center gap-1.5">
                     <Shield className="h-3.5 w-3.5" /> {filterArchived ? 'Restaurar' : 'Archivar'}
                   </button>
                 )}
               </div>
-            )}
 
             {filteredInvites.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-20 bg-card rounded-xl border border-dashed border-border text-center">
@@ -381,10 +390,14 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                             </button>
                           </>
                         )}
-                        {activeTab === 'sent' && !filterArchived && (
-                          <>
-                            <button onClick={() => handleArchive(inv.id, true)} className="p-2 text-muted-foreground hover:text-foreground" title="Archivar"><Shield className="h-4 w-4" /></button>
-                          </>
+                        {inv.status !== 'pendiente' && (
+                          <button 
+                            onClick={() => handleArchive(inv.id, !filterArchived)} 
+                            className="p-2 text-muted-foreground hover:text-foreground transition-colors" 
+                            title={filterArchived ? "Restaurar" : "Archivar"}
+                          >
+                            <Shield className={cn("h-4 w-4", filterArchived && "text-primary")} />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -423,6 +436,28 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                   </select>
                 </div>
               </div>
+
+              {/* Opción de IA */}
+              <div className="flex items-center justify-between p-3 bg-secondary/5 rounded-lg border border-border/50">
+                <div className="space-y-0.5">
+                  <div className="text-[13px] font-semibold flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-primary" />
+                    Acceso a IA Neural
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">Permite al usuario usar herramientas de IA</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={newInvite.ia_disponible}
+                    disabled={currentUser?.role !== 'superadmin' && !(currentUser?.iaDisponible || currentUser?.ia_disponible)}
+                    onChange={e => setNewInvite({...newInvite, ia_disponible: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+
               <button onClick={handleCreateInvite} disabled={isCreating} className="w-full py-2.5 bg-primary text-primary-foreground rounded-md text-[13px] font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 mt-2">
                 {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {isCreating ? 'Enviando...' : 'Enviar Invitación'}
               </button>
