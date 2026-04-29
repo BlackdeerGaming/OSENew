@@ -1101,11 +1101,24 @@ async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depen
 
 @router.delete("/users/{user_id}")
 async def delete_user_endpoint(user_id: str, user: dict = Depends(require_super_admin)):
-    """Elimina un usuario de DynamoDB."""
+    """Elimina un usuario de DynamoDB y Cognito."""
     try:
+        # 1. Obtener datos del usuario para saber su email (que es el username en Cognito)
+        user_data = await db.get_item("users", f"USER#{user_id}", "PROFILE")
+        username = user_data.get("email") if user_data else user_id
+        
+        # 2. Intentar borrar de Cognito
+        if username:
+            try:
+                await cognito.admin_delete_user(username)
+            except Exception as ce:
+                print(f" [COGNITO] No se pudo borrar usuario {username}: {ce}")
+        
+        # 3. Borrar de DynamoDB
         await db.delete_item("users", f"USER#{user_id}", "PROFILE")
         return {"status": "ok"}
     except Exception as e:
+        print(f" [DELETE] Error eliminando usuario {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/invitations")

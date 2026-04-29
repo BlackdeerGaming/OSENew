@@ -142,4 +142,17 @@ class CognitoManager:
             "entity_id": attrs.get("custom:entity_id")
         }
 
+    async def admin_delete_user(self, username: str):
+        """Elimina un usuario del User Pool de Cognito."""
+        try:
+            self.client.admin_delete_user(
+                UserPoolId=self.user_pool_id,
+                Username=username
+            )
+        except self.client.exceptions.UserNotFoundException:
+            print(f" [COGNITO] Usuario {username} no encontrado, saltando.")
+        except Exception as e:
+            print(f" [COGNITO] Error eliminando usuario {username}: {e}")
+            raise e
+
 cognito = CognitoManager()
