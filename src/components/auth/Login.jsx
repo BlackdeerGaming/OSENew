@@ -10,6 +10,11 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [invitationContext, setInvitationContext] = useState(() => {
+    const saved = localStorage.getItem('invitation_context');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -199,6 +204,31 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
           <p>Para activar tu cuenta por primera vez, usa el enlace de invitación generado por un administrador.</p>
         </div>
       </div>
+
+      {invitationContext && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl border border-white/20 animate-in zoom-in-95 duration-300">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                <Mail className="h-8 w-8 text-primary animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-slate-900 mb-2">¡Invitación Pendiente!</h3>
+                <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                  Has recibido una invitación para unirte a <span className="font-bold text-primary">{invitationContext.entity_name || 'una entidad'}</span>. 
+                  Inicia sesión con tu cuenta existente para aceptarla automáticamente.
+                </p>
+              </div>
+              <button 
+                onClick={() => setInvitationContext(null)}
+                className="w-full mt-2 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary transition-all active:scale-95 shadow-lg shadow-primary/20"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

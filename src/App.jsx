@@ -30,6 +30,7 @@ import EntrevistasView from './components/views/EntrevistasView';
 import GeneradorDocumentalView from './components/views/GeneradorDocumentalView';
 import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
+import { supabase } from './lib/supabase';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -118,6 +119,50 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeModule, setActiveModule] = useState('dashboard');
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
+
+  // Manejar sesión de Google (Supabase OAuth)
+  useEffect(() => {
+    if (!supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Solo actuar si es un evento de login y no tenemos usuario interno
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !currentUser) {
+        if (session.user.app_metadata.provider === 'google') {
+          try {
+            setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con Google...' });
+            
+            const response = await fetch(`${API_BASE_URL}/auth/google`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: session.user.email,
+                nombre: session.user.user_metadata.full_name || session.user.user_metadata.name || "Usuario",
+                apellido: "",
+                uid: session.user.id
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              handleLogin(data, true);
+            } else {
+              const err = await response.json();
+              setModalStatus({ isOpen: true, type: 'error', message: err.detail || 'Error en autenticación Google' });
+              await supabase.auth.signOut();
+            }
+          } catch (e) {
+            console.error("Google Auth Error:", e);
+            setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión con el servidor' });
+            await supabase.auth.signOut();
+          } finally {
+            setModalStatus(prev => ({ ...prev, isOpen: false }));
+          }
+        }
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, [currentUser, supabase]);
 
   // Global App Data State
   const [entities, setEntities] = useState([]);
@@ -1105,6 +1150,7 @@ function App() {
     setSelectedTrdIds(new Set());
     localStorage.removeItem('ose_user');
     localStorage.removeItem('invitation_context');
+    if (supabase) await supabase.auth.signOut();
   };
 
   // Restore session logic removed - now handled by initial state in useState
