@@ -9,7 +9,9 @@ JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
 security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+from .db import supabase_client
+
+def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -21,11 +23,27 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             payload['role'] = 'administrador'
         elif raw_role == 'superadmin':
             payload['role'] = 'superadmin'
-        elif raw_role in ('user', 'usuario', 'consulta', 'cliente'):
-            payload['role'] = 'usuario'
         else:
-            payload['role'] = raw_role # Mantener otros roles específicos
+            payload['role'] = 'usuario'
+
+        # --- LÓGICA DE CONTEXTO MULTI-ENTIDAD ---
+        header_entity_id = request.headers.get("x-entity-context")
+        role = payload['role']
+        user_id = payload.get('user_id')
+        
+        active_entity_id = payload.get('entity_id') # Fallback
+        
+        if role == 'superadmin':
+            if header_entity_id:
+                active_entity_id = header_entity_id
+        elif role == 'administrador' and header_entity_id and supabase_client:
+            # Validar si el admin tiene acceso a esa entidad en profile_entities
+            check = supabase_client.table("profile_entities").select("role").eq("profile_id", user_id).eq("entity_id", header_entity_id).execute()
+            if check.data:
+                active_entity_id = header_entity_id
+            # Si no tiene acceso, se queda con la del JWT
             
+        payload['entity_id'] = active_entity_id
         return payload
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail='Invalid authentication token')
