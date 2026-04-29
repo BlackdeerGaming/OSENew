@@ -6,11 +6,29 @@ from typing import Dict, Any, List, Optional
 class DynamoDBManager:
     def __init__(self):
         self.region = os.getenv("AWS_REGION", "us-east-1")
-        self.dynamodb = boto3.resource("dynamodb", region_name=self.region)
         self.prefix = os.getenv("DYNAMODB_TABLE_PREFIX", "ose_")
+        self.single_table_name = os.getenv("DYNAMODB_TABLE_NAME")
+        
+        # Usar credenciales explícitas
+        self.dynamodb = boto3.resource(
+            "dynamodb", 
+            region_name=self.region,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
 
     def get_table(self, table_name: str):
-        full_name = f"{self.prefix}{table_name}"
+        # Mapeo de nombres lógicos a nombres reales en la base de datos
+        mapping = {
+            "dependencias": "dependencies",
+            "trd_records": "trds",
+            "RagDocuments": "rag_documents"
+        }
+        real_name = mapping.get(table_name, table_name)
+
+        # Usamos el prefijo (ej: ose_users, ose_dependencies)
+        full_name = f"{self.prefix}{real_name}"
+            
         print(f" [DYNAMO] Accediendo a tabla: {full_name}")
         return self.dynamodb.Table(full_name)
 
@@ -29,14 +47,15 @@ class DynamoDBManager:
 
     async def query_by_entity(self, table: str, entity_id: str, sk_prefix: Optional[str] = None) -> List[Dict]:
         table_obj = self.get_table(table)
-        key_condition = Key("entity_id").eq(entity_id)
+        # En nuestro esquema, la Partition Key es PK = ENTITY#{entity_id}
+        pk = entity_id if (entity_id.startswith("ENTITY#") or entity_id == "GLOBAL") else f"ENTITY#{entity_id}"
+        key_condition = Key("PK").eq(pk)
+        
         if sk_prefix:
             key_condition &= Key("SK").begins_with(sk_prefix)
             
-        # Note: This assumes entity_id is a GSI or we are using a specific table design.
-        # For a standard multi-tenant table, we use entity_id as the Partition Key.
         response = table_obj.query(
-            KeyConditionExpression=Key("entity_id").eq(entity_id)
+            KeyConditionExpression=key_condition
         )
         return response.get("Items", [])
 

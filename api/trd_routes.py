@@ -25,6 +25,8 @@ class DependenciaCreate(BaseModel):
     direccion: Optional[str] = None
     telefono: Optional[str] = None
     depende_de: Optional[str] = None
+    user_id: Optional[str] = None
+    import_session_id: Optional[str] = None
 
 class SerieCreate(BaseModel):
     id: Optional[str] = None
@@ -33,6 +35,8 @@ class SerieCreate(BaseModel):
     tipo_documental: Optional[str] = None
     descripcion: Optional[str] = None
     dependencia_id: str
+    user_id: Optional[str] = None
+    import_session_id: Optional[str] = None
 
 class SubserieCreate(BaseModel):
     id: Optional[str] = None
@@ -42,6 +46,8 @@ class SubserieCreate(BaseModel):
     descripcion: Optional[str] = None
     serie_id: str
     dependencia_id: Optional[str] = None
+    user_id: Optional[str] = None
+    import_session_id: Optional[str] = None
 
 class TRDRecordCreate(BaseModel):
     id: Optional[str] = None
@@ -54,6 +60,8 @@ class TRDRecordCreate(BaseModel):
     ddhh: Optional[str] = None
     procedimiento: Optional[str] = None
     acto_admo: Optional[str] = None
+    user_id: Optional[str] = None
+    import_session_id: Optional[str] = None
     # Flags de DisposiciÃƒÂ³n
     disp_conservacion_total: bool = False
     disp_eliminacion: bool = False
@@ -153,8 +161,7 @@ async def create_dependencia_entity(
 async def list_dependencias_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     # Query DynamoDB by Partition Key (assuming DEP prefix in SK for filtering)
-    items = await db.query_by_entity("dependencias", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("DEP#")]
+    return await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
 
 @router.put("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
 async def update_dependencia_entity(
@@ -225,8 +232,7 @@ async def create_serie_entity(
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
 async def list_series_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("series", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("SER#")]
+    return await db.query_by_entity("series", entity_id, sk_prefix="SER#")
 
 @router.put("/entity/{entity_id}/series/{serie_id}", response_model=dict)
 async def update_serie_entity(
@@ -285,8 +291,7 @@ async def create_subserie_entity(
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
 async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("subseries", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("SUB#")]
+    return await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
 
 @router.put("/entity/{entity_id}/subseries/{subserie_id}", response_model=dict)
 async def update_subserie_entity(
@@ -339,8 +344,7 @@ async def create_trd_record_entity(
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
 async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("trd_records", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("TRD#")]
+    return await db.query_by_entity("trd_records", entity_id, sk_prefix="TRD#")
 
 @router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
 async def update_trd_record_entity(
@@ -392,8 +396,7 @@ async def create_funcion_entity(
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])
 async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("funciones", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("FUN#")]
+    return await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
 
 @router.put("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
 async def update_funcion_entity(
@@ -426,8 +429,7 @@ async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depen
 @router.get("/entity/{entity_id}/entrevistados", response_model=List[dict])
 async def list_entrevistados_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("entrevistados", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("ETV#")]
+    return await db.query_by_entity("entrevistados", entity_id, sk_prefix="ETV#")
 
 @router.post("/entity/{entity_id}/entrevistas", response_model=dict)
 async def create_entrevista_entity(
@@ -481,8 +483,7 @@ async def create_entrevista_entity(
 @router.get("/entity/{entity_id}/entrevistas", response_model=List[dict])
 async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    items = await db.query_by_entity("entrevistas", entity_id)
-    return [i for i in items if i.get("SK", "").startswith("ETR#")]
+    return await db.query_by_entity("entrevistas", entity_id, sk_prefix="ETR#")
 
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
 async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):

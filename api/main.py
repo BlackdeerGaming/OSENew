@@ -95,8 +95,66 @@ from datetime import datetime, timedelta, timezone
 
 
 #  Inicializar Servicios compartidos (AWS DynamoDB, LLM, Embeddings)
-
 from .db import db, llm, embeddings
+
+# --- CONFIGURACIÓN DE DISEÑO DE EMAILS ---
+BRAND_COLOR = "#09C8A2"
+BRAND_NAME = "OSE IA"
+
+def get_email_html(title: str, greeting: str, message: str, button_text: str = None, button_link: str = None, extra_info: str = None, security_note: str = None):
+    """Genera un HTML profesional para correos transaccionales."""
+    
+    button_html = ""
+    if button_text and button_link:
+        button_html = f"""
+        <div style="text-align: center; margin: 35px 0;">
+            <a href="{button_link}" style="background-color: {BRAND_COLOR}; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(9, 200, 162, 0.2);">
+                {button_text}
+            </a>
+        </div>
+        """
+    
+    security_html = ""
+    if security_note:
+        security_html = f"""
+        <div style="font-size: 12px; color: #9ca3af; margin-top: 30px; padding-top: 20px; border-top: 1px dashed #e5e7eb;">
+            <p style="margin: 0 0 10px 0;"><strong>Nota de seguridad:</strong> {security_note}</p>
+            <p style="margin: 0;">Si no solicitaste esta acción, puedes ignorar este correo de forma segura.</p>
+        </div>
+        """
+
+    extra_info_html = f"<p style='margin-bottom: 20px; font-size: 16px; color: #4b5563;'>{extra_info}</p>" if extra_info else ""
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; color: #1f2937;">
+        <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="background-color: {BRAND_COLOR}; padding: 40px 20px; text-align: center; color: white;">
+                <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em;">{BRAND_NAME}</h1>
+                <p style="margin: 5px 0 0; opacity: 0.9; font-weight: 500;">Inteligencia Artificial Archivística</p>
+            </div>
+            <div style="padding: 40px; line-height: 1.6;">
+                <h2 style="color: #111827; font-size: 22px; margin-top: 0; font-weight: 700; text-align: center;">{title}</h2>
+                <p style="margin-bottom: 20px; font-size: 16px; color: #4b5563;">{greeting}</p>
+                <p style="margin-bottom: 20px; font-size: 16px; color: #4b5563;">{message}</p>
+                {button_html}
+                {extra_info_html}
+                {security_html}
+            </div>
+            <div style="background-color: #f9fafb; padding: 30px; text-align: center; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 0 0 10px 0;">© 2024 {BRAND_NAME}. Todos los derechos reservados.</p>
+                <p style="margin: 0;">Gestión documental inteligente y eficiente.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
 
 from .aws.ai_processor import ai
 
@@ -550,24 +608,7 @@ class UserActivate(BaseModel):
     token: str
     password: str
 
-class InvitationCreate(BaseModel):
-    email: str
-    entity_id: str
-    role: str = "usuario"
-
-class ActivityLogCreate(BaseModel):
-    message: str
-    user_name: str
-
-    apellido: str | None = ""
-
-    email: str
-
-    username: str
-
-    password: str
-
-    phone: str | None = ""
+# --- Modelos de Invitaciones y Actividad ---
 
 
 
@@ -685,7 +726,7 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
 
             item = {
 
-                "PK": entidad or "GLOBAL",
+                "PK": f"ENTITY#{entidad}" if entidad else "ENTITY#GLOBAL",
 
                 "SK": f"RAG#{filename}#{i}",
 
@@ -723,12 +764,16 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
 
 
 
-async def process_ocr_task(doc_id: str, content: bytes, filename: str):
+async def process_ocr_task(doc_id: str, content: bytes, filename: str, entidad_id: str, user_id: str = None):
     """
     Proceso de segundo plano para extraer texto e imagenes para Vision IA.
     Actualiza el estado a 'reviewing' al terminar para que el usuario pueda aprobar.
     """
-    print(f"--- Iniciando OCR NATIVO (Vision) para: {filename} ---")
+    pk_val = f"ENTITY#{entidad_id}" if entidad_id else "ENTITY#GLOBAL"
+    sk_val = f"IMPORT#{doc_id}"
+    
+    print(f"--- Iniciando OCR NATIVO (Vision) para: {filename} (PK: {pk_val}) ---")
+
 
     
 
@@ -782,23 +827,15 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
 
 
-    # Obtener el file_url y entidad_id actuales de la sesin
-
+    # Obtener el file_url actual de la sesión
     file_url = None
-
-    entidad_id = None
-
     try:
-
-        row = await db.get_item("RagDocuments", doc_id)
-
+        row = await db.get_item("RagDocuments", pk_val, sk_val)
         if row:
+            file_url = row.get("metadata", {}).get("file_url")
+    except Exception as e:
+        print(f"Error recuperando metadata inicial: {e}")
 
-            file_url = row.data[0]["metadata"].get("file_url")
-
-            entidad_id = row.data[0]["metadata"].get("entidad_id")
-
-    except: pass
 
 
 
@@ -901,7 +938,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             "file_url": file_url,
 
             "entidad_id": entidad_id,
-
+            "user_id": user_id,
             "status": "reviewing",
 
             "actions": parsed_actions,
@@ -914,7 +951,22 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
         
 
-        await db.update_item("RagDocuments", doc_id, None, {"metadata": doc_metadata})
+        # --- VERIFICACIÓN DE CANCELACIÓN ---
+        # Antes de guardar, verificamos si el usuario canceló la sesión en el interín
+        try:
+            current_row = await db.get_item("RagDocuments", pk_val, sk_val)
+            if not current_row:
+                print(f"⚠️ El registro {sk_val} ya no existe. Abortando guardado.")
+                return
+            
+            current_status = current_row.get("metadata", {}).get("status")
+            if current_status == "cancelled":
+                print(f"🚫 La sesión {sk_val} fue cancelada. No se guardarán los resultados del OCR.")
+                return
+        except Exception as check_err:
+            print(f"Error verificando estado de cancelación: {check_err}")
+
+        await db.update_item("RagDocuments", pk_val, sk_val, {"metadata": doc_metadata})
 
         
 
@@ -928,16 +980,11 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
 
         try:
 
-            await db.update_item("RagDocuments", doc_id, None, {
-
+            await db.update_item("RagDocuments", pk_val, sk_val, {
                 "metadata": {
-
                     "source": filename, "status": "error", "message": str(e),
-
-                    "type": "temp_trd_session", "created_at": datetime.now().isoformat()
-
+                    "type": "trd_import_session", "created_at": datetime.now().isoformat()
                 }
-
             })
 
         except: pass
@@ -1218,14 +1265,23 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
         resend_api_key = os.getenv("RESEND_API_KEY")
         if resend_api_key:
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-            html_content = f"""
-            <h2>Has sido invitado a colaborar en OSE IA</h2>
-            <p>Se te ha invitado a unirte a la plataforma.</p>
-            <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
-            <p><a href="{frontend_url}/?invitation_id={invite_id}&email={req.email}">Aceptar Invitación</a></p>
-            <br/>
-            <p>Si no esperabas esta invitación, puedes ignorar este correo.</p>
-            """
+            title = "Has recibido una invitación"
+            greeting = "¡Hola!"
+            inviter_name = user.get("nombre", user.get("email", "Un administrador"))
+            entity_name = item.get("entity_name", "una entidad")
+            message = f"{inviter_name} te ha invitado a colaborar en <strong>{entity_name}</strong> dentro de la plataforma OSE IA."
+            extra_info = "Podrás aceptar o rechazar esta invitación una vez ingreses al sistema."
+            button_link = f"{frontend_url}/?invitation_id={invite_id}&email={req.email}"
+            
+            html_content = get_email_html(
+                title=title,
+                greeting=greeting,
+                message=message,
+                button_text="Ver invitación",
+                button_link=button_link,
+                extra_info=extra_info,
+                security_note="Este enlace es personal y no debe ser compartido."
+            )
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     "https://api.resend.com/emails",
@@ -1372,12 +1428,21 @@ async def resend_invitation(invite_id: str, user: dict = Depends(get_current_use
         resend_api_key = os.getenv("RESEND_API_KEY")
         if resend_api_key:
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-            html_content = f"""
-            <h2>Recordatorio: Has sido invitado a colaborar en OSE IA</h2>
-            <p>Se te ha invitado a unirte a la plataforma.</p>
-            <p>Para aceptar la invitación y configurar tu cuenta, por favor haz clic en el siguiente enlace:</p>
-            <p><a href="{frontend_url}/?invitation_id={invite_id}&email={invite.get('email', '')}">Aceptar Invitación</a></p>
-            """
+            title = "Recordatorio de Invitación"
+            greeting = "¡Hola!"
+            entity_name = invite.get("entity_name", "una entidad")
+            message = f"Te recordamos que tienes una invitación pendiente para colaborar en <strong>{entity_name}</strong> dentro de OSE IA."
+            button_link = f"{frontend_url}/?invitation_id={invite_id}&email={invite.get('email', '')}"
+            
+            html_content = get_email_html(
+                title=title,
+                greeting=greeting,
+                message=message,
+                button_text="Ver invitación",
+                button_link=button_link,
+                extra_info="Podrás aceptar o rechazar esta invitación una vez ingreses al sistema.",
+                security_note="Este enlace es personal y no debe ser compartido."
+            )
             async with httpx.AsyncClient() as client:
                 await client.post(
                     "https://api.resend.com/emails",
@@ -1512,12 +1577,14 @@ async def send_activation(req: EmailActivationRequest):
         print("RESEND_API_KEY no configurada. Saltando envío de email.")
         return {"status": "ok", "detail": "Resend no configurado"}
         
-    html_content = f"""
-    <h2>Bienvenido a OSE IA</h2>
-    <p>Hola {req.nombre or ''}, tu cuenta ha sido creada exitosamente.</p>
-    <p>Para activar tu cuenta y establecer tu contraseña, haz clic en el siguiente enlace:</p>
-    <p><a href="{req.link}">Activar mi cuenta</a></p>
-    """
+    html_content = get_email_html(
+        title="Activa tu cuenta",
+        greeting=f"Hola {req.nombre or ''},",
+        message="Tu cuenta ha sido creada exitosamente en OSE IA. Para comenzar a utilizar la plataforma y establecer tu contraseña, es necesario activar tu acceso.",
+        button_text="Activar mi cuenta",
+        button_link=req.link,
+        security_note="Este enlace de activación tiene una validez limitada."
+    )
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -1630,8 +1697,40 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
 
 
 
-@router.post("/upload")
+@router.post("/analyze-trd")
+async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
+    """Sube un documento TRD y arranca el proceso de análisis neural en segundo plano."""
+    print(f" POST /analyze-trd - File: {file.filename}")
+    
+    content = await file.read()
+    doc_id = str(uuid.uuid4())
+    entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
+    pk_val = f"ENTITY#{entidad_actual}" if entidad_actual else "ENTITY#GLOBAL"
+    
+    # 1. Crear registro inicial en RagDocuments (para que el frontend lo vea en 'analyzing')
+    item = {
+        "PK": pk_val,
+        "SK": f"IMPORT#{doc_id}",
+        "id": doc_id,
+        "filename": file.filename,
+        "metadata": {
+            "source": file.filename,
+            "status": "analyzing",
+            "type": "trd_import_session",
+            "entidad_id": entidad_actual,
+            "user_id": user.get("user_id"),
+            "created_at": datetime.now().isoformat()
+        }
+    }
+    
+    await db.put_item("RagDocuments", item)
+    
+    # 2. Arrancar tarea de fondo
+    background_tasks.add_task(process_ocr_task, doc_id, content, file.filename, entidad_actual, user.get("user_id"))
+    
+    return {"import_id": doc_id, "status": "analyzing"}
 
+@router.post("/upload")
 async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
     """
     Sube un PDF, extrae texto, genera embeddings y los guarda en DynamoDB.
@@ -1856,12 +1955,27 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
 
     try:
 
-        entidad = user.get("entity_id") or "GLOBAL"
-
-        # Actualizar el item principal (suponiendo que doc_id es el SK)
-
-        await db.update_item("RagDocuments", entidad, f"RAG#{doc_id}", payload)
-
+        entidad_raw = user.get("entity_id") or "GLOBAL"
+        pk = f"ENTITY#{entidad_raw}" if entidad_raw != "GLOBAL" else "ENTITY#GLOBAL"
+        
+        # Si el payload contiene solo 'status', lo metemos en metadata
+        if "status" in payload and len(payload) == 1:
+            # Primero obtenemos el item para no perder el resto de metadata
+            sk_options = [f"IMPORT#{doc_id}", f"RAG#{doc_id}"]
+            for sk in sk_options:
+                item = await db.get_item("RagDocuments", pk, sk)
+                if item:
+                    meta = item.get("metadata", {})
+                    meta["status"] = payload["status"]
+                    await db.update_item("RagDocuments", pk, sk, {"metadata": meta})
+                    return {"status": "success"}
+        
+        # Fallback genérico
+        try:
+            await db.update_item("RagDocuments", pk, f"RAG#{doc_id}", payload)
+        except:
+            await db.update_item("RagDocuments", pk, f"IMPORT#{doc_id}", payload)
+            
         return {"status": "success"}
 
     except Exception as e:
@@ -1877,15 +1991,21 @@ async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user
 
     try:
 
-        entidad = user.get("entity_id") or "GLOBAL"
-
+        entidad_raw = user.get("entity_id") or "GLOBAL"
+        pk = f"ENTITY#{entidad_raw}" if entidad_raw != "GLOBAL" else "ENTITY#GLOBAL"
+        
+        # 1. Identificar si es RAG o IMPORT
         sk = f"RAG#{doc_id}"
+        item = await db.get_item("RagDocuments", pk, sk)
+        if not item:
+            sk = f"IMPORT#{doc_id}"
+            item = await db.get_item("RagDocuments", pk, sk)
 
         
 
         # 1. Obtener para borrar de S3 si aplica
 
-        item = await db.get_item("RagDocuments", entidad, sk)
+        item = await db.get_item("RagDocuments", pk, sk)
 
         if item and item.get("metadata", {}).get("file_url"):
 
@@ -1899,7 +2019,8 @@ async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user
 
             
 
-        await db.delete_item("RagDocuments", entidad, sk)
+        # 3. Borrar de DynamoDB
+        await db.delete_item("RagDocuments", pk, sk)
 
         return {"status": "success"}
 
@@ -2282,6 +2403,35 @@ async def signup(req: UserSignUp):
 @router.post("/request-reset")
 async def request_reset(req: PasswordResetRequest):
     await cognito.forgot_password(req.email.strip().lower())
+    
+    # Enviar email personalizado vía Resend (opcional pero solicitado por diseño)
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if resend_api_key:
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        html_content = get_email_html(
+            title="Restablece tu contraseña",
+            greeting="Hola,",
+            message="Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en OSE IA.",
+            button_text="Cambiar contraseña",
+            button_link=f"{frontend_url}/?view=reset-password&email={req.email}",
+            extra_info="Recibirás un segundo correo oficial con el código de verificación necesario para completar este proceso.",
+            security_note="Si no solicitaste este cambio, puedes ignorar este correo de forma segura."
+        )
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
+                    json={
+                        "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>"),
+                        "to": req.email,
+                        "subject": "Restablece tu contraseña - OSE IA",
+                        "html": html_content
+                    }
+                )
+        except Exception as e:
+            print(f"Error enviando correo de recuperación: {e}")
+
     return {"message": "Si el correo existe, se ha enviado un código de recuperación."}
 
 @router.post("/perform-reset")

@@ -25,7 +25,7 @@ export function useTRDData(currentUser = null, entityId = null) {
     const token  = currentUser?.token;
     const entity = entityId;
 
-    if (!token || !entity) {
+    if (!token || !entity || entity === 'null' || entity === 'undefined') {
       // No token or no entity → nothing to load
       setIsLoading(false);
       return;
@@ -81,6 +81,10 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
+      if (!entityId || entityId === 'null' || entityId === 'undefined') {
+          console.error("❌ No se puede guardar dependencia: entityId es inválido", entityId);
+          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+      }
       const isCreate = !dependencias.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
@@ -134,6 +138,10 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
+      if (!entityId || entityId === 'null' || entityId === 'undefined') {
+          console.error("❌ No se puede guardar serie: entityId es inválido", entityId);
+          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+      }
       const isCreate = !series.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
@@ -172,6 +180,10 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
+      if (!entityId || entityId === 'null' || entityId === 'undefined') {
+          console.error("❌ No se puede guardar subserie: entityId es inválido", entityId);
+          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+      }
       const isCreate = !subseries.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';
@@ -209,6 +221,10 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
+      if (!entityId || entityId === 'null' || entityId === 'undefined') {
+          console.error("❌ No se puede guardar TRD record: entityId es inválido", entityId);
+          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+      }
       const isCreate = !trdRecords.find(x => String(x.id) === String(newRecord.id));
       const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isCreate ? '' : '/' + newRecord.id}`;
       const method = isCreate ? 'POST' : 'PUT';

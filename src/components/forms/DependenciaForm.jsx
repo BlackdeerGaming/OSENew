@@ -27,7 +27,7 @@ export function FormGroup({ label, required, children, isActive }) {
   );
 }
 
-export default function DependenciaForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null }) {
+export default function DependenciaForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null, selectedEntityId = null }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -46,7 +46,7 @@ export default function DependenciaForm({ data, onChange, activeField, dependenc
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({})} 
+            onClick={() => onChange({ entidadId: data.entidadId })} 
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
             + Nueva Dependencia
@@ -56,16 +56,17 @@ export default function DependenciaForm({ data, onChange, activeField, dependenc
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
         <div className="md:col-span-2">
-          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+          <FormGroup label="Nombre Entidad (Contexto)" required isActive={activeField === 'entidadId'}>
             <select
               name="entidadId"
-              value={data.entidadId || ""}
+              value={selectedEntityId || data.entidadId || ""}
               onChange={handleChange}
-              className={inputClass}
+              className={cn(inputClass, "opacity-75 cursor-not-allowed bg-slate-50")}
+              disabled
             >
               <option value="">Seleccione una entidad...</option>
               {entities.map(ent => (
-                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.nombre}</option>
               ))}
             </select>
           </FormGroup>

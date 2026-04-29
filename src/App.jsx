@@ -250,14 +250,19 @@ function App() {
         
         if (entitiesRes.ok) {
           const eData = await entitiesRes.json();
-          setEntities(eData.map(e => ({
-            ...e,
-            id: e.id || e.PK || e.entity_id || "",
-            razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
-            nombre: e.nombre || e.razonSocial || e.razon_social || "",
-            numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
-            nit: e.nit || e.numeroDocumento || e.NIT || ""
-          })));
+          setEntities(eData.map(e => {
+            const rawId = e.id || e.PK || e.entity_id || "";
+            // Si el ID viene como "ENTITY#uuid", limpiar el prefijo para el frontend
+            const cleanId = rawId.startsWith("ENTITY#") ? rawId.replace("ENTITY#", "") : rawId;
+            return {
+              ...e,
+              id: cleanId,
+              razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+              nombre: e.nombre || e.razonSocial || e.razon_social || "",
+              numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+              nit: e.nit || e.numeroDocumento || e.NIT || ""
+            };
+          }));
         }
         
         if (invRes.ok) {
@@ -388,6 +393,33 @@ function App() {
        }));
     }
   }, [activeFormData, activeModule]);
+
+  // 🔥 CRÍTICO: Sincronizar entidad del formulario con el contexto global 🔥
+  useEffect(() => {
+    if (selectedEntityId) {
+      // 1. Sincronizar el formulario activo inmediatamente
+      setActiveFormData(prev => {
+        if (prev.entidadId !== selectedEntityId) {
+          console.log("🔄 [Sync] Sincronizando entidad del formulario con el contexto:", selectedEntityId);
+          return { ...prev, entidadId: selectedEntityId };
+        }
+        return prev;
+      });
+
+      // 2. Sincronizar la persistencia para que al volver a un módulo no se recupere la entidad vieja
+      setFormsPersistence(prev => {
+        const next = { ...prev };
+        let changed = false;
+        ['dependencias', 'series', 'subseries', 'trdform'].forEach(mod => {
+          if (next[mod] && Object.keys(next[mod]).length > 0 && next[mod].entidadId !== selectedEntityId) {
+            next[mod] = { ...next[mod], entidadId: selectedEntityId };
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [selectedEntityId]);
 
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(window.innerWidth >= 1024);
@@ -643,10 +675,12 @@ function App() {
                } else {
                  const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
                  idMap[depIdInput] = strId;
-                 await addDependencia({ 
-                   id: strId, 
-                   entidadId: currentEntity?.id || userEntities[0]?.id, 
-                   nombre: depIdInput, 
+                  await addDependencia({ 
+                    id: strId, 
+                    entidadId: currentEntity?.id || userEntities[0]?.id, 
+                    user_id: currentUser?.id,
+                    import_session_id: action.import_session_id || null,
+                    nombre: depIdInput, 
                    sigla: "GEN", 
                    codigo: rawPayload.dependenciaCodigo || (Math.floor(Math.random() * 900) + 100).toString() 
                  });
@@ -673,6 +707,8 @@ function App() {
                   await addSerie({ 
                     id: strId, 
                     entidadId: currentEntity?.id || userEntities[0]?.id, 
+                    user_id: currentUser?.id,
+                    import_session_id: action.import_session_id || null,
                     dependenciaId: finalDepId, 
                     nombre: serIdInput, 
                     codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
@@ -701,6 +737,8 @@ function App() {
                     await addSubserie({
                       id: strId,
                       entidadId: currentEntity?.id || userEntities?.[0]?.id,
+                      user_id: currentUser?.id,
+                      import_session_id: action.import_session_id || null,
                       dependenciaId: finalDepId,
                       serieId: finalSerId,
                       nombre: subIdInput,
@@ -723,6 +761,8 @@ function App() {
 
           const payload = {
               entidadId: currentEntity?.id || userEntities?.[0]?.id || null,
+              user_id: currentUser?.id,
+              import_session_id: action.import_session_id || null,
               nombre: name,
               codigo: rawPayload.codigo || (Math.floor(Math.random() * 900) + 100).toString(),
               sigla: rawPayload.sigla || "GEN",
@@ -841,7 +881,7 @@ function App() {
              simulateAgentResponse(data.message || "No se identificaron acciones específicas.");
           }
           setFlowStep(0);
-          setActiveFormData({});
+          setActiveFormData({ entidadId: selectedEntityId });
        })
        .catch((err) => {
           console.error("Error en Orianna:", err);
@@ -895,7 +935,7 @@ function App() {
       // Limpiar persistencia de este módulo al guardar con éxito
       setFormsPersistence(prev => ({ ...prev, [activeModule]: {} }));
       
-      setActiveFormData({});
+      setActiveFormData({ entidadId: selectedEntityId });
       setFlowStep(0);
       await refreshData();
       setModalStatus({ 
@@ -967,7 +1007,7 @@ function App() {
       }
 
       if (activeFormData.id === recordId) {
-        setActiveFormData({});
+        setActiveFormData({ entidadId: selectedEntityId });
       }
       setModalStatus({ isOpen: true, type: 'success', message: 'Registro eliminado correctamente de la nube.' });
     } catch (err) {
@@ -1132,7 +1172,31 @@ function App() {
 
   const currentEntity = entities.find(e => e.id === selectedEntityId) || 
                         (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
-                        userEntities?.[0];
+                        userEntities?.[0] ||
+                        (currentUser?.entidadId ? { id: currentUser.entidadId, nombre: 'Cargando...' } : null);
+
+  // --- AUTO-SELECCIÓN DE ENTIDAD AL INICIAR SESIÓN / CARGAR ---
+  useEffect(() => {
+    if (currentUser && !selectedEntityId && userEntities.length > 0) {
+      // 1. Intentar recuperar la última seleccionada de localStorage
+      const lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
+      if (lastSelected && userEntities.some(e => e.id === lastSelected)) {
+        console.log("📍 [Context] Recuperando última entidad activa:", lastSelected);
+        setSelectedEntityId(lastSelected);
+      } else {
+        // 2. Si no hay última, seleccionar la primera disponible
+        console.log("📍 [Context] Auto-seleccionando primera entidad disponible:", userEntities[0].id);
+        setSelectedEntityId(userEntities[0].id);
+      }
+    }
+  }, [currentUser, selectedEntityId, userEntities]);
+
+  // Persistir la selección de entidad
+  useEffect(() => {
+    if (currentUser && selectedEntityId) {
+      localStorage.setItem(`ose_last_entity_${currentUser.id}`, selectedEntityId);
+    }
+  }, [currentUser, selectedEntityId]);
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
@@ -1183,13 +1247,13 @@ function App() {
     // Si tenemos data persistida para este módulo (escrita por el usuario antes), la recuperamos
     const persisted = formsPersistence[moduleId];
     if (persisted && Object.keys(persisted).length > 0) {
-      console.log(`♻️ Recuperando formulario persistido para ${moduleId}`);
-      setActiveFormData(persisted);
+      console.log(`♻️ Recuperando formulario persistido para ${moduleId} (Forzando entidad contexto)`);
+      // 🔥 Forzamos que la entidad coincida SIEMPRE con el contexto actual al recuperar
+      setActiveFormData({ ...persisted, entidadId: selectedEntityId });
     } else {
-      const autoData = {};
+      const autoData = { entidadId: selectedEntityId };
       if (userEntities.length > 0) {
-        console.log("📍 Auto-seleccionando entidad:", userEntities?.[0]?.nombre || userEntities?.[0]?.razonSocial);
-        autoData.entidadId = userEntities?.[0]?.id;
+        console.log("📍 Auto-seleccionando entidad:", currentEntity?.nombre || currentEntity?.razonSocial || userEntities?.[0]?.nombre);
       }
       setActiveFormData(autoData);
     }
@@ -1321,19 +1385,19 @@ function App() {
               />
             )}
             {activeModule === 'dependencias' && (
-              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
             )}
             {activeModule === 'orgchart' && (
               <OrgChartView dependencias={dependencias} currentUser={currentUser} entities={entities} onEdit={handleEdit} />
             )}
             {activeModule === 'series' && (
-              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
             )}
             {activeModule === 'subseries' && (
-              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} />
+              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} />
+              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} selectedEntityId={selectedEntityId} />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
@@ -1360,7 +1424,7 @@ function App() {
                   currentUser={currentUser}
                   currentEntity={currentEntity}
                   logoBase64={entidadLogoBase64}
-                  onExportPDF={() => setShowPrintModal(true)}
+                  onExportPDF={() => handleExportTRD()}
                 />
               </div>
             )}

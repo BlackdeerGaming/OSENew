@@ -5,7 +5,7 @@ import SearchableSelect from "../ui/SearchableSelect";
 export const inputClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors disabled:opacity-50 disabled:bg-secondary/50";
 export const textareaClass = "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors";
 
-export default function SerieForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null }) {
+export default function SerieForm({ data, onChange, activeField, dependencias = [], entities = [], currentUser = null, selectedEntityId = null }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -22,7 +22,7 @@ export default function SerieForm({ data, onChange, activeField, dependencias = 
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({})} 
+            onClick={() => onChange({ entidadId: data.entidadId })} 
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
             + Nueva Serie
@@ -32,16 +32,17 @@ export default function SerieForm({ data, onChange, activeField, dependencias = 
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
         <div className="md:col-span-2">
-          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'}>
+          <FormGroup label="Nombre Entidad (Contexto)" required isActive={activeField === 'entidadId'}>
             <select
               name="entidadId"
-              value={data.entidadId || ""}
+              value={selectedEntityId || data.entidadId || ""}
               onChange={handleChange}
-              className={inputClass}
+              className={cn(inputClass, "opacity-75 cursor-not-allowed bg-slate-50")}
+              disabled
             >
               <option value="">Seleccione una entidad...</option>
               {entities.map(ent => (
-                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
+                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.nombre}</option>
               ))}
             </select>
           </FormGroup>

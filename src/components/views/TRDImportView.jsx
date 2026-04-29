@@ -56,7 +56,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
-        headers: { "Authorization": `Bearer ${currentUser.token}` }
+        headers: { 
+          "Authorization": `Bearer ${currentUser.token}`,
+          "x-entity-context": entId
+        }
       });
       if (res.ok) {
         const data = await res.json();
@@ -68,6 +71,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
           const merged = [...uploading];
           for (const d of data) {
              const statusValue = d.status || d.metadata?.status;
+             if (['cancelled', 'deleted', 'rejected'].includes(statusValue)) continue;
+
              const mappedStatus = statusValue === 'success' ? 'success' : 
                                   statusValue === 'reviewing' ? 'reviewing' :
                                   statusValue === 'processing' ? 'analyzing' : 
@@ -122,7 +127,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
         method: 'POST',
-        headers: { "Authorization": `Bearer ${currentUser?.token}` },
+        headers: { 
+          "Authorization": `Bearer ${currentUser?.token}`,
+          "x-entity-context": currentEntity?.id || ''
+        },
         body: formData,
       });
 
@@ -159,9 +167,23 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
     setImports(prev => prev.filter(item => item.id !== id));
     try {
+      // 1. Marcar como cancelado primero para detener cualquier worker en background
+      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
+        method: 'PUT',
+        headers: { 
+          "Authorization": `Bearer ${currentUser?.token}`,
+          "Content-Type": "application/json",
+          "x-entity-context": currentEntity?.id || ''
+        },
+        body: JSON.stringify({ status: 'cancelled' })
+      });
+      // 2. Eliminar físicamente si es necesario o simplemente dejarlo como cancelado
       await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
         method: 'DELETE',
-        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        headers: { 
+          "Authorization": `Bearer ${currentUser?.token}`,
+          "x-entity-context": currentEntity?.id || ''
+        }
       });
     } catch (err) {
       console.error("Error deleting import:", err);
@@ -242,7 +264,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
       // 1. Ejecutar acciones en App state / Database
       if (onImportComplete) {
-        await onImportComplete(finalActionsToRun);
+        // Enriquecer las acciones con el ID de la sesión de importación para trazabilidad
+        const enrichedActions = finalActionsToRun.map(action => ({
+          ...action,
+          import_session_id: currentPreviewImport.id
+        }));
+        await onImportComplete(enrichedActions);
       }
 
       // 2. Marcar sesión como exitosa
@@ -250,7 +277,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
          method: 'PUT',
          headers: { 
            'Content-Type': 'application/json',
-           'Authorization': `Bearer ${currentUser?.token}`
+           'Authorization': `Bearer ${currentUser?.token}`,
+           'x-entity-context': currentEntity?.id || ''
          },
          body: JSON.stringify({ status: 'success' })
       });
@@ -377,15 +405,15 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                   <motion.div
                                       key={imp.id}
                                       layout
-                                      className="bg-card border border-border shadow-sm rounded-lg p-3.5 hover:shadow-md transition-all flex items-center justify-between gap-4 relative group"
+                                      className="bg-card border border-border shadow-sm rounded-lg p-2.5 hover:shadow-md transition-all flex items-center justify-between gap-3 relative group"
                                   >
-                                      <div className="flex items-center gap-3 min-w-0">
-                                          <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", config.color)}>
-                                              <config.icon className={cn("h-4 w-4", config.animate && "animate-spin")} />
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                          <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0", config.color)}>
+                                              <config.icon className={cn("h-3.5 w-3.5", config.animate && "animate-spin")} />
                                           </div>
-                                          <div className="flex flex-col gap-0.5 min-w-0">
-                                              <span className="text-[12px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
-                                              <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
+                                          <div className="flex flex-col gap-0 min-w-0">
+                                              <span className="text-[11px] font-bold text-foreground truncate uppercase tracking-tight leading-tight">{imp.filename}</span>
+                                              <span className={cn("text-[7.5px] font-bold px-1 py-0 rounded-md uppercase tracking-wider w-fit", config.color)}>
                                                   {config.label}
                                               </span>
                                           </div>
@@ -445,15 +473,15 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                             <motion.div 
                               key={imp.id} 
                               layout
-                              className="flex items-center justify-between p-3 bg-emerald-50/40 border border-emerald-100/50 rounded-lg group hover:shadow-sm transition-all"
+                              className="flex items-center justify-between p-2 bg-emerald-50/40 border border-emerald-100/50 rounded-lg group hover:shadow-sm transition-all"
                             >
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <div className="h-7 w-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <CheckCircle2 className="h-3 w-3" />
                                     </div>
                                     <div className="flex flex-col min-w-0">
-                                        <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight truncate">{imp.filename}</span>
-                                        <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-widest">Integrado con éxito</span>
+                                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight truncate leading-tight">{imp.filename}</span>
+                                        <span className="text-[7.5px] text-emerald-600 font-bold uppercase tracking-widest">Integrado</span>
                                     </div>
                                 </div>
                                 <button 
