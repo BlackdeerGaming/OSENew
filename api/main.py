@@ -1322,6 +1322,33 @@ async def resend_invitation(invite_id: str, user: dict = Depends(get_current_use
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/invitations/{invite_id}/public")
+async def get_invitation_public(invite_id: str):
+    """Obtiene detalles de una invitación sin estar logueado."""
+    try:
+        pk = f"INVITE#{invite_id}"
+        sk = "METADATA"
+        invite = await db.get_item("invitations", pk, sk)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+        
+        # Verificar si el email ya tiene una cuenta
+        email = invite.get("email", "").lower().strip()
+        all_users = await db.scan_table("users")
+        user_exists = any(u.get("email", "").lower().strip() == email for u in all_users)
+        
+        return {
+            "id": invite.get("id"),
+            "email": invite.get("email"),
+            "entity_id": invite.get("entity_id"),
+            "entity_name": invite.get("entity_name", "Entidad OSE"),
+            "role": invite.get("role", "usuario"),
+            "status": invite.get("status"),
+            "user_exists": user_exists
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/invitations/{invite_id}/respond")
 async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = Depends(get_current_user)):
     try:
@@ -1350,12 +1377,20 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
                     current_entities.append(entity_id)
                     invited_role = invite.get("role", "usuario")
                     ia_enabled = invite.get("ia_disponible", False)
+                    
+                    # Prioridad de roles: superadmin > administrador > usuario
+                    current_role = user_data.get("role", "usuario")
+                    final_role = current_role
+                    # Solo subir de rango si es necesario
+                    if current_role == 'usuario' and invited_role in ('admin', 'administrador', 'superadmin'):
+                        final_role = 'administrador'
+                    
                     await db.update_item("users", user_pk, user_sk, {
                         "entidadIds": current_entities,
                         "entidadId": current_entities[0] if current_entities else "",
-                        "role": invited_role,
-                        "perfil": invited_role,
-                        "iaDisponible": ia_enabled
+                        "role": final_role,
+                        "perfil": final_role,
+                        "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled
                     })
                     
         return {"status": "ok", "message": f"Invitación {new_status} exitosamente"}
