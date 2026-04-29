@@ -397,6 +397,24 @@ class LoginRequest(BaseModel):
     activationToken: str | None = None
     tokenExpiry: int | None = None
 
+@router.get("/users/profile")
+async def get_user_profile(user: dict = Depends(get_current_user)):
+    """Retorna el perfil completo del usuario actual, incluyendo entidades permitidas."""
+    user_id = user.get("user_id")
+    user_record = await db.get_item("users", f"USER#{user_id}", "PROFILE")
+    if not user_record:
+        raise HTTPException(status_code=404, detail="Perfil no encontrado")
+        
+    return {
+        "id": user_record.get("id") or user_record.get("PK"),
+        "nombre": user_record.get("nombre", "Usuario"),
+        "email": user_record.get("email"),
+        "role": user_record.get("role", "usuario"),
+        "entidadId": user_record.get("entidadId"),
+        "entidadIds": user_record.get("entidadIds", []),
+        "iaDisponible": user_record.get("iaDisponible", True)
+    }
+
 @router.post("/login")
 async def login(req: LoginRequest):
     """
@@ -1139,23 +1157,23 @@ async def get_invitations(user: dict = Depends(get_current_user)):
         return []
 
 @router.get("/invitations/my")
-async def get_my_invitations(user: dict = Depends(get_current_user)):
-    """Lista las invitaciones pendientes para el usuario actual."""
+async def get_my_invitations(archived: bool = False, user: dict = Depends(get_current_user)):
+    """Lista las invitaciones para el usuario actual."""
     email = user.get("email")
     user_id = user.get("user_id")
-    print(f"DEBUG: get_my_invitations - User: {email}, ID: {user_id}, Role: {user.get('role')}")
     if not email: return []
     try:
         all_invites = await db.scan_table("invitations")
         all_entities = await db.scan_table("entities")
         entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
         
-        user_id = user.get("user_id")
-        
         my_invites = []
         for i in all_invites:
-            # Incluimos todas las invitaciones (pendientes, aceptadas, rechazadas) para persistencia
-            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id):
+            # Filtro por destinatario (email o ID) Y por estado de archivado
+            is_recipient = (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id)
+            is_archived_match = (i.get("archived", False) == archived)
+            
+            if is_recipient and is_archived_match:
                 if not i.get("entity_name"):
                     i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
                 my_invites.append(i)
@@ -1277,8 +1295,11 @@ async def archive_invitation(invite_id: str, req: ArchiveRequest, user: dict = D
         if not invite:
             raise HTTPException(status_code=404, detail="Invitación no encontrada")
             
-        # Seguridad: Solo el creador o superadmin
-        if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id"):
+        # Seguridad: Solo el creador, el destinatario o superadmin
+        recipient_email = invite.get("email", "").lower()
+        is_recipient = (user.get("email", "").lower() == recipient_email)
+        
+        if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id") and not is_recipient:
             raise HTTPException(status_code=403, detail="No tienes permiso para archivar esta invitación")
             
         await db.update_item("invitations", pk, sk, {"archived": req.archived})

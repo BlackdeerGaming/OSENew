@@ -350,6 +350,24 @@ function App() {
     }
   };
 
+  const refreshUserProfile = async () => {
+    if (!currentUser?.token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
+        headers: { 'Authorization': `Bearer ${currentUser.token}` }
+      });
+      if (response.ok) {
+        const freshUser = await response.json();
+        const updatedUser = { ...currentUser, ...freshUser };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('ose_user', JSON.stringify(updatedUser));
+        console.log(" [App] Perfil actualizado exitosamente.");
+      }
+    } catch (err) {
+      console.error("Error refreshing profile:", err);
+    }
+  };
+
   const [activeFormData, setActiveFormData] = useState({});
   const [formsPersistence, setFormsPersistence] = useState({
     dependencias: {},
@@ -1057,8 +1075,12 @@ function App() {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${normalizedUser.token}` },
             body: JSON.stringify({ action: 'accept' })
         }).then(res => {
-            if (res.ok) alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
-            else res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+            if (res.ok) {
+              alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
+              refreshUserProfile();
+            } else {
+              res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+            }
         }).catch(console.error);
       }
       localStorage.removeItem('invitation_context');
@@ -1105,6 +1127,8 @@ function App() {
       return (a.razonSocial || "").localeCompare(b.razonSocial || "");
     });
   }, [currentUser, entities]);
+
+  console.log(" [App] userEntities:", userEntities.length, "Selected:", selectedEntityId);
 
   const currentEntity = entities.find(e => e.id === selectedEntityId) || 
                         (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
@@ -1597,6 +1621,9 @@ function App() {
                     onNavigate={setMainView}
                     entities={entities}
                     selectedEntityId={selectedEntityId}
+                    onInviteResponded={(id, action) => {
+                      if (action === 'accept') refreshUserProfile();
+                    }}
                   />
                 )}
                 
