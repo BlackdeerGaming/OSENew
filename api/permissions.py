@@ -12,9 +12,8 @@ from .aws.dynamo_db import db
 
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    print(f" [AUTH] Recibido token: {token[:15]}...")
     try:
         # 1. Decodificar el token (IdToken o AccessToken)
         payload = cognito.verify_token(token)
@@ -23,32 +22,57 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         verified_email = payload.get('email', '').lower().strip()
         user_id = payload.get('sub', payload.get('username'))
         
-        # 3. SIEMPRE buscamos al usuario en DynamoDB para tener el Rol y Entidad actualizados
+        # 3. SIEMPRE buscamos al usuario en DynamoDB
         user_record = None
         if user_id:
             user_record = await db.get_item("users", f"USER#{user_id}", "PROFILE")
             if user_record and not verified_email:
                 verified_email = user_record.get('email', '').lower().strip()
         
-        # 4. Determinar el Rol (Prioridad: DynamoDB > Whitelist > Token)
+        # 4. Determinar el Rol
         current_whitelist = [e.strip().lower() for e in os.getenv('SUPERADMIN_EMAILS', '').split(',') if e.strip()]
-        
-        # LLAVE MAESTRA: ivandchaves@gmail.com o su UUID siempre son superadmin
         is_owner = (verified_email == "ivandchaves@gmail.com" or user_id == "219bb560-f091-706f-76fb-22b8930344e6")
         
+        role = 'usuario'
         if is_owner or verified_email in current_whitelist:
-            payload['role'] = 'superadmin'
+            role = 'superadmin'
         elif user_record:
-            payload['role'] = user_record.get('role', 'usuario')
+            role = user_record.get('role', 'usuario')
         else:
-            # Fallback a claims del token
-            payload['role'] = payload.get('custom:role', payload.get('role', 'usuario'))
+            role = payload.get('custom:role', payload.get('role', 'usuario'))
 
         # Normalización final
         payload['user_id'] = user_id
         payload['email'] = verified_email
-        payload['entity_id'] = user_record.get('entidadId') if user_record else payload.get('custom:entity_id')
+        payload['role'] = role
         payload['iaDisponible'] = user_record.get('iaDisponible', False) if user_record else False
+        
+        # --- LÓGICA DE CONTEXTO MULTI-ENTIDAD ---
+        # 1. Obtener entidad desde el header (opcional)
+        header_entity_id = request.headers.get("x-entity-context")
+        # 2. Obtener lista de entidades permitidas para el usuario
+        allowed_entities = user_record.get('entidadIds', []) if user_record else []
+        # Asegurar que el entidadId principal esté incluido
+        main_entity_id = user_record.get('entidadId') if user_record else payload.get('custom:entity_id')
+        if main_entity_id and main_entity_id not in allowed_entities:
+            allowed_entities.append(main_entity_id)
+
+        active_entity_id = main_entity_id
+        
+        if role == 'superadmin':
+            # El superadmin puede usar cualquier entidad que pase por el header
+            if header_entity_id:
+                active_entity_id = header_entity_id
+        else:
+            # El admin/usuario solo puede usar entidades a las que está asignado
+            if header_entity_id and header_entity_id in allowed_entities:
+                active_entity_id = header_entity_id
+            # Si no hay header o no tiene permiso, usa su entidad principal
+            elif not active_entity_id and allowed_entities:
+                active_entity_id = allowed_entities[0]
+
+        payload['entity_id'] = active_entity_id
+        payload['allowed_entities'] = allowed_entities
             
         return payload
         
