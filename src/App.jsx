@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import AgentChat from './components/chat/AgentChat';
@@ -125,13 +125,20 @@ function App() {
 
   const [funciones, setFunciones] = useState([]);
   
+  // Memoize common headers with context
+  const authHeaders = useMemo(() => {
+    if (!currentUser?.token) return {};
+    const h = { 'Authorization': `Bearer ${currentUser.token}` };
+    if (selectedEntityId) h['x-entity-context'] = selectedEntityId;
+    return h;
+  }, [currentUser?.token, selectedEntityId]);
   useEffect(() => {
-    if (!currentUser?.entity_id) return;
+    if (!currentUser?.token || !selectedEntityId) return;
     const loadFunciones = async () => {
       try {
         const resp = await fetch(
-          `${API_BASE_URL}/trd/entity/${currentUser.entity_id}/funciones`,
-          { headers: { Authorization: `Bearer ${currentUser.token}` } }
+          `${API_BASE_URL}/trd/entity/${selectedEntityId}/funciones`,
+          { headers: authHeaders }
         );
         if (resp.ok) setFunciones(await resp.json());
       } catch (err) {
@@ -139,7 +146,7 @@ function App() {
       }
     };
     loadFunciones();
-  }, [currentUser]);
+  }, [currentUser?.token, selectedEntityId, authHeaders]);
 
 
 
@@ -211,9 +218,9 @@ function App() {
         console.log(" [FETCH] Cargando datos iniciales...");
 
         const [usersRes, entitiesRes, invRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/users`, { headers }),
-          fetch(`${API_BASE_URL}/entities`, { headers }),
-          fetch(`${API_BASE_URL}/invitations/my`, { headers })
+          fetch(`${API_BASE_URL}/users`, { headers: authHeaders }),
+          fetch(`${API_BASE_URL}/entities`, { headers: authHeaders }),
+          fetch(`${API_BASE_URL}/invitations/my`, { headers: authHeaders })
         ]);
 
         if (usersRes.ok) {
@@ -242,10 +249,10 @@ function App() {
       }
     };
 
-    fetchData();
+    if (currentUser) fetchData();
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [currentUser?.token, currentUser?.id]); // Escuchar cambios en token e ID
+  }, [currentUser, selectedEntityId, authHeaders]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {

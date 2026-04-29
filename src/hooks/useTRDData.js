@@ -12,10 +12,14 @@ export function useTRDData(currentUser = null, entityId = null) {
   const [isSynced, setIsSynced] = useState(false);
 
   // ── Internal helpers ────────────────────────────────────────────────────────
-  const authHeaders = () => ({
-    'Authorization': `Bearer ${currentUser?.token || ''}`,
-    'Content-Type': 'application/json'
-  });
+  const authHeaders = () => {
+    const h = {
+      'Authorization': `Bearer ${currentUser?.token || ''}`,
+      'Content-Type': 'application/json'
+    };
+    if (entityId) h['x-entity-context'] = entityId;
+    return h;
+  };
 
   const loadData = async () => {
     const token  = currentUser?.token;
@@ -31,7 +35,7 @@ export function useTRDData(currentUser = null, entityId = null) {
     try {
       // Use backend API (service-key access, RLS-bypassed, entity-scoped)
       const base = `${API_BASE_URL}/trd/entity/${entity}`;
-      const headers = { 'Authorization': `Bearer ${token}` };
+      const headers = authHeaders();
 
       const [dRes, sRes, ssRes, trdRes] = await Promise.all([
         fetch(`${base}/dependencias`, { headers }),
