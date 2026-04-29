@@ -1042,13 +1042,22 @@ async def get_entities(user: dict = Depends(get_current_user)):
 async def get_users(user: dict = Depends(get_current_user)):
     """Lista los usuarios (solo para Superadmin o filtrado por entidad)."""
     try:
+        entity_context = user.get("entity_id")
+        all_items = await db.scan_table("users")
+        
+        # Solo perfiles
+        profiles = [u for u in all_items if u.get("SK") == "PROFILE" or "email" in u]
+        
         if user.get("role") == SUPERADMIN_ROLE:
-            items = await db.scan_table("users")
+            # Si está en el contexto Global (e0), ve todos
+            if not entity_context or entity_context == "e0":
+                return profiles
+            # Si seleccionó una entidad específica, filtramos por ella
+            return [u for u in profiles if u.get("entidadId") == entity_context or entity_context in (u.get("entidadIds") or [])]
         else:
-            entity_id = user.get("entity_id")
-            all_users = await db.scan_table("users")
-            items = [u for u in all_users if u.get("entidadId") == entity_id or entity_id in (u.get("entidadIds") or [])]
-        return items
+            # Administrador de entidad: solo ve los de su entidad
+            if not entity_context: return []
+            return [u for u in profiles if u.get("entidadId") == entity_context or entity_context in (u.get("entidadIds") or [])]
     except Exception as e:
         print(f"Error listing users: {e}")
         return []
