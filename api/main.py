@@ -1878,6 +1878,31 @@ async def resend_invitation(inv_id: str, current_user: dict = Depends(get_curren
     supabase_client.table("invitations").update({"expires_at": new_expiry, "status": "pendiente"}).eq("id", inv_id).execute()
     return {"status": "success", "message": "Invitacion reenviada correctamente"}
 
+@router.get("/invitations/{inv_id}/public")
+async def get_invitation_public(inv_id: str):
+    """Obtiene detalles de una invitaciÃ³n sin estar logueado."""
+    if not supabase_client: raise HTTPException(500)
+    res = supabase_client.table("invitations").select("*, entities(razon_social)").eq("id", inv_id).execute()
+    if not res.data:
+        raise HTTPException(404, "InvitaciÃ³n no encontrada")
+    
+    inv = res.data[0]
+    email = inv.get("email", "").lower().strip()
+    
+    # Verificar si el email ya tiene cuenta en profiles
+    check_user = supabase_client.table("profiles").select("id").eq("email", email).execute()
+    user_exists = len(check_user.data) > 0
+    
+    return {
+        "id": inv["id"],
+        "email": inv["email"],
+        "entity_id": inv["entity_id"],
+        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad OSE"),
+        "role": inv.get("role_invited", "usuario"),
+        "status": inv["status"],
+        "user_exists": user_exists
+    }
+
 @router.post("/invitations/{inv_id}/respond")
 async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(500)
@@ -1890,15 +1915,32 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
         raise HTTPException(400, f"Esta invitacion ya ha sido {invitation['status']}")
     if resp.action == "accept":
         try:
+            # 1. Vincular en profile_entities
             supabase_client.table("profile_entities").upsert({
                 "profile_id": current_user.get("user_id"),
                 "entity_id": invitation["entity_id"],
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
+            
+            # 2. Actualizar perfil principal (entidad activa y IA)
             update_data = {"entidad_id": invitation["entity_id"]}
             if invitation.get("ia_disponible"):
                 update_data["ia_disponible"] = True
+            
+            # Prioridad de roles si el usuario ya tiene uno
+            current_profile = supabase_client.table("profiles").select("perfil").eq("id", current_user.get("user_id")).execute()
+            current_role = current_profile.data[0].get("perfil", "usuario") if current_profile.data else "usuario"
+            
+            final_role = current_role
+            invited_role = invitation.get("role_invited", "usuario")
+            if current_role == 'usuario' and invited_role in ('admin', 'Administrador', 'superadmin'):
+                final_role = 'Administrador'
+            
+            update_data["perfil"] = final_role
+            
             supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
+            
+            # 3. Marcar invitacion como aceptada
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
             return {"status": "success", "message": "Invitacion aceptada"}
         except Exception as e:
