@@ -258,16 +258,14 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
   // Los administradores solo ven los usuarios de su propia entidad.
   const filteredUsers = users.filter(u => {
     if (isSuperAdmin) {
-      if (selectedEntityId) {
-        return u.entidadId === selectedEntityId;
+      if (selectedEntityId && selectedEntityId !== 'e0') {
+        return u.entidadId === selectedEntityId || (u.entidadIds || []).includes(selectedEntityId);
       }
       return true;
     }
     if (isEntityAdmin) {
-      // Si es admin de la entidad seleccionada, ver los de esa entidad
-      // O si no hay seleccionada, ver los de sus entidades donde es admin
       if (selectedEntityId) {
-         return u.entidadId === selectedEntityId;
+         return u.entidadId === selectedEntityId || (u.entidadIds || []).includes(selectedEntityId);
       }
       return currentUser?.entities?.some(e => e.id === u.entidadId && ['administrador', 'admin'].includes(e.role));
     }

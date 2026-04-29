@@ -1254,12 +1254,20 @@ async def get_users(entidad_id: str | None = None, user: dict = Depends(get_curr
     query = supabase_client.table("profiles").select("*")
     role = user.get("role")
     
+    # Contexto activo procesado por get_current_user (header x-entity-context)
+    active_entity_id = user.get("entity_id") or entidad_id
+    
     if role == ADMIN_ROLE:
-        # Administradores solo ven usuarios de su propia entidad
-        query = query.eq("entidad_id", user.get("entity_id"))
-    elif entidad_id and role == SUPERADMIN_ROLE:
-        # Superadmin puede filtrar por entidad si lo desea
-        query = query.eq("entidad_id", entidad_id)
+        # Administradores: filtrado estricto por la entidad del contexto actual
+        if active_entity_id:
+             query = query.eq("entidad_id", active_entity_id)
+        else:
+             return []
+    elif role == SUPERADMIN_ROLE:
+        # Superadmin: si está en contexto global (e0) ve todos, si no, filtra
+        if active_entity_id and active_entity_id != "e0":
+             query = query.eq("entidad_id", active_entity_id)
+             
     res = query.execute()
     rel_res = supabase_client.table("profile_entities").select("*").execute()
     rels = {}
