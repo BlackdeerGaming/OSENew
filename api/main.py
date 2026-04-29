@@ -1123,7 +1123,7 @@ async def get_my_invitations(user: dict = Depends(get_current_user)):
     try:
         all_invites = await db.scan_table("invitations")
         all_entities = await db.scan_table("entities")
-        entity_map = {e.get("id"): e.get("nombre") for e in all_entities}
+        entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
         
         user_id = user.get("user_id")
         
@@ -1150,7 +1150,7 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
         
         # Obtener nombre de la entidad para que el receptor sepa quién lo invita
         entity_data = await db.get_item("entities", f"ENTITY#{req.entity_id}", "METADATA")
-        item["entity_name"] = entity_data.get("nombre") if entity_data else "Entidad OSE"
+        item["entity_name"] = entity_data.get("razonSocial") if entity_data else "Entidad OSE"
         
         item["PK"] = f"INVITE#{invite_id}"
         item["SK"] = "METADATA"
@@ -1202,7 +1202,7 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
     try:
         all_invites = await db.scan_table("invitations")
         all_entities = await db.scan_table("entities")
-        entity_map = {e.get("id"): e.get("nombre") for e in all_entities}
+        entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
         
         # Administradores solo ven sus PROPIAS invitaciones dentro de su entidad
         if user.get("role") != SUPERADMIN_ROLE:
