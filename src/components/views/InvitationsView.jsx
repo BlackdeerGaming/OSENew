@@ -3,7 +3,7 @@ import { Mail, Briefcase, User as UserIcon, CheckCircle2, Clock, AlertCircle, Pl
 import { cn } from '@/lib/utils';
 import ViewHeader from '../ui/ViewHeader';
 
-export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [] }) {
+export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate, entities = [], selectedEntityId }) {
   const [activeTab, setActiveTab] = useState('received'); // 'received' | 'sent'
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,17 +26,19 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newInvite, setNewInvite] = useState({
     email: '',
-    entity_id: currentUser?.entidadId || '',
+    entity_id: selectedEntityId || currentUser?.entidadId || '',
     role: 'usuario',
     ia_disponible: false
   });
 
   // Auto-seleccionar la primera entidad si está vacío (especialmente para superadmins)
   useEffect(() => {
-    if (showCreateModal && !newInvite.entity_id && adminEntities.length > 0) {
+    if (showCreateModal && !newInvite.entity_id && selectedEntityId) {
+      setNewInvite(prev => ({ ...prev, entity_id: selectedEntityId }));
+    } else if (showCreateModal && !newInvite.entity_id && adminEntities.length > 0) {
       setNewInvite(prev => ({ ...prev, entity_id: adminEntities[0].id }));
     }
-  }, [showCreateModal, adminEntities, newInvite.entity_id]);
+  }, [showCreateModal, adminEntities, newInvite.entity_id, selectedEntityId]);
   const [isCreating, setIsCreating] = useState(false);
 
   const [filterEntity, setFilterEntity] = useState('all');
@@ -83,7 +85,10 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
       }
       
       const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
-        headers: { "Authorization": `Bearer ${currentUser.token}` }
+        headers: { 
+          "Authorization": `Bearer ${currentUser.token}`,
+          "x-entity-context": selectedEntityId || ''
+        }
       });
       if (res.ok) {
         const data = await res.json();
@@ -107,7 +112,8 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser.token}`
+          'Authorization': `Bearer ${currentUser.token}`,
+          'x-entity-context': selectedEntityId || ''
         },
         body: JSON.stringify(newInvite)
       });
