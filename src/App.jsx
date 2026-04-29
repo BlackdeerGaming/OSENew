@@ -167,7 +167,6 @@ function App() {
     }
 
     const invId = params.get('invitation_id');
-    const invId = params.get('invitation_id');
     const invEmail = params.get('email');
     
     if (invId && invEmail) {
