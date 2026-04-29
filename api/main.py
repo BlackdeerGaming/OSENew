@@ -1838,10 +1838,7 @@ async def get_sent_invitations(entity_id: str | None = None, archived: bool = Fa
             query = query.eq("entity_id", entity_id)
     else:
         target_id = entity_id or current_user.get("entity_id")
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-            raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
-        query = query.eq("entity_id", target_id)
+        query = query.eq("entity_id", target_id).eq("inviter_id", current_user.get("user_id"))
     res = query.order("created_at", desc=True).execute()
     return [{
         "id": inv["id"],
@@ -1859,13 +1856,12 @@ async def get_sent_invitations(entity_id: str | None = None, archived: bool = Fa
 @router.delete("/invitations/{inv_id}")
 async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(503)
-    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
+    inv_res = supabase_client.table("invitations").select("entity_id", "inviter_id").eq("id", inv_id).execute()
     if not inv_res.data: raise HTTPException(404, "No encontrada")
-    target_entity_id = inv_res.data[0]["entity_id"]
+    inv = inv_res.data[0]
     if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-            raise HTTPException(403, "No tienes permisos para cancelar invitaciones de esta entidad")
+        if inv.get("inviter_id") != current_user.get("user_id"):
+            raise HTTPException(403, "No tienes permisos para cancelar esta invitaciÃ³n (no eres el creador)")
     supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
     return {"status": "success", "message": "Invitacion cancelada"}
 
@@ -1876,9 +1872,8 @@ async def resend_invitation(inv_id: str, current_user: dict = Depends(get_curren
     if not inv_res.data: raise HTTPException(404, "Invitacion no encontrada")
     inv = inv_res.data[0]
     if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", inv["entity_id"]).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-            raise HTTPException(403, "No tienes permisos para reenviar invitaciones de esta entidad")
+        if inv.get("inviter_id") != current_user.get("user_id"):
+            raise HTTPException(403, "No tienes permisos para reenviar esta invitaciÃ³n (no eres el creador)")
     new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     supabase_client.table("invitations").update({"expires_at": new_expiry, "status": "pendiente"}).eq("id", inv_id).execute()
     return {"status": "success", "message": "Invitacion reenviada correctamente"}
@@ -1928,11 +1923,10 @@ async def archive_invitation(inv_id: str, req: InvitationArchive, current_user: 
     if not inv_res.data:
         raise HTTPException(404, "Invitación no encontrada")
     
-    entity_id = inv_res.data[0]["entity_id"]
+    inv = inv_res.data[0]
     if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", entity_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-            raise HTTPException(403, "No tienes permisos para gestionar invitaciones de esta entidad")
+        if inv.get("inviter_id") != current_user.get("user_id"):
+            raise HTTPException(403, "No tienes permisos para archivar esta invitaciÃ³n (no eres el creador)")
 
     res = supabase_client.table("invitations").update({"archived": req.archived}).eq("id", inv_id).execute()
     return {"status": "ok", "archived": req.archived}
