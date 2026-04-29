@@ -1106,8 +1106,10 @@ async def get_invitations(user: dict = Depends(get_current_user)):
             items = await db.scan_table("invitations")
         else:
             entity_id = user.get("entity_id")
+            user_id = user.get("user_id")
             all_invites = await db.scan_table("invitations")
-            items = [i for i in all_invites if i.get("entity_id") == entity_id]
+            # Filtro doble: Entidad + Creado por mí
+            items = [i for i in all_invites if i.get("entity_id") == entity_id and i.get("created_by") == user_id]
         return items
     except Exception as e:
         print(f"Error listing invitations: {e}")
@@ -1120,7 +1122,17 @@ async def get_my_invitations(user: dict = Depends(get_current_user)):
     if not email: return []
     try:
         all_invites = await db.scan_table("invitations")
-        return [i for i in all_invites if i.get("email", "").lower() == email.lower() and i.get("status") == "pending"]
+        user_id = user.get("user_id")
+        
+        my_invites = [
+            i for i in all_invites 
+            if (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id)
+            and i.get("status") in ["pendiente", "pending"]
+        ]
+        
+        # Las invitaciones RECIBIDAS son privadas por Email, no necesitan filtro de entidad
+        # Esto permite que un admin vea invitaciones enviadas por el superadmin desde cualquier contexto
+        return my_invites
     except Exception as e:
         print(f"Error fetching my invitations: {e}")
         return []
@@ -1142,6 +1154,7 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
         item["SK"] = "METADATA"
         item["id"] = invite_id
         item["status"] = "pendiente"
+        item["created_by"] = user.get("user_id")
         item["created_at"] = datetime.now().isoformat()
         
         # Enviar email via Resend API
@@ -1187,9 +1200,9 @@ async def get_sent_invitations(archived: bool = False, entity_id: str = None, us
     try:
         all_invites = await db.scan_table("invitations")
         
-        # Administradores solo ven las invitaciones de su entidad
+        # Administradores solo ven sus PROPIAS invitaciones dentro de su entidad
         if user.get("role") != SUPERADMIN_ROLE:
-            all_invites = [i for i in all_invites if i.get("entity_id") == user.get("entity_id")]
+            all_invites = [i for i in all_invites if i.get("entity_id") == user.get("entity_id") and i.get("created_by") == user.get("user_id")]
             
         if entity_id and entity_id != 'all':
             all_invites = [i for i in all_invites if i.get("entity_id") == entity_id]
@@ -1217,8 +1230,18 @@ async def archive_invitation(invite_id: str, req: ArchiveRequest, user: dict = D
     try:
         pk = f"INVITE#{invite_id}"
         sk = "METADATA"
+        invite = await db.get_item("invitations", pk, sk)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+            
+        # Seguridad: Solo el creador o superadmin
+        if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id"):
+            raise HTTPException(status_code=403, detail="No tienes permiso para archivar esta invitación")
+            
         await db.update_item("invitations", pk, sk, {"archived": req.archived})
         return {"status": "ok"}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1228,6 +1251,13 @@ async def bulk_archive_invitations(req: BulkArchiveRequest, user: dict = Depends
         for invite_id in req.ids:
             pk = f"INVITE#{invite_id}"
             sk = "METADATA"
+            invite = await db.get_item("invitations", pk, sk)
+            if not invite: continue
+            
+            # Seguridad: Solo el creador o superadmin
+            if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id"):
+                continue # O lanzar error, pero en bulk es mejor saltar los que no tienes permiso
+                
             await db.update_item("invitations", pk, sk, {"archived": req.archived})
         return {"status": "ok"}
     except Exception as e:
@@ -1238,8 +1268,18 @@ async def delete_invitation(invite_id: str, user: dict = Depends(get_current_use
     try:
         pk = f"INVITE#{invite_id}"
         sk = "METADATA"
+        invite = await db.get_item("invitations", pk, sk)
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+            
+        # Seguridad: Solo el creador o superadmin
+        if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id"):
+            raise HTTPException(status_code=403, detail="No tienes permiso para eliminar esta invitación")
+            
         await db.delete_item("invitations", pk, sk)
         return {"status": "ok"}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1251,6 +1291,10 @@ async def resend_invitation(invite_id: str, user: dict = Depends(get_current_use
         invite = await db.get_item("invitations", pk, sk)
         if not invite:
             raise HTTPException(status_code=404, detail="Invitación no encontrada")
+            
+        # Seguridad: Solo el creador o superadmin
+        if user.get("role") != SUPERADMIN_ROLE and invite.get("created_by") != user.get("user_id"):
+            raise HTTPException(status_code=403, detail="No tienes permiso para reenviar esta invitación")
             
         resend_api_key = os.getenv("RESEND_API_KEY")
         if resend_api_key:
