@@ -1399,9 +1399,25 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     return {"status": "success", "message": "Usuario y sus relaciones eliminados correctamente"}
 
 @router.get("/entities")
-async def get_entities():
+async def get_entities(user: dict = Depends(get_current_user)):
+    """Lista las entidades permitidas para el usuario actual."""
     if not supabase_client: return []
-    res = supabase_client.table("entities").select("*").execute()
+    
+    role = user.get('role')
+    if role == 'superadmin':
+        res = supabase_client.table("entities").select("*").execute()
+        return res.data or []
+    
+    # Para administradores multi-entidad
+    allowed_ids = user.get("allowed_entities", [])
+    if not allowed_ids:
+        # Fallback
+        eid = user.get("entity_id")
+        allowed_ids = [eid] if eid else []
+        
+    if not allowed_ids: return []
+    
+    res = supabase_client.table("entities").select("*").in_("id", allowed_ids).execute()
     return res.data or []
 
 @router.post("/entities/upload-logo")

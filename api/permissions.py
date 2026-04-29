@@ -36,13 +36,27 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
         if role == 'superadmin':
             if header_entity_id:
                 active_entity_id = header_entity_id
-        elif role == 'administrador' and header_entity_id and supabase_client:
-            # Validar si el admin tiene acceso a esa entidad en profile_entities
-            check = supabase_client.table("profile_entities").select("role").eq("profile_id", user_id).eq("entity_id", header_entity_id).execute()
-            if check.data:
-                active_entity_id = header_entity_id
-            # Si no tiene acceso, se queda con la del JWT
+        elif role == 'administrador' and supabase_client:
+            # Obtener todas las entidades permitidas para este admin
+            all_perms = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_id).execute()
+            allowed_entities = [p['entity_id'] for p in (all_perms.data or [])]
             
+            # Asegurar que la entidad del JWT est\u00e9 incluida
+            jwt_entity = payload.get('entity_id')
+            if jwt_entity and jwt_entity not in allowed_entities:
+                allowed_entities.append(jwt_entity)
+            
+            payload['allowed_entities'] = allowed_entities
+            
+            # Validar si el admin quiere cambiar de contexto
+            if header_entity_id and header_entity_id in allowed_entities:
+                active_entity_id = header_entity_id
+            else:
+                active_entity_id = jwt_entity
+        
+        if role == 'superadmin':
+            payload['allowed_entities'] = [] # Superadmin ve todo via query global
+
         payload['entity_id'] = active_entity_id
         return payload
     except jwt.PyJWTError as e:
