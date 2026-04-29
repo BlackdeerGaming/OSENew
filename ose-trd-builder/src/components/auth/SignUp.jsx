@@ -10,6 +10,16 @@ export default function SignUp({ onSignUp, onNavigateToLogin }) {
     confirmPassword: ''
   });
 
+  React.useEffect(() => {
+    const pending = localStorage.getItem('pending_invitation');
+    if (pending) {
+      const invite = JSON.parse(pending);
+      if (invite.email) {
+        setFormData(prev => ({ ...prev, email: invite.email }));
+      }
+    }
+  }, []);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     // Temporary direct access

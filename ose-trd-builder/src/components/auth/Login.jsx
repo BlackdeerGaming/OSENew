@@ -8,6 +8,14 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const [showInviteModal, setShowInviteModal] = useState(() => {
+    const pending = localStorage.getItem('pending_invitation');
+    if (!pending) return false;
+    const data = JSON.parse(pending);
+    return !!data.user_exists;
+  });
+  const pendingInvite = JSON.parse(localStorage.getItem('pending_invitation') || 'null');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -37,6 +45,26 @@ export default function Login({ onLogin, onNavigateToSignUp, onNavigateToForgotP
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary/10 p-4 relative overflow-hidden">
+      {/* Invitaci\u00f3n Modal */}
+      {showInviteModal && pendingInvite && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl border border-primary/20 text-center animate-in zoom-in-95 duration-300">
+            <div className="mx-auto bg-primary/10 text-primary h-16 w-16 flex items-center justify-center rounded-2xl mb-6">
+              <AlertCircle className="h-8 w-8" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Ya tienes cuenta</h2>
+            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+              Inicia sesi\u00f3n para revisar y responder la invitaci\u00f3n de <strong>{pendingInvite.entity_name}</strong>.
+            </p>
+            <button 
+              onClick={() => setShowInviteModal(false)}
+              className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:opacity-90 transition-all shadow-lg shadow-primary/20"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
       <div className="absolute top-1/4 left-1/4 -z-10 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
       <div className="absolute bottom-1/4 right-1/4 -z-10 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
 

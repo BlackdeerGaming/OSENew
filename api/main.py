@@ -1819,7 +1819,8 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     if not supabase_client: return []
     email = current_user.get("email", "").lower()
     if not email: return []
-    res = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)").eq("email", email).eq("status", "pendiente").execute()
+    # Devolver todas las invitaciones, no solo pendientes, para persistencia
+    res = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)").eq("email", email).execute()
     now = datetime.now(timezone.utc)
     valid_invitations = []
     for inv in res.data:
@@ -1898,11 +1899,11 @@ async def resend_invitation(inv_id: str, current_user: dict = Depends(get_curren
     supabase_client.table("invitations").update({"expires_at": new_expiry, "status": "pendiente"}).eq("id", inv_id).execute()
     return {"status": "success", "message": "Invitacion reenviada correctamente"}
 
-@router.get("/invitations/{inv_id}/public")
-async def get_invitation_public(inv_id: str):
-    """Obtiene detalles de una invitaciÃ³n sin estar logueado."""
+@router.get("/invitations/check/{token}")
+async def check_invitation_public(token: str):
+    """Verifica una invitación de forma pública (para el landing page) usando el id como token."""
     if not supabase_client: raise HTTPException(500)
-    res = supabase_client.table("invitations").select("*, entities(razon_social)").eq("id", inv_id).execute()
+    res = supabase_client.table("invitations").select("*, entities(razon_social)").eq("id", token).execute()
     if not res.data:
         raise HTTPException(404, "InvitaciÃ³n no encontrada")
     
@@ -1920,7 +1921,8 @@ async def get_invitation_public(inv_id: str):
         "entity_name": inv.get("entities", {}).get("razon_social", "Entidad OSE"),
         "role": inv.get("role_invited", "usuario"),
         "status": inv["status"],
-        "user_exists": user_exists
+        "user_exists": user_exists,
+        "sender_id": inv.get("inviter_id")
     }
 
 @router.post("/invitations/{inv_id}/respond")
@@ -1933,6 +1935,7 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
         raise HTTPException(403, "Esta invitacion no es para ti")
     if invitation["status"] != "pendiente":
         raise HTTPException(400, f"Esta invitacion ya ha sido {invitation['status']}")
+        
     if resp.action == "accept":
         try:
             # 1. Vincular en profile_entities
@@ -1942,32 +1945,82 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
             
-            # 2. Actualizar perfil principal (entidad activa y IA)
-            update_data = {"entidad_id": invitation["entity_id"]}
+            # 2. Actualizar perfil principal (rol y IA)
+            update_data = {}
             if invitation.get("ia_disponible"):
                 update_data["ia_disponible"] = True
             
             # Prioridad de roles si el usuario ya tiene uno
-            current_profile = supabase_client.table("profiles").select("perfil").eq("id", current_user.get("user_id")).execute()
+            current_profile = supabase_client.table("profiles").select("perfil", "entidad_id").eq("id", current_user.get("user_id")).execute()
             current_role = current_profile.data[0].get("perfil", "usuario") if current_profile.data else "usuario"
+            
+            # Si no tiene entidad principal asignada, la asignamos
+            if current_profile.data and not current_profile.data[0].get("entidad_id"):
+                update_data["entidad_id"] = invitation["entity_id"]
             
             final_role = current_role
             invited_role = invitation.get("role_invited", "usuario")
             if current_role == 'usuario' and invited_role in ('admin', 'Administrador', 'superadmin'):
                 final_role = 'Administrador'
             
-            update_data["perfil"] = final_role
+            if final_role != current_role:
+                update_data["perfil"] = final_role
             
-            supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
+            if update_data:
+                supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
             
             # 3. Marcar invitacion como aceptada
             supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
-            return {"status": "success", "message": "Invitacion aceptada"}
+            return {"status": "success", "message": "Invitación aceptada"}
         except Exception as e:
             raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
     else:
         supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
-        return {"status": "success", "message": "Invitacion rechazada."}
+        
+        # Notificar al remitente
+        sender_id = invitation.get("inviter_id")
+        if sender_id:
+            sender_res = supabase_client.table("profiles").select("email").eq("id", sender_id).execute()
+            if sender_res.data and sender_res.data[0].get("email"):
+                sender_email = sender_res.data[0]["email"]
+                entity_name = invitation.get("entities", {}).get("razon_social", "Entidad OSE") if "entities" in invitation else "Entidad OSE"
+                try:
+                    await send_rejection_notification(
+                        sender_email=sender_email,
+                        recipient_email=current_user.get("email"),
+                        entity_name=entity_name,
+                        recipient_name=current_user.get("nombre", current_user.get("email"))
+                    )
+                except Exception as e:
+                    print(f"Error enviando notificación de rechazo: {e}")
+                    
+        return {"status": "success", "message": "Invitación rechazada."}
+
+async def send_rejection_notification(sender_email, recipient_email, entity_name, recipient_name):
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if not resend_api_key: return
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
+                json={
+                    "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <notificaciones@ose-ia.com>"),
+                    "to": sender_email,
+                    "subject": f"Invitación rechazada - {entity_name}",
+                    "html": f"""
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                            <h2 style="color: #e53e3e;">Invitación Rechazada</h2>
+                            <p>El usuario <strong>{recipient_name}</strong> ({recipient_email}) ha rechazado la invitación para unirse a la entidad <strong>{entity_name}</strong>.</p>
+                            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                            <p style="font-size: 12px; color: #666;">Este es un mensaje automático de OSE IA.</p>
+                        </div>
+                    """
+                }
+            )
+    except Exception as e:
+        print(f"Error in send_rejection_notification: {e}")
 
 @router.post("/activity-logs")
 async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):

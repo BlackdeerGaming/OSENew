@@ -340,28 +340,50 @@ export default function InvitationsView({ currentUser, API_BASE_URL, onNavigate,
                         </div>
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-[14px] font-semibold">{activeTab === 'received' ? inv.entity_name : inv.email}</h3>
-                            <span className="px-2 py-0.5 text-[9px] font-bold rounded-md uppercase tracking-wider border bg-secondary">{inv.status}</span>
-                            <span className="text-[10px] text-muted-foreground font-medium uppercase">{inv.role}</span>
+                            <h4 className="text-[13.5px] font-bold text-foreground">
+                              {activeTab === 'received' ? `Invitación de ${inv.sender_name || 'Administrador'}` : inv.email}
+                            </h4>
+                            <span className={cn("px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider", 
+                                inv.status === 'aceptada' ? "bg-emerald-100 text-emerald-700" : 
+                                inv.status === 'rechazada' ? "bg-rose-100 text-rose-700" :
+                                "bg-amber-100 text-amber-700")}>
+                              {inv.status}
+                            </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11.5px] text-muted-foreground">
-                            {activeTab === 'sent' && <p className="flex items-center gap-1.5"><Briefcase className="h-3 w-3" /> {inv.entity_name}</p>}
-                            <p className="flex items-center gap-1.5"><Clock className="h-3 w-3" /> {new Date(inv.created_at).toLocaleDateString()}</p>
+                          <div className="flex flex-col gap-1 mt-1.5">
+                            <p className="text-[12px] font-medium text-foreground">
+                              {`Entidad: ${inv.entity_name || 'OSE IA'}`}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-4 text-[11.5px] text-muted-foreground">
+                              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {new Date(inv.created_at).toLocaleDateString()}</span>
+                              <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Rol: {inv.role}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
+
                       <div className="flex items-center gap-2 justify-end">
                         {activeTab === 'received' && inv.status === 'pendiente' && (
                           <>
-                            <button onClick={() => handleResponse(inv.id, 'reject')} className="px-3 py-1.5 rounded-md border border-input text-[11.5px] font-semibold hover:bg-destructive/10 hover:text-destructive">Rechazar</button>
-                            <button onClick={() => handleResponse(inv.id, 'accept')} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-[11.5px] font-semibold">Aceptar</button>
+                            <button 
+                              onClick={() => handleResponse(inv.id, 'reject')} 
+                              disabled={processingId === inv.id}
+                              className="flex items-center gap-1.5 px-4 py-2 text-rose-600 border border-rose-200 bg-rose-50/50 rounded-lg text-[12.5px] font-bold hover:bg-rose-100 transition-all"
+                            >
+                              <X className="h-4 w-4" /> Rechazar
+                            </button>
+                            <button 
+                              onClick={() => handleResponse(inv.id, 'accept')} 
+                              disabled={processingId === inv.id} 
+                              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-[12.5px] font-bold hover:bg-emerald-700 transition-all shadow-sm"
+                            >
+                              <CheckCircle2 className="h-4 w-4" /> Aceptar
+                            </button>
                           </>
                         )}
                         {activeTab === 'sent' && !filterArchived && (
                           <>
-                            {inv.status !== 'aceptada' && <button onClick={() => handleResend(inv.id)} className="p-2 text-muted-foreground hover:text-primary"><Send className="h-4 w-4" /></button>}
-                            {inv.status === 'pendiente' && <button onClick={() => handleDelete(inv.id)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>}
-                            <button onClick={() => handleArchive(inv.id, true)} className="p-2 text-muted-foreground hover:text-foreground"><Shield className="h-4 w-4" /></button>
+                            <button onClick={() => handleArchive(inv.id, true)} className="p-2 text-muted-foreground hover:text-foreground" title="Archivar"><Shield className="h-4 w-4" /></button>
                           </>
                         )}
                       </div>

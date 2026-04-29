@@ -148,7 +148,34 @@ function App() {
       setResetToken(rstToken);
       setAuthView('reset-password');
     }
+
+    // Invitación
+    const inviteToken = params.get('invite_token');
+    if (inviteToken) {
+      handleInviteLanding(inviteToken);
+    }
   }, []);
+
+  const handleInviteLanding = async (token) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/invitations/check/${token}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Guardar contexto de invitación para persistencia
+        localStorage.setItem('pending_invitation', JSON.stringify(data));
+        
+        if (data.user_exists) {
+          setAuthView('login');
+        } else {
+          setAuthView('signup');
+        }
+      } else {
+        console.warn("Invitación inválida o expirada.");
+      }
+    } catch (err) {
+      console.error("Error validando invitación:", err);
+    }
+  };
 
   const handleActivateUser = (token, newPassword) => {
     const userIndex = users.findIndex(u => u.activationToken === token);
