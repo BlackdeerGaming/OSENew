@@ -73,6 +73,9 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
 
         payload['entity_id'] = active_entity_id
         payload['allowed_entities'] = allowed_entities
+        payload['role'] = role
+        payload['user_id'] = user_id
+        payload['email'] = verified_email
             
         return payload
         
