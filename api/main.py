@@ -997,14 +997,24 @@ async def debug_vars():
 
 @router.get("/entities")
 async def get_entities(user: dict = Depends(get_current_user)):
-    """Lista todas las entidades (solo para Superadmin o filtrado por entidad)."""
+    """Lista las entidades permitidas para el usuario actual."""
     try:
         if user.get("role") == SUPERADMIN_ROLE:
-            items = await db.scan_table("entities")
-        else:
-            entity_id = user.get("entity_id")
-            item = await db.get_item("entities", f"ENTITY#{entity_id}", "METADATA")
-            items = [item] if item else []
+            return await db.scan_table("entities")
+        
+        # Para administradores multi-entidad, devolver todas sus entidades permitidas
+        allowed_ids = user.get("allowed_entities", [])
+        if not allowed_ids:
+            # Fallback a la entidad principal si allowed_entities no está en el payload
+            main_id = user.get("entity_id")
+            allowed_ids = [main_id] if main_id else []
+            
+        items = []
+        for eid in allowed_ids:
+            if not eid: continue
+            item = await db.get_item("entities", f"ENTITY#{eid}", "METADATA")
+            if item:
+                items.append(item)
         return items
     except Exception as e:
         print(f"Error listing entities: {e}")
