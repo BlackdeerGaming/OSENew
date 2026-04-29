@@ -1129,6 +1129,8 @@ async def get_invitations(user: dict = Depends(get_current_user)):
 async def get_my_invitations(user: dict = Depends(get_current_user)):
     """Lista las invitaciones pendientes para el usuario actual."""
     email = user.get("email")
+    user_id = user.get("user_id")
+    print(f"DEBUG: get_my_invitations - User: {email}, ID: {user_id}, Role: {user.get('role')}")
     if not email: return []
     try:
         all_invites = await db.scan_table("invitations")
@@ -1209,14 +1211,20 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
 @router.get("/invitations/sent")
 async def get_sent_invitations(archived: bool = False, entity_id: str = None, user: dict = Depends(get_current_user)):
     """Lista las invitaciones enviadas."""
+    print(f"DEBUG: get_sent_invitations - UserID: {user.get('user_id')}, Role: {user.get('role')}, EntityContext: {user.get('entity_id')}")
     try:
         all_invites = await db.scan_table("invitations")
         all_entities = await db.scan_table("entities")
         entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
         
-        # Administradores solo ven sus PROPIAS invitaciones dentro de su entidad
+        # Administradores solo ven sus PROPIAS invitaciones (de cualquiera de sus entidades permitidas)
         if user.get("role") != SUPERADMIN_ROLE:
-            all_invites = [i for i in all_invites if i.get("entity_id") == user.get("entity_id") and i.get("created_by") == user.get("user_id")]
+            allowed_ids = user.get("allowed_entities", [])
+            if not allowed_ids:
+                main_id = user.get("entity_id")
+                allowed_ids = [main_id] if main_id else []
+            
+            all_invites = [i for i in all_invites if i.get("created_by") == user.get("user_id") and i.get("entity_id") in allowed_ids]
             
         if entity_id and entity_id != 'all':
             all_invites = [i for i in all_invites if i.get("entity_id") == entity_id]
