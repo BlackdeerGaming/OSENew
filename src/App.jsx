@@ -112,13 +112,20 @@ function App() {
 
   const [funciones, setFunciones] = useState([]);
   
+  // Memoize common headers with context
+  const authHeaders = useMemo(() => {
+    if (!currentUser?.token) return {};
+    const h = { 'Authorization': `Bearer ${currentUser.token}` };
+    if (selectedEntityId) h['x-entity-context'] = selectedEntityId;
+    return h;
+  }, [currentUser?.token, selectedEntityId]);
   useEffect(() => {
-    if (!currentUser?.entity_id) return;
+    if (!currentUser?.token || !selectedEntityId) return;
     const loadFunciones = async () => {
       try {
         const resp = await fetch(
-          `${API_BASE_URL}/trd/entity/${currentUser.entity_id}/funciones`,
-          { headers: { Authorization: `Bearer ${currentUser.token}` } }
+          `${API_BASE_URL}/trd/entity/${selectedEntityId}/funciones`,
+          { headers: authHeaders }
         );
         if (resp.ok) setFunciones(await resp.json());
       } catch (err) {
@@ -126,7 +133,7 @@ function App() {
       }
     };
     loadFunciones();
-  }, [currentUser]);
+  }, [currentUser?.token, selectedEntityId, authHeaders]);
 
   // Manejar sesión de Google (Supabase OAuth)
   useEffect(() => {
@@ -228,10 +235,9 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
         const [usersRes, entitiesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/users`, { headers }),
-          fetch(`${API_BASE_URL}/entities`, { headers })
+          fetch(`${API_BASE_URL}/users`, { headers: authHeaders }),
+          fetch(`${API_BASE_URL}/entities`, { headers: authHeaders })
         ]);
 
         if (usersRes.ok) {
@@ -254,7 +260,7 @@ function App() {
       }
     };
     if (currentUser) fetchData();
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId, authHeaders]);
 
   // Polling for invitations
   useEffect(() => {
