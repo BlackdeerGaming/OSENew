@@ -2180,8 +2180,28 @@ async def signup(req: UserSignUp):
         )
         cognito_id = resp.get("UserSub")
     except Exception as e:
-        if hasattr(e, "status_code"): raise e
-        raise HTTPException(status_code=400, detail=str(e))
+        # SI EL USUARIO YA EXISTE EN COGNITO:
+        # Es posible que sea un usuario "huérfano" (borrado de DB pero no de Cognito)
+        err_str = str(e)
+        if "UsernameExistsException" in err_str or "already exists" in err_str.lower():
+            print(f" [AUTH] Usuario {req.username} ya existe en Cognito. Intentando auto-limpieza...")
+            await cognito.force_cleanup_user(req.username)
+            # Re-intentar el registro
+            try:
+                resp = await cognito.sign_up(
+                    username=req.username,
+                    password=req.password,
+                    email=email,
+                    name=req.nombre,
+                    family_name=req.apellido,
+                    phone=req.phone
+                )
+                cognito_id = resp.get("UserSub")
+            except Exception as retry_e:
+                raise HTTPException(status_code=400, detail=f"El usuario ya existe y no se pudo limpiar: {str(retry_e)}")
+        else:
+            if hasattr(e, "status_code"): raise e
+            raise HTTPException(status_code=400, detail=str(e))
 
     # 2. Guardar perfil en DynamoDB (Sincronizado con el ID de Cognito)
     new_user = {

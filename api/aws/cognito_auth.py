@@ -155,4 +155,19 @@ class CognitoManager:
             print(f" [COGNITO] Error eliminando usuario {username}: {e}")
             raise e
 
+    async def force_cleanup_user(self, username: str):
+        """Intenta eliminar un usuario de Cognito sin lanzar error si no existe."""
+        try:
+            self.client.admin_delete_user(
+                UserPoolId=self.user_pool_id,
+                Username=username
+            )
+            print(f" [COGNITO] Limpieza exitosa para {username}")
+            return True
+        except self.client.exceptions.UserNotFoundException:
+            return True
+        except Exception as e:
+            print(f" [COGNITO] Error en limpieza forzada para {username}: {e}")
+            return False
+
 cognito = CognitoManager()
