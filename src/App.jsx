@@ -583,10 +583,7 @@ function App() {
   const activeField = currentFlow[flowStep] ? currentFlow[flowStep].field : null;
   const quickOptions = currentOptions.length > 0 ? currentOptions : (currentFlow[flowStep] ? currentFlow[flowStep].quick : []);
 
-  // Inicializar un saludo base si no hay mensajes
-  useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura  // Recuperar historial de Orianna al cargar (Escopeado por Entidad)
+  // Recuperar historial de Orianna al cargar (Escopeado por Entidad)
   useEffect(() => {
     const fetchHistory = async () => {
       if (!currentUser?.token || !selectedEntityId) return;
