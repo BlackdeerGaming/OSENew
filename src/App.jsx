@@ -1187,7 +1187,10 @@ function App() {
   useEffect(() => {
     if (currentUser && !selectedEntityId && userEntities.length > 0) {
       // 1. Intentar recuperar la última seleccionada de localStorage
-      const lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
+      let lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
+      if (lastSelected && typeof lastSelected === 'string') {
+        lastSelected = lastSelected.replace("ENTITY#", "");
+      }
       if (lastSelected && userEntities.some(e => e.id === lastSelected)) {
         console.log("📍 [Context] Recuperando última entidad activa:", lastSelected);
         setSelectedEntityId(lastSelected);
