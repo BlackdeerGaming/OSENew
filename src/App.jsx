@@ -1208,9 +1208,11 @@ function App() {
     if (!currentUser) return entities;
     let available = entities;
     if (currentUser.role !== 'superadmin') {
-      const ids = currentUser.entidadIds?.length > 0
+      const rawIds = currentUser.entidadIds?.length > 0
         ? currentUser.entidadIds
         : currentUser.entidadId ? [currentUser.entidadId] : [];
+      
+      const ids = rawIds.map(id => typeof id === 'string' && id.startsWith("ENTITY#") ? id.replace("ENTITY#", "") : id);
       available = ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
     }
     
@@ -1226,7 +1228,34 @@ function App() {
 
   const currentEntity = entities.find(e => e.id === selectedEntityId) || 
                         (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
-                        userEntities?.[0];
+                        userEntities?.[0] ||
+                        (currentUser?.entidadId ? { id: currentUser.entidadId.toString().replace("ENTITY#", ""), razonSocial: 'Cargando...' } : null);
+
+  // --- AUTO-SELECCIÓN DE ENTIDAD AL INICIAR SESIÓN / CARGAR ---
+  useEffect(() => {
+    if (currentUser && !selectedEntityId && userEntities.length > 0) {
+      // 1. Intentar recuperar la última seleccionada de localStorage
+      let lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
+      if (lastSelected && typeof lastSelected === 'string') {
+        lastSelected = lastSelected.replace("ENTITY#", "");
+      }
+      if (lastSelected && userEntities.some(e => e.id === lastSelected)) {
+        console.log("📍 [Context] Recuperando última entidad activa:", lastSelected);
+        setSelectedEntityId(lastSelected);
+      } else {
+        // 2. Si no hay última, seleccionar la primera disponible
+        console.log("📍 [Context] Auto-seleccionando primera entidad disponible:", userEntities[0].id);
+        setSelectedEntityId(userEntities[0].id);
+      }
+    }
+  }, [currentUser, selectedEntityId, userEntities]);
+
+  // Persistir la selección de entidad
+  useEffect(() => {
+    if (currentUser && selectedEntityId) {
+      localStorage.setItem(`ose_last_entity_${currentUser.id}`, selectedEntityId);
+    }
+  }, [currentUser, selectedEntityId]);
 
   // Pre-cargar logo en Base64 para evitar errores de CORS en exportaciones PDF
   useEffect(() => {
