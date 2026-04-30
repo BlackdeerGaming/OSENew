@@ -1159,6 +1159,7 @@ async def login(req: LoginRequest):
         "role": active_role,
         "entidadId": user_data.get("entidad_id"),
         "entidadIds": entidad_ids,
+        "iaDisponible": user_data.get("ia_disponible", False),
         "token": token
     }
 
@@ -1357,14 +1358,20 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     if user.apellido is not None: data["apellido"] = user.apellido
     if user.estado is not None: data["estado"] = user.estado
     
-    # SEGURIDAD: Superadmin asigna cualquier rol global. Admin de entidad puede cambiar rol local EXCEPTO a superadmin.
+    # SEGURIDAD: Solo modificar el rol global del perfil cuando se promueve a superadmin.
+    # Los cambios de rol admin/usuario se aplican ÚNICAMENTE en profile_entities (contexto de entidad)
+    # para no degradar roles de otras entidades del mismo usuario.
     if user.perfil is not None:
         if current_user.get("role") == SUPERADMIN_ROLE and user.perfil == SUPERADMIN_ROLE:
+            # Única razón para tocar el campo 'perfil' global: promoción a superadmin
             data["perfil"] = SUPERADMIN_ROLE
-        else:
-            # Si no es un ascenso a superadmin, actualizamos el rol contextual en la entidad actual
-            new_entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario") else DEFAULT_ROLE
-            supabase_client.table("profile_entities").update({"role": new_entity_role}).eq("profile_id", user_id).eq("entity_id", target_entity_id).execute()
+        elif user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario", "administrador"):
+            # Cambio de rol contextual: solo actualizar la relación entidad-usuario
+            new_entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario", "administrador") else DEFAULT_ROLE
+            if target_entity_id:
+                supabase_client.table("profile_entities").update({"role": new_entity_role}).eq("profile_id", user_id).eq("entity_id", target_entity_id).execute()
+        # IMPORTANTE: No tocar data["perfil"] si no es una promoción a superadmin
+        # Esto evita que el rol global se sobreescriba al actualizar permisos de IA
 
     if user.entidadId is not None: data["entidad_id"] = user.entidadId
     if user.isActivated is not None: data["is_activated"] = user.isActivated
@@ -1381,10 +1388,18 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
         res_data = res.data[0]
     
     if user.entidadIds is not None and current_user.get("role") == SUPERADMIN_ROLE:
-        supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
         if user.entidadIds:
-            rels = [{"profile_id": user_id, "entity_id": e_id, "role": DEFAULT_ROLE} for e_id in user.entidadIds]
+            # Obtener los roles actuales para preservarlos al reasignar entidades
+            existing_roles_res = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
+            existing_roles = {r["entity_id"]: r["role"] for r in (existing_roles_res.data or [])}
+            
+            supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
+            # Preservar el rol anterior si ya existía en esa entidad; usar DEFAULT_ROLE si es nueva
+            rels = [{"profile_id": user_id, "entity_id": e_id, "role": existing_roles.get(e_id, DEFAULT_ROLE)} for e_id in user.entidadIds]
             supabase_client.table("profile_entities").insert(rels).execute()
+        else:
+            # Si entidadIds vacío, no borrar todo automáticamente (protección accidental)
+            pass
             
     return res_data
 

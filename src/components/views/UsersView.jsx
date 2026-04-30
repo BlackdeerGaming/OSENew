@@ -17,6 +17,8 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
   const [emailStatus, setEmailStatus] = useState('idle'); // 'idle' | 'sending' | 'sent' | 'error'
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'perfil', 'entidades'
   const [editingUserId, setEditingUserId] = useState(null);
+  // Track which fields the admin EXPLICITLY changed to avoid silent role overwrites
+  const [changedFields, setChangedFields] = useState(new Set());
   
   const handleSendInvitation = async () => {
     if (!inviteEmail || !inviteEmail.includes('@')) {
@@ -98,6 +100,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     
     setNewUser(mappedUser);
     setEditingUserId(userId);
+    setChangedFields(new Set()); // Reset: ningún campo explícitamente cambiado al abrir
     setShowModal(true);
     setActiveTab('info');
   };
@@ -141,7 +144,17 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
             'Authorization': `Bearer ${currentUser?.token}`
           },
           body: JSON.stringify({
-            ...userBase,
+            // Campos base que siempre se pueden actualizar de forma segura
+            nombre: userBase.nombre,
+            apellido: userBase.apellido,
+            email: userBase.email,
+            username: userBase.username,
+            estado: userBase.estado,
+            iaDisponible: userBase.iaDisponible,
+            entidadId: userBase.entidadId,
+            entidadIds: userBase.entidadIds,
+            // 'perfil' SOLO se envía si el admin explícitamente cambió el rol en la pestaña de perfil
+            ...(changedFields.has('perfil') ? { perfil: userBase.perfil } : {}),
             id: editingUserId
           })
         });
@@ -224,10 +237,10 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     setEditingUserId(null);
     setEmailStatus('idle');
     setActiveTab('info');
+    setChangedFields(new Set());
     setNewUser({
       tipoDocumento: '', numeroDocumento: '', nombre: '', apellido: '', email: '',
       celular: '', username: '', estado: 'Inactivo',
-      perfil: role === 'administrador' ? 'usuario' : null, 
       perfil: role === 'administrador' ? 'usuario' : null, 
       entidadId: isEntityAdmin ? selectedEntityId : null, 
       entidadIds: isEntityAdmin ? [selectedEntityId].filter(Boolean) : [], 
@@ -629,7 +642,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                           )}>
                              <Check className="h-4 w-4 text-white" />
                           </div>
-                          <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'administrador'})} />
+                           <input type="radio" className="hidden" onChange={()=>{ setNewUser({...newUser, perfil: 'administrador'}); setChangedFields(prev => new Set([...prev, 'perfil'])); }} />
                           <span className={cn(newUser.perfil === 'administrador' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>Administrador</span>
                        </label>
                      )}
@@ -641,7 +654,7 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
                         )}>
                            <Check className="h-4 w-4 text-white" />
                         </div>
-                        <input type="radio" className="hidden" onChange={()=>setNewUser({...newUser, perfil: 'usuario'})} />
+                         <input type="radio" className="hidden" onChange={()=>{ setNewUser({...newUser, perfil: 'usuario'}); setChangedFields(prev => new Set([...prev, 'perfil'])); }} />
                         <span className={cn(newUser.perfil === 'usuario' ? "text-[#00c8a5]" : "text-slate-400", "font-semibold")}>
                           Usuario {(isEntityAdmin && !isSuperAdmin) && "(Rol estándar)"}
                         </span>
