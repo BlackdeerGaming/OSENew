@@ -141,10 +141,11 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     }
   }, [imports]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.png', '.jpg', '.jpeg'] },
-    multiple: true
+    multiple: true,
+    noClick: true  // Desactiva el click en el div para que solo el botón lo dispare
   });
 
   const handleDeleteImport = async (id, e) => {
@@ -326,8 +327,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 <h3 className="text-[13px] font-bold text-foreground uppercase tracking-tight">Inyectar Tablas</h3>
                 <p className="text-[10px] text-muted-foreground font-medium uppercase">PDF · PNG · JPG</p>
               </div>
-              <button className="px-6 py-2 bg-foreground text-background text-[10px] font-bold rounded-md hover:bg-primary transition-all uppercase tracking-widest">
-                Explorar
+              <input {...getInputProps()} />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); open(); }}
+                className="px-6 py-2 bg-foreground text-background text-[10px] font-bold rounded-md hover:bg-primary transition-all uppercase tracking-widest"
+              >
+                Seleccionar archivo
               </button>
             </div>
 
