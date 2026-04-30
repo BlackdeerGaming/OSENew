@@ -1968,16 +1968,25 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
     res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
     if not res.data: raise HTTPException(404, "Invitacion no encontrada")
     invitation = res.data[0]
-    if invitation["email"].lower() != current_user.get("email", "").lower():
+    
+    # Obtener el email real del usuario actual
+    user_id = current_user.get("user_id")
+    prof_res = supabase_client.table("profiles").select("email").eq("id", user_id).execute()
+    user_email = prof_res.data[0]["email"] if prof_res.data else ""
+    
+    if invitation["email"].lower() != user_email.lower():
         raise HTTPException(403, "Esta invitacion no es para ti")
-    if invitation["status"] != "pendiente":
+        
+    if invitation["status"] == "aceptada":
+        return {"status": "success", "message": "Invitacion aceptada exitosamente (ya estaba aceptada)"}
+    elif invitation["status"] != "pendiente":
         raise HTTPException(400, f"Esta invitacion ya ha sido {invitation['status']}")
         
     if resp.action == "accept":
         try:
             # 1. Vincular en profile_entities
             supabase_client.table("profile_entities").upsert({
-                "profile_id": current_user.get("user_id"),
+                "profile_id": user_id,
                 "entity_id": invitation["entity_id"],
                 "role": invitation.get("role_invited", "usuario")
             }).execute()
@@ -2206,7 +2215,11 @@ async def signup(req: UserSignUp):
         "isActivated": new_profile["is_activated"],
         "entidadId": invitation["entity_id"] if invitation else None,
         "entidadIds": user_entidades,
-        "token": f"USER-{user_id}"
+        "token": jwt.encode({
+            "user_id": str(user_id),
+            "role": role_invited if invitation else "Consulta",
+            "entity_id": invitation["entity_id"] if invitation else None
+        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
     }
 
 @router.get("/health-check")

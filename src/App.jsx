@@ -1128,9 +1128,20 @@ function App() {
               alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
               refreshUserProfile();
             } else {
-              res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+              res.json().then(data => {
+                let msg = data.detail || 'Desconocido';
+                if (msg === 'Invalid authentication token') {
+                    msg = 'El enlace de invitación no es válido o tu sesión ha expirado. Por favor, solicita uno nuevo o vuelve a iniciar sesión.';
+                } else if (msg.includes('ya ha sido aceptada') || msg.includes('ya ha sido') || msg.includes('no es para ti')) {
+                    msg = 'El enlace no es válido, ya fue utilizado, o no corresponde a tu cuenta.';
+                }
+                alert(`Error al aceptar la invitación: ${msg}`);
+              });
             }
-        }).catch(console.error);
+        }).catch(err => {
+            console.error("Error accepting invitation:", err);
+            alert("Error de conexión al procesar la invitación.");
+        });
       }
       localStorage.removeItem('invitation_context');
       setInvitationContext(null);
