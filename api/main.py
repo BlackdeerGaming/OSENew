@@ -1820,8 +1820,9 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
 
 
 @router.post("/chat")
-
 async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
+    if not user.get("iaDisponible"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para utilizar las funciones de IA. Contacta a un administrador.")
 
     print(f"\n --- CONSULTA DOCUMENCIO (AWS Serverless) ---")
 
@@ -2090,8 +2091,9 @@ IMPORTANTE: RESPONDE SOLO CON EL JSON VALIDO. NO incluyas markdown (```json), et
 
 
 @router.post("/agent-action")
-
-async def agent_action(request: AgentActionRequest):
+async def agent_action(request: AgentActionRequest, user: dict = Depends(get_current_user)):
+    if not user.get("iaDisponible"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para utilizar las funciones de IA. Contacta a un administrador.")
 
     from langchain_core.messages import AIMessage
 
@@ -2214,8 +2216,9 @@ ESTRUCTURA DE RESPUESTA (JSON PUERTO):
 
 
 @router.get("/chat-history/{assistant}")
-
 async def get_chat_history(assistant: str, user: dict = Depends(get_current_user)):
+    if not user.get("iaDisponible"):
+        return {"messages": []}
     """Recupera el historial de chat privado para un usuario y asistente especifico."""
 
     user_id = user.get("user_id")
@@ -2243,10 +2246,10 @@ async def get_chat_history(assistant: str, user: dict = Depends(get_current_user
 
 
 @router.post("/chat-history/{assistant}")
-
 async def save_chat_history(assistant: str, payload: ChatHistoryUpdate, user: dict = Depends(get_current_user)):
-
-    ###Guarda o actualiza el historial de chat privado. Limita a los ltimos 50 mensajes.###
+    if not user.get("iaDisponible"):
+        raise HTTPException(status_code=403, detail="No tienes permisos de IA")
+    """Guarda o actualiza el historial de chat privado. Limita a los últimos 50 mensajes."""
 
     if not db: raise HTTPException(status_code=503)
 

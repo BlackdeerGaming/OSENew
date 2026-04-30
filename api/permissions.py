@@ -45,7 +45,12 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         payload['user_id'] = user_id
         payload['email'] = verified_email
         payload['role'] = role
-        payload['iaDisponible'] = user_record.get('iaDisponible', False) if user_record else False
+        
+        # Superadmin siempre tiene acceso a IA
+        if role == 'superadmin':
+            payload['iaDisponible'] = True
+        else:
+            payload['iaDisponible'] = user_record.get('iaDisponible', False) if user_record else False
         
         # --- LÓGICA DE CONTEXTO MULTI-ENTIDAD ---
         # 1. Obtener entidad desde el header (opcional)

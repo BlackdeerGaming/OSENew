@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, 
@@ -30,31 +30,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   const [reviewMode, setReviewMode] = useState('data'); // 'data' | 'split'
   const [localActions, setLocalActions] = useState([]); // This is the editable version of imp.actions
   const [editingIndex, setEditingIndex] = useState(null);
+  const fetchInProgress = useRef(false);
 
-  // Initial load
-  useEffect(() => {
-    fetchImports();
-  }, [currentUser, currentEntity]);
-
-  // Polling for analyzing tasks
-  useEffect(() => {
-    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing'].includes(imp.status));
-    if (!hasActiveTasks) return;
-    
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchImports();
-      }
-    }, 10000); // Cada 10 segundos
-    
-    return () => clearInterval(interval);
-  }, [imports]);
-
-  const fetchImports = async () => {
-    if (!currentUser?.token) {
-      setIsLoading(false);
+  const fetchImports = useCallback(async () => {
+    if (!currentUser?.token || fetchInProgress.current) {
       return;
     }
+    fetchInProgress.current = true;
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
@@ -99,6 +81,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                merged.push(mappedImport);
             }
           }
+          
+          // Optimización: Solo actualizar si hay cambios reales en longitudes o estados críticos
+          if (prev.length === merged.length) {
+            const hasChanges = merged.some((m, i) => m.status !== prev[i].status || m.id !== prev[i].id);
+            if (!hasChanges) return prev;
+          }
+          
           return merged;
         });
       }
@@ -106,8 +95,28 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       console.error("Error fetching imports:", error);
     } finally {
       setIsLoading(false);
+      fetchInProgress.current = false;
     }
-  };
+  }, [currentUser, currentEntity, setImports]);
+
+  // Initial load
+  useEffect(() => {
+    fetchImports();
+  }, [fetchImports]);
+
+  // Polling for analyzing tasks
+  useEffect(() => {
+    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing'].includes(imp.status));
+    if (!hasActiveTasks) return;
+    
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchImports();
+      }
+    }, 15000); // Aumentado a 15 segundos para reducir carga
+    
+    return () => clearInterval(interval);
+  }, [imports, fetchImports]);
 
   const processFile = async (file) => {
     const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
