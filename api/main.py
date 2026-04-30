@@ -1156,7 +1156,7 @@ async def login(req: LoginRequest):
         "id": user_data["id"],
         "nombre": user_data["nombre"],
         "email": user_data["email"],
-        "role": user_data["perfil"],
+        "role": active_role,
         "entidadId": user_data.get("entidad_id"),
         "entidadIds": entidad_ids,
         "token": token
@@ -1226,14 +1226,20 @@ async def google_auth(req: GoogleAuthRequest):
     # 3. Obtener entidades asociadas
     entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
     entidad_ids = [e["entity_id"] for e in entities_res.data]
+    active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
     
-    # 4. Generar el JWT del sistema
-    # IMPORTANTE: Mapear el rol de la DB al rol que entiende el frontend si es necesario
-    # Aunque el sistema parece usar los strings de la DB directamente en el token
+    role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
+    entity_role = (role_res.data[0]["role"] if role_res.data else user_data["perfil"]) or "usuario"
+    
+    perfil_global = str(user_data.get("perfil", "usuario")).lower()
+    active_role = entity_role
+    if perfil_global in ("superadmin", "administrador") and str(entity_role).lower() == "usuario":
+        active_role = perfil_global
+    
     payload = {
         "user_id": str(user_data["id"]),
-        "role": user_data["perfil"],
-        "entity_id": str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
+        "role": active_role,
+        "entity_id": active_entity_id
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     
@@ -1241,8 +1247,8 @@ async def google_auth(req: GoogleAuthRequest):
         "id": user_data["id"],
         "nombre": user_data["nombre"],
         "email": user_data["email"],
-        "role": user_data["perfil"],
-        "entidadId": user_data.get("entidad_id") or "e0",
+        "role": active_role,
+        "entidadId": active_entity_id,
         "entidadIds": entidad_ids,
         "token": token,
         "isNew": is_new
@@ -1271,15 +1277,21 @@ async def get_users(entidad_id: str | None = None, user: dict = Depends(get_curr
     res = query.execute()
     rel_res = supabase_client.table("profile_entities").select("*").execute()
     rels = {}
+    roles = {}
     for r in rel_res.data:
         p_id = r["profile_id"]
         if p_id not in rels: rels[p_id] = []
         rels[p_id].append(r["entity_id"])
+        if r["entity_id"] == active_entity_id:
+            roles[p_id] = r["role"]
+            
     mapped = []
     for u in res.data:
+        context_role = roles.get(u["id"], u["perfil"])
+        display_perfil = context_role if u["perfil"] != SUPERADMIN_ROLE else SUPERADMIN_ROLE
         mapped.append({
             "id": u["id"], "nombre": u["nombre"], "apellido": u["apellido"], "email": u["email"],
-            "username": u["username"], "perfil": u["perfil"], "estado": u["estado"],
+            "username": u["username"], "perfil": display_perfil, "estado": u["estado"],
             "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
             "entidadIds": rels.get(u["id"], []),
             "iaDisponible": u.get("ia_disponible", False)
@@ -1295,11 +1307,10 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
              raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
     if not supabase_client: raise HTTPException(400, "No Supabase")
     
-    # Asegurar que nuevos usuarios no se creen con roles altos por defecto via API abierta
-    # Solo superadmin puede crear otros superadmins
-    final_perfil = user.perfil
-    if final_perfil == SUPERADMIN_ROLE and current_user.get("role") != SUPERADMIN_ROLE:
-        final_perfil = DEFAULT_ROLE
+    # Asegurar que nuevos usuarios no se creen con roles altos globales
+    final_perfil = DEFAULT_ROLE
+    if user.perfil == SUPERADMIN_ROLE and current_user.get("role") == SUPERADMIN_ROLE:
+        final_perfil = SUPERADMIN_ROLE
 
     data = {
         "nombre": user.nombre, "apellido": user.apellido, "email": user.email, "username": user.username,
@@ -1308,9 +1319,15 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
     }
     res = supabase_client.table("profiles").insert(data).execute()
     new_user = res.data[0]
+    
+    entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario") else DEFAULT_ROLE
+    
     if user.entidadIds:
-        rels = [{"profile_id": new_user["id"], "entity_id": e_id} for e_id in user.entidadIds]
+        rels = [{"profile_id": new_user["id"], "entity_id": e_id, "role": entity_role} for e_id in user.entidadIds]
         supabase_client.table("profile_entities").insert(rels).execute()
+    elif user.entidadId:
+        supabase_client.table("profile_entities").insert({"profile_id": new_user["id"], "entity_id": user.entidadId, "role": entity_role}).execute()
+        
     return new_user
 
 @router.put("/users/{user_id}")
@@ -1335,19 +1352,14 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     if user.apellido is not None: data["apellido"] = user.apellido
     if user.estado is not None: data["estado"] = user.estado
     
-    # SEGURIDAD: Superadmin asigna cualquier rol. Admin de entidad puede cambiar roles EXCEPTO a superadmin.
+    # SEGURIDAD: Superadmin asigna cualquier rol global. Admin de entidad puede cambiar rol local EXCEPTO a superadmin.
     if user.perfil is not None:
-        if current_user.get("role") == SUPERADMIN_ROLE:
-            data["perfil"] = user.perfil
-        elif current_user.get("role") == ADMIN_ROLE and user_id != current_user.get("user_id"):
-            if user.perfil != SUPERADMIN_ROLE:
-                data["perfil"] = user.perfil
-            else:
-                data["perfil"] = DEFAULT_ROLE
-        elif user_id == current_user.get("user_id") and user.perfil != current_user.get("role"):
-            print(f" Intento de auto-cambio de rol bloqueado para usuario: {user_id}")
+        if current_user.get("role") == SUPERADMIN_ROLE and user.perfil == SUPERADMIN_ROLE:
+            data["perfil"] = SUPERADMIN_ROLE
         else:
-            print(f" Intento de cambio de rol bloqueado para usuario: {current_user.get('user_id')}")
+            # Si no es un ascenso a superadmin, actualizamos el rol contextual en la entidad actual
+            new_entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario") else DEFAULT_ROLE
+            supabase_client.table("profile_entities").update({"role": new_entity_role}).eq("profile_id", user_id).eq("entity_id", target_entity_id).execute()
 
     if user.entidadId is not None: data["entidad_id"] = user.entidadId
     if user.isActivated is not None: data["is_activated"] = user.isActivated
@@ -1356,15 +1368,19 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     if user.username is not None: data["username"] = user.username
     if user.celular is not None: data["celular"] = user.celular
     
-    res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
+    # Si 'data' solo iba a actualizar el perfil contextual, podrÃ­a estar vacÃ­o para perfiles, asÃ­ que chequeamos
+    res_data = target_res.data[0]
+    if data:
+        res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
+        res_data = res.data[0]
     
     if user.entidadIds is not None and current_user.get("role") == SUPERADMIN_ROLE:
         supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
         if user.entidadIds:
-            rels = [{"profile_id": user_id, "entity_id": e_id} for e_id in user.entidadIds]
+            rels = [{"profile_id": user_id, "entity_id": e_id, "role": DEFAULT_ROLE} for e_id in user.entidadIds]
             supabase_client.table("profile_entities").insert(rels).execute()
             
-    return res.data[0]
+    return res_data
 
 @router.post("/admin/promote")
 async def promote_user(target_user_id: str, new_role: str, current_user: dict = Depends(get_current_user)):
@@ -1566,8 +1582,14 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
     file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
     
-    # Lógica de entidad: si es Admin usa su entidad, si es SuperAdmin usa la del form o la activa
-    entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
+    # Lógica de entidad: estricta para administrador, flexible para superadmin
+    if user.get("role") == "superadmin":
+        entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
+    else:
+        entidad_final = user.get("entity_id")
+        
+    if not entidad_final or entidad_final == "null":
+        raise HTTPException(400, "No se puede importar sin una entidad válida.")
     
     res = supabase_client.table("rag_documents").insert({
         "content": f"Import Session Snapshot: {file.filename}",
@@ -1604,10 +1626,16 @@ async def get_rag_documents(entidad_id: str = None, user: dict = Depends(get_cur
     query = supabase_client.table("rag_documents").select("id, metadata, created_at") \
         .contains("metadata", {"type": "temp_trd_session"})
     
-    # Aplicar filtro por entidad
-    entidad = entidad_id or (None if user.get("role") == "superadmin" else user.get("entity_id"))
-    if entidad:
+    # Aplicar filtro por entidad (seguridad estricta)
+    if user.get("role") == "superadmin":
+        entidad = entidad_id or user.get("entity_id")
+    else:
+        entidad = user.get("entity_id")
+        
+    if entidad and entidad != "null":
         query = query.contains("metadata", {"entidad_id": entidad})
+    elif user.get("role") != "superadmin":
+        return [] # Un admin sin entidad no ve nada
     
     res = query.order("created_at", desc=True).execute()
     
@@ -1639,11 +1667,19 @@ async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user
         return {"status": "deleted"}
         
     meta = res.data[0].get("metadata", {})
+    if user.get("role") != "superadmin" and meta.get("entidad_id") != user.get("entity_id"):
+        raise HTTPException(403, "No autorizado para modificar documentos de esta entidad")
+        
     source = meta.get("source")
     
     # Borrado en cascada por source (borra la sesión y el documento indexado)
     if source:
-        supabase_client.table("rag_documents").delete().eq("metadata->>source", source).execute()
+        # Asegurarnos de que solo borramos documentos que pertenezcan a la misma entidad y tengan el mismo source
+        entidad_check = meta.get("entidad_id")
+        if entidad_check:
+             supabase_client.table("rag_documents").delete().eq("metadata->>source", source).eq("metadata->>entidad_id", entidad_check).execute()
+        else:
+             supabase_client.table("rag_documents").delete().eq("metadata->>source", source).execute()
     else:
         supabase_client.table("rag_documents").delete().eq("id", doc_id).execute()
         
@@ -1659,13 +1695,18 @@ async def update_rag_document_status(doc_id: str, payload: dict, user: dict = De
     res = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
     if not res.data: 
         print(f" [RAG] Documento {doc_id} no encontrado en DB.")
-        raise HTTPException(404, "Documento no encontrado o ID invÃ¡lido")
+        raise HTTPException(404, "Documento no encontrado o ID inválido")
     
     meta = res.data[0].get("metadata") or {}
+    
+    # Validar permisos
+    if user.get("role") != "superadmin" and meta.get("entidad_id") != user.get("entity_id"):
+        raise HTTPException(403, "No autorizado para modificar documentos de esta entidad")
+        
     new_status = payload.get("status", meta.get("status", "pending"))
     meta["status"] = new_status
     
-    # Si se marca como Ã©xito, cambiamos el tipo de sesiÃ³n temporal a carga persistente
+    # Si se marca como éxito, cambiamos el tipo de sesión temporal a carga persistente
     if new_status == "success":
         meta["type"] = "trd_upload"
         
@@ -1996,21 +2037,10 @@ async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user:
             if invitation.get("ia_disponible"):
                 update_data["ia_disponible"] = True
             
-            # Prioridad de roles si el usuario ya tiene uno
-            current_profile = supabase_client.table("profiles").select("perfil", "entidad_id").eq("id", current_user.get("user_id")).execute()
-            current_role = current_profile.data[0].get("perfil", "usuario") if current_profile.data else "usuario"
-            
             # Si no tiene entidad principal asignada, la asignamos
+            current_profile = supabase_client.table("profiles").select("perfil", "entidad_id").eq("id", current_user.get("user_id")).execute()
             if current_profile.data and not current_profile.data[0].get("entidad_id"):
                 update_data["entidad_id"] = invitation["entity_id"]
-            
-            final_role = current_role
-            invited_role = invitation.get("role_invited", "usuario")
-            if current_role == 'usuario' and invited_role in ('admin', 'Administrador', 'superadmin'):
-                final_role = 'Administrador'
-            
-            if final_role != current_role:
-                update_data["perfil"] = final_role
             
             if update_data:
                 supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
@@ -2183,7 +2213,7 @@ async def signup(req: UserSignUp):
         "email": email,
         "username": username,
         "password": req.password,
-        "perfil": "Consulta",
+        "perfil": DEFAULT_ROLE,
         "estado": "Activo" if invitation else "Inactivo",
         "is_activated": True if invitation else False,
         "entidad_id": invitation["entity_id"] if invitation else None,
@@ -2194,12 +2224,13 @@ async def signup(req: UserSignUp):
         raise HTTPException(500, "Error al crear el perfil.")
     user_id = prof_insert.data[0]["id"]
     user_entidades = []
+    active_role = DEFAULT_ROLE
     if invitation:
-        role_invited = invitation.get("role_invited", "usuario")
+        active_role = invitation.get("role_invited", DEFAULT_ROLE)
         supabase_client.table("profile_entities").insert({
             "profile_id": user_id,
             "entity_id": invitation["entity_id"],
-            "role": role_invited
+            "role": active_role
         }).execute()
         supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
         user_entidades.append(invitation["entity_id"])
@@ -2209,15 +2240,15 @@ async def signup(req: UserSignUp):
         "apellido": req.apellido,
         "email": email,
         "username": username,
-        "perfil": role_invited if invitation else "Consulta",
-        "role": role_invited if invitation else "Consulta",
+        "perfil": DEFAULT_ROLE,
+        "role": active_role,
         "estado": new_profile["estado"],
         "isActivated": new_profile["is_activated"],
         "entidadId": invitation["entity_id"] if invitation else None,
         "entidadIds": user_entidades,
         "token": jwt.encode({
             "user_id": str(user_id),
-            "role": role_invited if invitation else "Consulta",
+            "role": active_role,
             "entity_id": invitation["entity_id"] if invitation else None
         }, JWT_SECRET, algorithm=JWT_ALGORITHM)
     }
