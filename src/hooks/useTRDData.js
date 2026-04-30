@@ -197,7 +197,7 @@ export function useTRDData(currentUser = null, entityId = null) {
         const errData = await res.json().catch(() => ({}));
         let detail = errData.detail || 'Error al guardar la subserie';
         if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "El código de subserie ingresado ya existe para esta entidad.";
+          detail = "Ya existe una subserie con este código dentro de la misma dependencia y serie";
         }
         throw new Error(detail);
       }

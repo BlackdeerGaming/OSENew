@@ -539,7 +539,7 @@ function App() {
       let isDuplicate = false;
       if (activeModule === 'dependencias') isDuplicate = dependencias.some(x => x.codigo === activeFormData.codigo && x.id !== activeFormData.id);
       else if (activeModule === 'series') isDuplicate = series.some(x => x.codigo === activeFormData.codigo && x.id !== activeFormData.id);
-      else if (activeModule === 'subseries') isDuplicate = subseries.some(x => x.codigo === activeFormData.codigo && x.id !== activeFormData.id);
+      else if (activeModule === 'subseries') isDuplicate = subseries.some(x => x.codigo === activeFormData.codigo && x.dependenciaId === activeFormData.dependenciaId && x.serieId === activeFormData.serieId && x.id !== activeFormData.id);
       
       if (isDuplicate) {
          simulateAgentResponse(`¡Cuidado! El código "${activeFormData.codigo}" ya existe en el sistema. Los códigos deben ser únicos. Por favor, modifícalo.`);

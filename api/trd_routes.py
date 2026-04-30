@@ -272,10 +272,16 @@ async def create_subserie_entity(
     data["entidad_id"] = entity_id
     if not data.get("id"): data["id"] = str(uuid.uuid4())
 
-    # Reparación: Check for duplicate code in same entity
+    # Reparación: Check for duplicate code in same entity, dependency and series
     all_subs = await db.scan_table("subseries")
-    if any(s.get("entidad_id") == entity_id and s.get("codigo") == data["codigo"] for s in all_subs):
-        raise HTTPException(status_code=400, detail="El código de subserie ya existe para esta entidad.")
+    if any(
+        s.get("entidad_id") == entity_id and 
+        s.get("dependencia_id") == data.get("dependencia_id") and
+        s.get("serie_id") == data.get("serie_id") and
+        s.get("codigo") == data["codigo"] 
+        for s in all_subs
+    ):
+        raise HTTPException(status_code=400, detail="Ya existe una subserie con este código dentro de la misma dependencia y serie")
 
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"SUB#{data['id']}"
