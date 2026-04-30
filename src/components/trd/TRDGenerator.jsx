@@ -74,7 +74,7 @@ export default function TRDGenerator({ rows = [], selectedIds = new Set(), curre
       </div>
 
       {/* ── Marco de captura ─────────────────────────────────────────────── */}
-      <div id="trd-capture-frame" className="flex justify-center bg-white no-export print:block print:p-0 print:m-0 print:w-full print:flex-none" style={{ padding: '40px' }}>
+      <div id="trd-capture-frame" className="flex justify-center bg-white print:block print:p-0 print:m-0 print:w-full print:flex-none" style={{ padding: '40px' }}>
         <div
           id="trd-final-report-area"
           className="bg-white flex flex-col font-sans shadow-2xl w-full max-w-[215mm] p-[10mm] print:shadow-none print:border-0 print:m-0 print:p-[4mm] print:w-full print:max-w-none"

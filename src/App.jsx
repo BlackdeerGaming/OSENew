@@ -1445,7 +1445,7 @@ function App() {
               <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="manual" />
             )}
             {activeModule === 'trd' && (
-              <div id="trd-final-report-area" className="print-content h-full">
+              <div id="trd-report-wrapper" className="print-content h-full">
                 <TRDGenerator 
                   rows={filteredTrdRows} 
                   selectedIds={selectedTrdIds}
@@ -1454,7 +1454,7 @@ function App() {
                   currentUser={currentUser}
                   currentEntity={currentEntity}
                   logoBase64={entidadLogoBase64}
-                  onExportPDF={() => setShowPrintModal(true)}
+                  onExportPDF={() => setIsPrinting(true)}
                 />
               </div>
             )}
