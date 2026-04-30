@@ -1160,9 +1160,11 @@ function App() {
     if (!currentUser) return entities;
     let available = entities;
     if (currentUser.role !== 'superadmin') {
-      const ids = currentUser.entidadIds?.length > 0
+      const rawIds = currentUser.entidadIds?.length > 0
         ? currentUser.entidadIds
         : currentUser.entidadId ? [currentUser.entidadId] : [];
+      
+      const ids = rawIds.map(id => typeof id === 'string' && id.startsWith("ENTITY#") ? id.replace("ENTITY#", "") : id);
       available = ids.length > 0 ? entities.filter(e => ids.includes(e.id)) : entities;
     }
     
@@ -1179,7 +1181,7 @@ function App() {
   const currentEntity = entities.find(e => e.id === selectedEntityId) || 
                         (currentUser?.role === 'superadmin' ? entities.find(e => e.id === 'e0' || e.razonSocial === 'OSE Sistema Global') : null) || 
                         userEntities?.[0] ||
-                        (currentUser?.entidadId ? { id: currentUser.entidadId, nombre: 'Cargando...' } : null);
+                        (currentUser?.entidadId ? { id: currentUser.entidadId.toString().replace("ENTITY#", ""), razonSocial: 'Cargando...' } : null);
 
   // --- AUTO-SELECCIÓN DE ENTIDAD AL INICIAR SESIÓN / CARGAR ---
   useEffect(() => {
