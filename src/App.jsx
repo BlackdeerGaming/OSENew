@@ -425,7 +425,7 @@ function App() {
     trdform: {}
   });
 
-  const [printOrientation, setPrintOrientation] = useState('portrait'); // portrait | landscape
+  const [printOrientation, setPrintOrientation] = useState('landscape'); // portrait | landscape — default horizontal
   const [aiQueryResult, setAiQueryResult] = useState(null); // Para mostrar resultados de consultas de Orianna
 
   // Auto-persist form data
@@ -1628,6 +1628,7 @@ function App() {
             selectedIds={selectedTrdIds}
             currentEntity={currentEntity}
             logoBase64={entidadLogoBase64}
+            orientation={printOrientation}
             onToggleRow={() => {}} 
             onToggleAll={() => {}}
           />
