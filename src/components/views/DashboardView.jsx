@@ -13,18 +13,25 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   ]);
 
-  // Recuperar historial de Documencio al cargar
+  // Recuperar historial de Documencio al cargar (Escopeado por Entidad)
   React.useEffect(() => {
     const fetchHistory = async () => {
-      if (!currentUser?.token) return;
+      if (!currentUser?.token || !currentEntity?.id) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+        const res = await fetch(`${API_BASE_URL}/chat-history/documencio?entidad_id=${currentEntity.id}`, {
           headers: { "Authorization": `Bearer ${currentUser.token}` }
         });
         if (res.ok) {
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages);
+          } else {
+            // Reset to welcome message if no history for this entity
+            setMessages([{
+              id: Date.now(),
+              role: 'assistant',
+              content: `¡Hola! Soy OSE Copilot. Analicé tus tablas de retención y encontré ${stats?.expiredDocs || 0} documentos vencidos. ¿En qué te ayudo hoy?`
+            }]);
           }
         }
       } catch (e) {
@@ -32,21 +39,20 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
       }
     };
     fetchHistory();
-  }, [currentUser]);
+  }, [currentUser, currentEntity?.id]);
 
-  // Persistir historial de Documencio automáticamente
+  // Persistir historial de Documencio automáticamente (Escopeado por Entidad)
   React.useEffect(() => {
     const saveHistory = async () => {
-      // No guardar si solo está el mensaje de bienvenida inicial
-      if (!currentUser?.token || messages.length <= 1) return;
+      if (!currentUser?.token || !currentEntity?.id || messages.length <= 1) return;
       try {
-        await fetch(`${API_BASE_URL}/chat-history/documencio`, {
+        await fetch(`${API_BASE_URL}/chat-history/documencio?entidad_id=${currentEntity.id}`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
             "Authorization": `Bearer ${currentUser.token}`
           },
-          body: JSON.stringify({ messages })
+          body: JSON.stringify({ messages, entidad_id: currentEntity.id })
         });
       } catch (e) {
         console.error("Error guardando historial de Documencio:", e);
@@ -55,7 +61,8 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
     const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
     return () => clearTimeout(timer);
-  }, [messages, currentUser]);
+  }, [messages, currentUser, currentEntity?.id]);
+
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
   const [showActProposal, setShowActProposal] = React.useState(false);

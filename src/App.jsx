@@ -398,30 +398,36 @@ function App() {
     }
   }, [activeFormData, activeModule]);
 
-  // 🔥 CRÍTICO: Sincronizar entidad del formulario con el contexto global 🔥
+  // 🔥 CRÍTICO: AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) 🔥
   useEffect(() => {
     if (selectedEntityId) {
-      // 1. Sincronizar el formulario activo inmediatamente
+      console.log(" [Context] Sincronizando contexto global de entidad:", selectedEntityId);
+      
+      // 1. RESETEAR el formulario activo si la entidad cambia para evitar entrecruce
       setActiveFormData(prev => {
-        if (prev.entidadId !== selectedEntityId) {
-          console.log("🔄 [Sync] Sincronizando entidad del formulario con el contexto:", selectedEntityId);
-          return { ...prev, entidadId: selectedEntityId };
+        if (prev.entidadId && prev.entidadId !== selectedEntityId) {
+          console.warn(" [Aislamiento] Cambio de entidad detectado. Limpiando formulario activo.");
+          return { entidadId: selectedEntityId }; 
         }
-        return prev;
+        return { ...prev, entidadId: selectedEntityId };
       });
 
-      // 2. Sincronizar la persistencia para que al volver a un módulo no se recupere la entidad vieja
+      // 2. Limpiar la persistencia de formularios que pertenezcan a OTRA entidad
       setFormsPersistence(prev => {
         const next = { ...prev };
         let changed = false;
         ['dependencias', 'series', 'subseries', 'trdform'].forEach(mod => {
-          if (next[mod] && Object.keys(next[mod]).length > 0 && next[mod].entidadId !== selectedEntityId) {
-            next[mod] = { ...next[mod], entidadId: selectedEntityId };
+          if (next[mod] && next[mod].entidadId && next[mod].entidadId !== selectedEntityId) {
+            console.log(` [Aislamiento] Purgando cache persistente de ${mod} (entidad anterior)`);
+            delete next[mod];
             changed = true;
           }
         });
         return changed ? next : prev;
       });
+
+      // 3. Resetear el flujo si cambiamos de entidad para evitar estados inconsistentes
+      setFlowStep(0);
     }
   }, [selectedEntityId]);
 
@@ -517,9 +523,9 @@ function App() {
   }, [tokensUsed]);
 
   const fetchLibraryStats = useCallback(async () => {
-    if (!currentUser?.token) return;
+    if (!currentUser?.token || !selectedEntityId) return;
     try {
-      const ragRes = await fetch(`${API_BASE_URL}/rag-documents`, {
+      const ragRes = await fetch(`${API_BASE_URL}/rag-documents?entidad_id=${selectedEntityId}`, {
         headers: { "Authorization": `Bearer ${currentUser.token}` }
       });
       if (ragRes.ok) {
@@ -527,7 +533,7 @@ function App() {
         setRagCount(data.length);
       }
     } catch (e) { console.error("Error fetching library stats:", e); }
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId]);
 
   const refreshDashboardData = async () => {
     if (isRefreshingDashboard) return;
@@ -580,22 +586,21 @@ function App() {
   // Inicializar un saludo base si no hay mensajes
   useEffect(() => {
     if (messages.length === 0) {
-      setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente además de las TRD y organigramas. Escribe lo que necesites.' }]);
-    }
-  }, [messages.length]);
-
-  // Recuperar historial de Orianna al cargar
+      setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura  // Recuperar historial de Orianna al cargar (Escopeado por Entidad)
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!currentUser?.token) return;
+      if (!currentUser?.token || !selectedEntityId) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/chat-history/orianna`, {
+        const res = await fetch(`${API_BASE_URL}/chat-history/orianna?entidad_id=${selectedEntityId}`, {
           headers: { "Authorization": `Bearer ${currentUser.token}` }
         });
         if (res.ok) {
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages);
+          } else {
+            // Si no hay historial para esta entidad, resetear al saludo inicial
+            setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente además de las TRD y organigramas. Escribe lo que necesites.' }]);
           }
         }
       } catch (e) {
@@ -603,20 +608,20 @@ function App() {
       }
     };
     fetchHistory();
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId]);
 
-  // Persistir historial de Orianna automáticamente
+  // Persistir historial de Orianna automáticamente (Escopeado por Entidad)
   useEffect(() => {
     const saveHistory = async () => {
-      if (!currentUser?.token || messages.length <= 1) return;
+      if (!currentUser?.token || !selectedEntityId || messages.length <= 1) return;
       try {
-        await fetch(`${API_BASE_URL}/chat-history/orianna`, {
+        await fetch(`${API_BASE_URL}/chat-history/orianna?entidad_id=${selectedEntityId}`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
             "Authorization": `Bearer ${currentUser.token}`
           },
-          body: JSON.stringify({ messages })
+          body: JSON.stringify({ messages, entidad_id: selectedEntityId })
         });
       } catch (e) {
         console.error("Error guardando historial de Orianna:", e);
@@ -625,7 +630,7 @@ function App() {
 
     const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
     return () => clearTimeout(timer);
-  }, [messages, currentUser]);
+  }, [messages, currentUser, selectedEntityId]);
 
 
   // Unified simulateAgent

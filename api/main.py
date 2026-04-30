@@ -2216,37 +2216,32 @@ ESTRUCTURA DE RESPUESTA (JSON PUERTO):
 
 
 @router.get("/chat-history/{assistant}")
-async def get_chat_history(assistant: str, user: dict = Depends(get_current_user)):
+async def get_chat_history(assistant: str, entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     if not user.get("iaDisponible"):
         return {"messages": []}
-    """Recupera el historial de chat privado para un usuario y asistente especifico."""
+    """Recupera el historial de chat privado para un usuario, asistente y entidad especifica."""
 
     user_id = user.get("user_id")
-
     if not user_id: raise HTTPException(status_code=401, detail="No user ID found in token")
 
-    
-
     try:
-
-        item = await db.get_item("chat_sessions", f"USER#{user_id}", f"CHAT#{assistant}")
-
+        # Usar la entidad proporcionada en el query param o un fallback global
+        sk = f"CHAT#{assistant}"
+        if entidad_id:
+            sk = f"CHAT#{assistant}#ENTITY#{entidad_id}"
+            
+        item = await db.get_item("chat_sessions", f"USER#{user_id}", sk)
         if item:
-
             return {"messages": item.get("messages", [])}
-
         return {"messages": []}
-
     except Exception as e:
-
         print(f" Error recuperando historial ({assistant}): {e}")
-
         return {"messages": []}
 
 
 
 @router.post("/chat-history/{assistant}")
-async def save_chat_history(assistant: str, payload: ChatHistoryUpdate, user: dict = Depends(get_current_user)):
+async def save_chat_history(assistant: str, payload: ChatHistoryUpdate, entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     if not user.get("iaDisponible"):
         raise HTTPException(status_code=403, detail="No tienes permisos de IA")
     """Guarda o actualiza el historial de chat privado. Limita a los últimos 50 mensajes."""
@@ -2254,36 +2249,26 @@ async def save_chat_history(assistant: str, payload: ChatHistoryUpdate, user: di
     if not db: raise HTTPException(status_code=503)
 
     user_id = user.get("user_id")
-
     if not user_id: raise HTTPException(status_code=401, detail="No user ID found in token")
 
-
-
-    # Limitar a los ltimos 50 mensajes para optimizar almacenamiento
-
+    # Limitar a los últimos 50 mensajes para optimizar almacenamiento
     limited_messages = payload.messages[-50:]
-
     
-
-    data = {
-
-        "user_id": user_id,
-
-        "assistant": assistant,
-
-        "messages": limited_messages,
-
-        "updated_at": datetime.now().isoformat()
-
-    }
-
+    # Usar la entidad proporcionada en el query param o en el payload
+    target_entity = entidad_id or payload.dict().get("entidad_id")
     
+    sk = f"CHAT#{assistant}"
+    if target_entity:
+        sk = f"CHAT#{assistant}#ENTITY#{target_entity}"
 
     try:
         item = {
             "PK": f"USER#{user_id}",
-            "SK": f"HISTORY#{assistant}",
-            "messages": [m for m in payload.messages[-50:]],
+            "SK": sk,
+            "user_id": user_id,
+            "assistant": assistant,
+            "entidad_id": target_entity,
+            "messages": limited_messages,
             "updated_at": datetime.now().isoformat()
         }
         await db.put_item("chat_sessions", item)

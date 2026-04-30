@@ -501,14 +501,24 @@ async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Dep
 
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
 @router.get("/admin/dependencias", response_model=List[dict])
-async def admin_list_dependencias(user: dict = Depends(get_current_user)):
-    require_super_admin(user)
-    return await db.scan_table("dependencias")
+async def admin_list_dependencias(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    if user.get("role") != SUPERADMIN_ROLE:
+        raise HTTPException(status_code=403, detail="Only superadmins can access this.")
+    
+    if entidad_id:
+        return await db.query_by_entity("dependencias", entidad_id, sk_prefix="DEP#")
+    
+    # Por seguridad, no devolvemos nada sin entidad_id a menos que sea necesario un scan global (evitar fuga)
+    return []
 
 @router.get("/admin/series", response_model=List[dict])
-async def admin_list_series(user: dict = Depends(get_current_user)):
-    require_super_admin(user)
-    return await db.scan_table("series")
+async def admin_list_series(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    if user.get("role") != SUPERADMIN_ROLE:
+        raise HTTPException(status_code=403, detail="Only superadmins can access this.")
+    
+    if entidad_id:
+        return await db.query_by_entity("series", entidad_id, sk_prefix="SER#")
+    return []
 
 # ---------- Generación Documental con LLM ----------
 
