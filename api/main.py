@@ -1371,7 +1371,8 @@ async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depen
     if user.iaDisponible is not None: data["ia_disponible"] = user.iaDisponible
     if user.password is not None: data["password"] = user.password
     if user.username is not None: data["username"] = user.username
-    if user.celular is not None: data["celular"] = user.celular
+    # user.celular removed as it's not present in the profiles table schema
+    # if user.celular is not None: data["celular"] = user.celular
     
     # Si 'data' solo iba a actualizar el perfil contextual, podrÃ­a estar vacÃ­o para perfiles, asÃ­ que chequeamos
     res_data = target_res.data[0]
