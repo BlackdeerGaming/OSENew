@@ -42,8 +42,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     if (!hasActiveTasks) return;
     
     const interval = setInterval(() => {
-      fetchImports();
-    }, 4000);
+      if (document.visibilityState === 'visible') {
+        fetchImports();
+      }
+    }, 10000); // Cada 10 segundos
     
     return () => clearInterval(interval);
   }, [imports]);

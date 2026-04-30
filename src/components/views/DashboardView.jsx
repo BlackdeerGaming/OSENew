@@ -211,12 +211,15 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
       
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-0.5">
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tighter">
+            ¡Bienvenido, <span className="text-primary">{currentUser?.nombre || "Usuario"}</span>!
+          </h2>
           <div className="flex items-center gap-2 text-[10px] font-semibold text-primary uppercase tracking-[0.15em]">
             <Activity className="h-3 w-3" /> Sistema Activo
           </div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">
-            Dashboard <span className="text-primary">Ejecutivo</span>
+          <h1 className="text-sm font-bold text-muted-foreground uppercase tracking-widest mt-1">
+            Dashboard <span className="text-foreground">Ejecutivo</span>
           </h1>
         </div>
 

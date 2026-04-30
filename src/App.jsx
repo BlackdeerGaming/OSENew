@@ -315,7 +315,11 @@ function App() {
     };
 
     if (currentUser) fetchData();
-    const interval = setInterval(fetchData, 60000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 300000); // Cada 5 minutos y solo si la pestaña está activa
     return () => clearInterval(interval);
   }, [currentUser, selectedEntityId, authHeaders]);
 
