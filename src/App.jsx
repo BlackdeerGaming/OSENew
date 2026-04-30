@@ -438,6 +438,39 @@ function App() {
     }
   }, [activeFormData, activeModule]);
 
+  // --- CRÍTICO: AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) ---
+  useEffect(() => {
+    if (selectedEntityId) {
+      console.log(" [Context] Sincronizando contexto global de entidad:", selectedEntityId);
+      
+      // 1. RESETEAR el formulario activo si la entidad cambia para evitar entrecruce
+      setActiveFormData(prev => {
+        if (prev.entidadId && prev.entidadId !== selectedEntityId) {
+          console.warn(" [Aislamiento] Cambio de entidad detectado. Limpiando formulario activo.");
+          return { entidadId: selectedEntityId }; 
+        }
+        return { ...prev, entidadId: selectedEntityId };
+      });
+
+      // 2. Limpiar la persistencia de formularios que pertenezcan a OTRA entidad
+      setFormsPersistence(prev => {
+        const next = { ...prev };
+        let changed = false;
+        ['dependencias', 'series', 'subseries', 'trdform'].forEach(mod => {
+          if (next[mod] && next[mod].entidadId && next[mod].entidadId !== selectedEntityId) {
+            console.log(` [Aislamiento] Purgando cache persistente de ${mod} (entidad anterior)`);
+            delete next[mod];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+
+      // 3. Resetear el flujo si cambiamos de entidad para evitar estados inconsistentes
+      setFlowStep(0);
+    }
+  }, [selectedEntityId]);
+
   const [flowStep, setFlowStep] = useState(0);
   const [isAgentOpen, setIsAgentOpen] = useState(window.innerWidth >= 1024);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
@@ -530,9 +563,9 @@ function App() {
   }, [tokensUsed]);
 
   const fetchLibraryStats = useCallback(async () => {
-    if (!currentUser?.token) return;
+    if (!currentUser?.token || !selectedEntityId) return;
     try {
-      const ragRes = await fetch(`${API_BASE_URL}/rag-documents`, {
+      const ragRes = await fetch(`${API_BASE_URL}/rag-documents?entidad_id=${selectedEntityId}`, {
         headers: { "Authorization": `Bearer ${currentUser.token}` }
       });
       if (ragRes.ok) {
@@ -540,7 +573,7 @@ function App() {
         setRagCount(data.length);
       }
     } catch (e) { console.error("Error fetching library stats:", e); }
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId]);
 
   const refreshDashboardData = async () => {
     if (isRefreshingDashboard) return;

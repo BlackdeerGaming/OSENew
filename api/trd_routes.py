@@ -524,18 +524,20 @@ async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Dep
 
 # ---------- Super‑Admin endpoints (no entity scoping) ----------
 @router.get("/admin/dependencias", response_model=List[dict])
-async def admin_list_dependencias(user: dict = Depends(get_current_user)):
-    
+async def admin_list_dependencias(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     require_super_admin(user)
-    res = supabase_client.table("dependencias").select("*").execute()
-    return res.data
+    if entidad_id:
+        res = supabase_client.table("dependencias").select("*").eq("entidad_id", entidad_id).execute()
+        return res.data
+    return []
 
 @router.get("/admin/series", response_model=List[dict])
-async def admin_list_series(user: dict = Depends(get_current_user)):
-    
+async def admin_list_series(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     require_super_admin(user)
-    res = supabase_client.table("series").select("*").execute()
-    return res.data
+    if entidad_id:
+        res = supabase_client.table("series").select("*").eq("entidad_id", entidad_id).execute()
+        return res.data
+    return []
 
 # ---------- Generación Documental con LLM ----------
 

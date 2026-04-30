@@ -32,6 +32,13 @@ export function useTRDData(currentUser = null, entityId = null) {
     }
 
     setIsLoading(true);
+    
+    // --- CLEAR PREVIOUS DATA TO PREVENT LEAKAGE ---
+    setDependencias([]);
+    setSeries([]);
+    setSubseries([]);
+    setTrdRecords([]);
+
     try {
       // Use backend API (service-key access, RLS-bypassed, entity-scoped)
       const base = `${API_BASE_URL}/trd/entity/${entity}`;
