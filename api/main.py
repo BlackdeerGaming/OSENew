@@ -1278,10 +1278,14 @@ async def get_users(entidad_id: str | None = None, user: dict = Depends(get_curr
     rel_res = supabase_client.table("profile_entities").select("*").execute()
     rels = {}
     roles = {}
+    entity_roles = {}
     for r in rel_res.data:
         p_id = r["profile_id"]
-        if p_id not in rels: rels[p_id] = []
+        if p_id not in rels: 
+            rels[p_id] = []
+            entity_roles[p_id] = {}
         rels[p_id].append(r["entity_id"])
+        entity_roles[p_id][r["entity_id"]] = r["role"]
         if r["entity_id"] == active_entity_id:
             roles[p_id] = r["role"]
             
@@ -1294,6 +1298,7 @@ async def get_users(entidad_id: str | None = None, user: dict = Depends(get_curr
             "username": u["username"], "perfil": display_perfil, "estado": u["estado"],
             "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
             "entidadIds": rels.get(u["id"], []),
+            "entityRoles": entity_roles.get(u["id"], {}),
             "iaDisponible": u.get("ia_disponible", False)
         })
     return mapped

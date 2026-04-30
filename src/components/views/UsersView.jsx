@@ -283,7 +283,18 @@ export default function UsersView({ searchQuery, onSearchQueryChange, currentUse
     // Normalizar
     const nombre = u.nombre || u.Nombre || u.first_name || u.name || "";
     const email = u.email || u.Email || "";
-    const perfil = u.perfil || u.Role || u.role || 'usuario';
+    let perfil = u.perfil || u.Role || u.role || 'usuario';
+    if (selectedEntityId && selectedEntityId !== 'e0' && u.entityRoles && u.entityRoles[selectedEntityId]) {
+      perfil = u.entityRoles[selectedEntityId];
+    } else if (u.entidadId && u.entityRoles && u.entityRoles[u.entidadId]) {
+      // If we are in 'e0' global context, show their role in their primary entity
+      perfil = u.entityRoles[u.entidadId];
+    }
+    
+    if (u.perfil === 'superadmin' || u.Role === 'superadmin') {
+      perfil = 'superadmin';
+    }
+    
     const isActivated = u.isActivated === true || u.isActivated === 'true' || u.IsActivated === true;
     
     let entidadNombre = u.entidadNombre || u.EntityName || "";

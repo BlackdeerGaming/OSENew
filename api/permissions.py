@@ -36,26 +36,35 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
         if role == 'superadmin':
             if header_entity_id:
                 active_entity_id = header_entity_id
-        elif role == 'administrador' and supabase_client:
-            # Obtener todas las entidades permitidas para este admin
-            all_perms = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_id).execute()
-            allowed_entities = [p['entity_id'] for p in (all_perms.data or [])]
+            payload['allowed_entities'] = [] # Superadmin ve todo via query global
+        elif supabase_client:
+            # Obtener todas las entidades permitidas y roles para este usuario
+            all_perms = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
             
-            # Asegurar que la entidad del JWT est\u00e9 incluida
+            allowed_entities = [p['entity_id'] for p in (all_perms.data or [])]
+            entity_roles = {p['entity_id']: p['role'] for p in (all_perms.data or [])}
+            
+            # Asegurar que la entidad del JWT esté incluida
             jwt_entity = payload.get('entity_id')
             if jwt_entity and jwt_entity not in allowed_entities:
                 allowed_entities.append(jwt_entity)
             
             payload['allowed_entities'] = allowed_entities
             
-            # Validar si el admin quiere cambiar de contexto
+            # Validar si el usuario quiere cambiar de contexto
             if header_entity_id and header_entity_id in allowed_entities:
                 active_entity_id = header_entity_id
             else:
                 active_entity_id = jwt_entity
-        
-        if role == 'superadmin':
-            payload['allowed_entities'] = [] # Superadmin ve todo via query global
+                
+            # Reevaluar dinamicamente el rol segun la entidad activa
+            if active_entity_id in entity_roles:
+                context_role = str(entity_roles[active_entity_id]).lower()
+                if context_role in ('admin', 'administrador', 'administración', 'administracion'):
+                    payload['role'] = 'administrador'
+                else:
+                    if payload['role'] != 'administrador':
+                        payload['role'] = 'usuario'
 
         payload['entity_id'] = active_entity_id
         return payload
