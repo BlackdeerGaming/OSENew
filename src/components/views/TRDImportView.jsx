@@ -12,12 +12,25 @@ import ViewHeader from '../ui/ViewHeader';
 import TRDExportPreview from '../trd/TRDGenerator';
 import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
+const MAX_FILE_SIZE_MB = 50;
+
 const STATUS_CONFIG = {
-  uploading: { label: 'Preparando...', color: 'bg-primary/10 text-primary', icon: Loader2, animate: true },
+  uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
+  processing: { label: 'Preparando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
   analyzing: { label: 'Extrayendo Datos...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  ocr_running: { label: 'Procesando...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
   reviewing: { label: 'Pendiente de Revisión', color: 'bg-amber-50 text-amber-600', icon: Scan, animate: false },
   success: { label: 'Integrado', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
   error: { label: 'Error', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
 const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
@@ -45,7 +58,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       if (document.visibilityState === 'visible') {
         fetchImports();
       }
-    }, 10000); // Cada 10 segundos
+    }, 5000); // Polling cada 5 segundos para ver el progreso del OCR
     
     return () => clearInterval(interval);
   }, [imports]);
@@ -83,6 +96,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 actions: d.metadata?.actions || [],
                 ai_message: d.metadata?.message || null,
                 ocr_engaged: true,
+                ocr_progress: d.metadata?.ocr_progress || 0,
+                ocr_stage: d.metadata?.ocr_stage || null,
+                ocr_total_pages: d.metadata?.ocr_total_pages || 0,
+                ocr_current_page: d.metadata?.ocr_current_page || 0,
+                file_size_bytes: d.metadata?.file_size_bytes || 0,
+                error_summary: d.metadata?.error_summary || null,
                 isUploading: false,
                 rawFile: null
              };
@@ -105,11 +124,20 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   };
 
   const processFile = async (file) => {
+    // Validar tamaño en el cliente
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      alert(`Este archivo es demasiado pesado para procesarse (${(file.size / (1024*1024)).toFixed(1)} MB). El límite permitido es ${MAX_FILE_SIZE_MB} MB. Intenta reducir su tamaño o dividirlo en varios archivos.`);
+      return;
+    }
+
     const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const newImp = {
        id: tempId,
        filename: file.name,
-       status: 'analyzing',
+       status: 'uploading',
+       ocr_progress: 0,
+       ocr_stage: 'Iniciando subida...',
+       file_size_bytes: file.size,
        actions: [],
        isUploading: true,
        rawFile: file
@@ -128,7 +156,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Error de lectura/procesamiento');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Error de lectura/procesamiento');
+      }
       await fetchImports();
     } catch (err) {
       setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
@@ -153,19 +184,37 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     const imp = imports.find(i => i.id === id);
     if (!imp) return;
     
-    const isProcessing = ['uploading', 'analyzing', 'reviewing'].includes(imp.status);
+    const isProcessing = ['uploading', 'analyzing', 'processing', 'ocr_running'].includes(imp.status);
     const msg = isProcessing 
-      ? "¿Estás seguro de cancelar este proceso activo?" 
+      ? "¿Estás seguro de cancelar este proceso activo? El avance se detendrá." 
       : "¿Eliminar este registro del historial?";
       
     if (!window.confirm(msg)) return;
 
+    // Si está procesando, primero intentamos marcar como cancelado en el backend
+    if (isProcessing && !id.startsWith('temp_')) {
+      try {
+        await fetch(`${API_BASE_URL}/rag-documents/${id}`, {
+          method: 'PUT',
+          headers: { 
+            "Authorization": `Bearer ${currentUser?.token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ status: 'cancelled' })
+        });
+      } catch (err) {
+        console.error("Error cancelling process:", err);
+      }
+    }
+
     setImports(prev => prev.filter(item => item.id !== id));
     try {
-      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
-        method: 'DELETE',
-        headers: { "Authorization": `Bearer ${currentUser?.token}` }
-      });
+      if (!id.startsWith('temp_')) {
+        await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
+          method: 'DELETE',
+          headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        });
+      }
     } catch (err) {
       console.error("Error deleting import:", err);
     }
@@ -381,41 +430,89 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                       ) : (
                           imports.filter(i => i.status !== 'success').map((imp) => {
                               const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
+                              const progress = imp.ocr_progress || 0;
                               return (
                                   <motion.div
                                       key={imp.id}
                                       layout
-                                      className="bg-card border border-border shadow-sm rounded-lg p-3.5 hover:shadow-md transition-all flex items-center justify-between gap-4 relative group"
+                                      className="bg-card border border-border shadow-sm rounded-xl p-4 hover:shadow-md transition-all flex flex-col gap-3 relative group overflow-hidden"
                                   >
-                                      <div className="flex items-center gap-3 min-w-0">
-                                          <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", config.color)}>
-                                              <config.icon className={cn("h-4 w-4", config.animate && "animate-spin")} />
+                                      {/* Background progress indicator (subtle) */}
+                                      {imp.status === 'processing' || imp.status === 'analyzing' || imp.status === 'ocr_running' ? (
+                                          <div 
+                                              className="absolute bottom-0 left-0 h-1 bg-primary/20 transition-all duration-500 ease-out" 
+                                              style={{ width: `${progress}%` }}
+                                          />
+                                      ) : null}
+
+                                      <div className="flex items-center justify-between gap-4">
+                                          <div className="flex items-center gap-3 min-w-0">
+                                              <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm", config.color)}>
+                                                  <config.icon className={cn("h-5 w-5", config.animate && "animate-spin")} />
+                                              </div>
+                                              <div className="flex flex-col gap-0.5 min-w-0">
+                                                  <div className="flex items-center gap-2">
+                                                      <span className="text-[13px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
+                                                      <span className="text-[9px] text-slate-400 font-bold">{formatFileSize(imp.file_size_bytes)}</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                      <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
+                                                          {imp.ocr_stage || config.label}
+                                                      </span>
+                                                      {imp.ocr_total_pages > 0 && (
+                                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                                              {imp.ocr_current_page} / {imp.ocr_total_pages} Páginas
+                                                          </span>
+                                                      )}
+                                                  </div>
+                                              </div>
                                           </div>
-                                          <div className="flex flex-col gap-0.5 min-w-0">
-                                              <span className="text-[12px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
-                                              <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
-                                                  {config.label}
-                                              </span>
+
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                              {imp.status === 'reviewing' && (
+                                                  <button 
+                                                      onClick={() => openReview(imp)}
+                                                      className="h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-[10px] font-bold tracking-wider transition-all uppercase flex items-center gap-2 shadow-sm"
+                                                  >
+                                                      Verificar
+                                                      <ArrowRight className="h-4 w-4" />
+                                                  </button>
+                                              )}
+                                              <button 
+                                                  onClick={(e) => handleDeleteImport(imp.id, e)} 
+                                                  className="p-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                                                  title={imp.status === 'reviewing' ? 'Eliminar' : 'Cancelar'}
+                                              >
+                                                  <Trash2 className="h-4 w-4" />
+                                              </button>
                                           </div>
                                       </div>
 
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                          {imp.status === 'reviewing' && (
-                                              <button 
-                                                  onClick={() => openReview(imp)}
-                                                  className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-[9px] font-bold tracking-wider transition-all uppercase flex items-center gap-1.5 shadow-sm"
-                                              >
-                                                  Verificar
-                                                  <ArrowRight className="h-3 w-3" />
-                                              </button>
-                                          )}
-                                          <button 
-                                              onClick={(e) => handleDeleteImport(imp.id, e)} 
-                                              className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-all"
-                                          >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                      </div>
+                                      {/* Progress Bar & Percentage */}
+                                      {(imp.status === 'processing' || imp.status === 'analyzing' || imp.status === 'ocr_running') && (
+                                          <div className="space-y-1.5 px-0.5">
+                                              <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-slate-400">
+                                                  <span>Progreso del OCR</span>
+                                                  <span>{progress}%</span>
+                                              </div>
+                                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                  <motion.div 
+                                                      initial={{ width: 0 }}
+                                                      animate={{ width: `${progress}%` }}
+                                                      className="h-full bg-primary"
+                                                  />
+                                              </div>
+                                          </div>
+                                      )}
+
+                                      {imp.error_summary && (
+                                          <div className="px-2 py-1.5 bg-rose-50 rounded-md border border-rose-100 flex items-center gap-2">
+                                              <AlertCircle className="h-3 w-3 text-rose-500" />
+                                              <span className="text-[9px] font-bold text-rose-600 uppercase tracking-tight leading-none">
+                                                  {imp.error_summary}
+                                              </span>
+                                          </div>
+                                      )}
                                   </motion.div>
                               );
                           })

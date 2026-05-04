@@ -130,21 +130,27 @@ async def create_dependencia_entity(
         if "duplicate key value violates unique constraint" in error_msg:
              raise HTTPException(status_code=400, detail="El código de dependencia ya existe para esta entidad.")
         raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
-    # Cloud upload (synchronous – block on error)
+    # Cloud upload (asynchronous/non-blocking)
     try:
-        path = upload_record(
-            supabase_client,
-            entity_id,
-            "dependencias",
-            record["id"],
-            _record_to_dict(record),
-        )
-        # Store cloud_key back in DB (Column missing in production)
-        # supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        if background:
+            background.add_task(
+                upload_record,
+                supabase_client,
+                entity_id,
+                "dependencias",
+                record["id"],
+                _record_to_dict(record)
+            )
+        else:
+            upload_record(
+                supabase_client,
+                entity_id,
+                "dependencias",
+                record["id"],
+                _record_to_dict(record)
+            )
     except Exception as e:
-        # Rollback DB entry
-        supabase_client.table("dependencias").delete().eq("id", record["id"]).execute()
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: Failed to sync dependency {record['id']}: {e}")
     return record
 
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
@@ -198,6 +204,7 @@ async def create_serie_entity(
     entity_id: str,
     payload: SerieCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -212,12 +219,15 @@ async def create_serie_entity(
         if "duplicate key value violates unique constraint" in error_msg:
              raise HTTPException(status_code=400, detail="El código de serie ya existe para esta entidad.")
         raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
+    
     try:
-        path = upload_record(supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
-        # supabase_client.table("series").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        if background:
+            background.add_task(upload_record, supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
+        else:
+            upload_record(supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
     except Exception as e:
-        supabase_client.table("series").delete().eq("id", record["id"]).execute()
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: Failed to sync serie {record['id']}: {e}")
+        
     return record
 
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
@@ -259,6 +269,7 @@ async def create_subserie_entity(
     entity_id: str,
     payload: SubserieCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -273,12 +284,15 @@ async def create_subserie_entity(
         if "duplicate key value violates unique constraint" in error_msg:
              raise HTTPException(status_code=400, detail="El código de subserie ya existe para esta entidad.")
         raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
+    
     try:
-        path = upload_record(supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
-        # supabase_client.table("subseries").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        if background:
+            background.add_task(upload_record, supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
+        else:
+            upload_record(supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
     except Exception as e:
-        supabase_client.table("subseries").delete().eq("id", record["id"]).execute()
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: Failed to sync subserie {record['id']}: {e}")
+        
     return record
 
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
@@ -320,6 +334,7 @@ async def create_trd_record_entity(
     entity_id: str,
     payload: TRDRecordCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -334,12 +349,15 @@ async def create_trd_record_entity(
         if "duplicate key value violates unique constraint" in error_msg:
              raise HTTPException(status_code=400, detail="Ya existe una valoración para esta combinación de códigos.")
         raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
+    
     try:
-        path = upload_record(supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
-        # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        if background:
+            background.add_task(upload_record, supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
+        else:
+            upload_record(supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
     except Exception as e:
-        supabase_client.table("trd_records").delete().eq("id", record["id"]).execute()
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: Failed to sync TRD record {record['id']}: {e}")
+        
     return record
 
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
@@ -381,6 +399,7 @@ async def create_funcion_entity(
     entity_id: str,
     payload: FuncionCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -389,12 +408,15 @@ async def create_funcion_entity(
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create funcion")
     record = res.data[0]
+    
     try:
-        path = upload_record(supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
-        # supabase_client.table("funciones").update({"cloud_key": path}).eq("id", record["id"]).execute()
+        if background:
+            background.add_task(upload_record, supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
+        else:
+            upload_record(supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
     except Exception as e:
-        supabase_client.table("funciones").delete().eq("id", record["id"]).execute()
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: Failed to sync funcion {record['id']}: {e}")
+        
     return record
 
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])

@@ -76,21 +76,20 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
-    const newRecord = { 
-      ...data, 
-      id: data.id || Date.now().toString()
-    };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
 
     // Optimistic Update
+    const previousState = [...dependencias];
     setDependencias(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !dependencias.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
         method: method,
@@ -100,20 +99,21 @@ export function useTRDData(currentUser = null, entityId = null) {
       
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        console.error(`API Error [${method} dependencias]:`, errData);
-        
-        // Extraer mensaje de error más legible
         let detail = errData.detail || 'Error al guardar la dependencia';
         if (detail.includes("duplicate key value violates unique constraint")) {
           detail = "El código ingresado ya existe para esta entidad. Por favor usa uno diferente.";
         }
-        
         throw new Error(detail);
       }
-      return await response.json();
+      
+      const savedRecord = await response.json();
+      // Refrescar para obtener el ID real de la DB y limpiar el temporal
+      await refreshData();
+      return savedRecord;
     } catch (err) {
       console.error('❌ Error guardando dependencia:', err);
-      // Re-lanzar para que el componente lo maneje (mostrar modal y no limpiar form)
+      // Revertir cambio optimista
+      setDependencias(previousState);
       throw err;
     }
   };
@@ -134,16 +134,19 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
+    const previousState = [...series];
     setSeries(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !series.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method: method,
@@ -158,9 +161,12 @@ export function useTRDData(currentUser = null, entityId = null) {
         }
         throw new Error(detail);
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
       console.error('❌ Error guardando serie:', err);
+      setSeries(previousState);
       throw err;
     }
   };
@@ -172,16 +178,19 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
+    const previousState = [...subseries];
     setSubseries(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !subseries.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method: method,
@@ -196,9 +205,12 @@ export function useTRDData(currentUser = null, entityId = null) {
         }
         throw new Error(detail);
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
       console.error('❌ Error guardando subserie:', err);
+      setSubseries(previousState);
       throw err;
     }
   };
@@ -209,16 +221,19 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
+    const previousState = [...trdRecords];
     setTrdRecords(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      const isCreate = !trdRecords.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method: method,
@@ -228,15 +243,17 @@ export function useTRDData(currentUser = null, entityId = null) {
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         let detail = errData.detail || 'Error al guardar la valoración TRD';
-        // TRD might not have a simple "code" but a unique constraint on dep+ser+sub
         if (detail.includes("duplicate key value violates unique constraint")) {
           detail = "Ya existe una valoración para esta combinación de Dependencia/Serie/Subserie.";
         }
         throw new Error(detail);
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
       console.error('❌ Error guardando TRD record:', err);
+      setTrdRecords(previousState);
       throw err;
     }
   };

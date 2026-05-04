@@ -111,6 +111,7 @@ function App() {
     const saved = localStorage.getItem('invitation_context');
     return saved ? JSON.parse(saved) : null;
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
@@ -953,15 +954,21 @@ function App() {
   };
 
   const handleSave = async () => {
-    setModalStatus({ isOpen: true, type: 'loading', message: 'Guardando y sincronizando con AWS Cloud...' });
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Verificando datos y guardando en base de datos...' });
+    
     const isUpdate = !!activeFormData.id;
-    const record = isUpdate ? activeFormData : { ...activeFormData, id: Date.now().toString() };
+    // No generamos ID aquí, dejamos que el hook useTRDData maneje los temporales y el backend los definitivos
+    const record = activeFormData; 
 
     try {
-      if (activeModule === 'dependencias') await addDependencia(record);
-      else if (activeModule === 'series') await addSerie(record);
-      else if (activeModule === 'subseries') await addSubserie(record);
-      else if (activeModule === 'trdform') await addTrdRecord(record);
+      let savedRecord;
+      if (activeModule === 'dependencias') savedRecord = await addDependencia(record);
+      else if (activeModule === 'series') savedRecord = await addSerie(record);
+      else if (activeModule === 'subseries') savedRecord = await addSubserie(record);
+      else if (activeModule === 'trdform') savedRecord = await addTrdRecord(record);
 
       const entityMap = {
         'dependencias': 'Dependencia',
@@ -972,27 +979,29 @@ function App() {
       const entityLabel = entityMap[activeModule] || 'Registro';
       const actionLabel = isUpdate ? 'Edición' : 'Creación';
       
-      addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id}`);
+      addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id || 'Nuevo'}`);
       
       // Limpiar persistencia de este módulo al guardar con éxito
       setFormsPersistence(prev => ({ ...prev, [activeModule]: {} }));
       
       setActiveFormData({});
       setFlowStep(0);
-      await refreshData();
+      
+      // La verificación ya ocurre dentro del hook (await refreshData)
       setModalStatus({ 
         isOpen: true, 
         type: 'success', 
-        message: `¡${entityLabel} guardada! El registro se ha sincronizado exitosamente en la nube.` 
+        message: `¡${entityLabel} guardada correctamente! La base de datos ha sido actualizada.` 
       });
     } catch (err) {
       console.error("Error en handleSave:", err);
-      // NO reseteamos setActiveFormData({}) aquí para que el usuario no pierda lo escrito
       setModalStatus({ 
         isOpen: true, 
         type: 'error', 
-        message: `Error de sincronización: ${err.message || 'No se pudo guardar el registro'}` 
+        message: `No se pudo guardar: ${err.message || 'Error de conexión'}` 
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1555,10 +1564,14 @@ function App() {
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-12">
              <button 
                onClick={handleSave}
-               className="flex items-center gap-3 bg-primary text-white hover:bg-primary/90 px-10 py-4 rounded-2xl shadow-xl shadow-primary/20 text-base font-black uppercase tracking-widest transition-all transform active:scale-95"
+               disabled={isSaving}
+               className={cn(
+                 "flex items-center gap-3 px-10 py-4 rounded-2xl shadow-xl text-base font-black uppercase tracking-widest transition-all transform active:scale-95",
+                 isSaving ? "bg-slate-300 cursor-not-allowed text-slate-500" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+               )}
              >
-               <Save className="h-6 w-6" />
-               {activeFormData.id ? "Actualizar Registro" : "Guardar Registro"}
+               {isSaving ? <Activity className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
+               {isSaving ? "Guardando..." : (activeFormData.id ? "Actualizar Registro" : "Guardar Registro")}
              </button>
            </div>
           )}

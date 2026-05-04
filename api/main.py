@@ -48,9 +48,14 @@ OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL    = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
 SUPABASE_URL        = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-IMAGE_MIN_SIZE      = 8000  # bytes
-RESEND_API_KEY      = os.getenv("RESEND_API_KEY")
-RESEND_FROM_EMAIL   = os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>")
+IMAGE_MIN_SIZE         = 8000   # bytes
+RESEND_API_KEY         = os.getenv("RESEND_API_KEY")
+RESEND_FROM_EMAIL      = os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>")
+# OCR Config
+MAX_OCR_FILE_SIZE_MB   = 50     # Maximum PDF size accepted for OCR (MB)
+OCR_BATCH_SIZE         = 3      # Pages processed per batch
+OCR_MAX_TEXT_CHARS     = 8000   # Max extracted text chars sent to LLM
+OCR_MAX_VISION_IMAGES  = 5      # Max page images sent to LLM
 
 #  Inicializar Servicios compartidos (Supabase, LLM, Embeddings)
 from .db import supabase_client, llm, embeddings
@@ -345,75 +350,207 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
     except Exception as e:
         print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")
 
+async def _update_ocr_progress(
+    doc_id: str,
+    filename: str,
+    stage: str,
+    progress: int,
+    current_page: int,
+    total_pages: int,
+    pages_ok: int,
+    pages_error: int,
+    error_pages: list,
+    extra: dict = None
+):
+    """Actualiza el progreso del OCR en Supabase sin perder metadata existente."""
+    try:
+        row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if not row.data:
+            return
+        meta = row.data[0]["metadata"] or {}
+        meta.update({
+            "status": "processing",
+            "ocr_stage": stage,
+            "ocr_progress": progress,
+            "ocr_current_page": current_page,
+            "ocr_total_pages": total_pages,
+            "ocr_pages_ok": pages_ok,
+            "ocr_pages_error": pages_error,
+            "ocr_error_pages": error_pages,
+        })
+        if extra:
+            meta.update(extra)
+        supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
+    except Exception as e:
+        print(f"[OCR PROGRESS] Error actualizando progreso: {e}")
+
+
+def _is_cancelled(doc_id: str) -> bool:
+    """Verifica si el documento fue marcado como cancelado en la DB."""
+    try:
+        row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+        if row.data:
+            return row.data[0]["metadata"].get("status") == "cancelled"
+    except:
+        pass
+    return False
+
+
 async def process_ocr_task(doc_id: str, content: bytes, filename: str):
     """
     Proceso de segundo plano para extraer texto e imágenes para Visión IA.
+    Procesa el PDF en lotes de OCR_BATCH_SIZE páginas, actualiza el progreso
+    en Supabase después de cada lote y respeta la señal de cancelación.
     Actualiza el estado a 'reviewing' al terminar para que el usuario pueda aprobar.
     """
-    print(f"--- Iniciando OCR NATIVO (Visión) para: {filename} ---")
-    
-    extracted_text = ""
-    images_base64 = []
-    
-    try:
-        import fitz
-        from datetime import datetime
-        
-        fitz_doc = fitz.open(stream=content, filetype="pdf")
-        pages_to_process = min(len(fitz_doc), 5) 
-        
-        for i in range(pages_to_process):
-            page = fitz_doc[i]
-            text_chunk = page.get_text().strip()
-            if text_chunk:
-                extracted_text += f"\n--- PÁGINA {i+1} ---\n" + text_chunk
-            
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-            img_data = pix.tobytes("png")
-            b64 = base64.b64encode(img_data).decode("utf-8")
-            images_base64.append(b64)
-            
-        fitz_doc.close()
-    except Exception as e:
-        print(f"Error procesando PDF: {e}")
+    print(f"--- Iniciando OCR por lotes para: {filename} ---")
+    from datetime import datetime
 
-    # Obtener el file_url y entidad_id actuales de la sesión
+    # Obtener metadata inicial (file_url, entidad_id)
     file_url = None
     entidad_id = None
+    file_size_bytes = len(content)
     try:
         row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
         if row.data:
             file_url = row.data[0]["metadata"].get("file_url")
             entidad_id = row.data[0]["metadata"].get("entidad_id")
-    except: pass
+    except:
+        pass
+
+    extracted_text = ""
+    images_base64 = []   # Máximo OCR_MAX_VISION_IMAGES imágenes para el LLM
+    pages_ok = 0
+    pages_error = 0
+    error_pages = []
+    total_pages = 0
 
     try:
-        print(f"Solicitando Análisis Visual TRD para: {filename}")
-        
-        messages = [
-            SystemMessage(content=TRD_ARCHITECT_PROMPT),
-        ]
-        
+        import fitz
+
+        # --- FASE 1: Preparando OCR ---
+        await _update_ocr_progress(
+            doc_id, filename,
+            stage="Preparando OCR",
+            progress=0, current_page=0, total_pages=0,
+            pages_ok=0, pages_error=0, error_pages=[],
+            extra={"file_size_bytes": file_size_bytes}
+        )
+
+        fitz_doc = fitz.open(stream=content, filetype="pdf")
+        total_pages = len(fitz_doc)
+        print(f"[OCR] Total de páginas: {total_pages}")
+
+        # --- FASE 2: Procesamiento por lotes ---
+        batch_start = 0
+        while batch_start < total_pages:
+            # Verificar cancelación antes de cada lote
+            if _is_cancelled(doc_id):
+                print(f"[OCR] Proceso cancelado por el usuario en página {batch_start + 1}.")
+                fitz_doc.close()
+                return
+
+            batch_end = min(batch_start + OCR_BATCH_SIZE, total_pages)
+            for i in range(batch_start, batch_end):
+                try:
+                    page = fitz_doc[i]
+                    text_chunk = page.get_text().strip()
+                    if text_chunk and len(extracted_text) < OCR_MAX_TEXT_CHARS:
+                        extracted_text += f"\n--- PÁGINA {i+1} ---\n" + text_chunk
+
+                    # Solo guardar imágenes de las primeras OCR_MAX_VISION_IMAGES páginas
+                    if len(images_base64) < OCR_MAX_VISION_IMAGES:
+                        pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                        img_data = pix.tobytes("png")
+                        b64 = base64.b64encode(img_data).decode("utf-8")
+                        images_base64.append(b64)
+                        # Liberar memoria del pixmap
+                        del pix, img_data, b64
+
+                    pages_ok += 1
+                except Exception as page_err:
+                    pages_error += 1
+                    error_pages.append(i + 1)  # 1-indexed
+                    print(f"[OCR] Error en página {i+1}: {page_err}")
+
+            # Actualizar progreso tras el lote
+            last_processed = batch_end
+            progress_pct = int((last_processed / total_pages) * 100)
+            stage_label = f"Procesando página {last_processed} de {total_pages}"
+            print(f"[OCR] {stage_label} ({progress_pct}%)")
+
+            await _update_ocr_progress(
+                doc_id, filename,
+                stage=stage_label,
+                progress=progress_pct,
+                current_page=last_processed,
+                total_pages=total_pages,
+                pages_ok=pages_ok,
+                pages_error=pages_error,
+                error_pages=error_pages,
+            )
+
+            batch_start = batch_end
+            # Pequeña pausa para no saturar la DB con escrituras consecutivas
+            await asyncio.sleep(0.2)
+
+        fitz_doc.close()
+        print(f"[OCR] Extracción completada. OK: {pages_ok}, Errores: {pages_error}")
+
+    except Exception as e:
+        print(f"[OCR] Error crítico durante extracción: {e}")
+        try:
+            supabase_client.table("rag_documents").update({
+                "metadata": {
+                    "source": filename, "status": "error",
+                    "ocr_stage": "Error en el procesamiento",
+                    "ocr_progress": 0,
+                    "message": str(e),
+                    "type": "temp_trd_session",
+                    "file_url": file_url, "entidad_id": entidad_id,
+                    "file_size_bytes": file_size_bytes,
+                    "created_at": datetime.now().isoformat()
+                }
+            }).eq("id", doc_id).execute()
+        except:
+            pass
+        return
+
+    # --- FASE 3: Análisis con el LLM ---
+    # Verificar cancelación una última vez antes de llamar al LLM
+    if _is_cancelled(doc_id):
+        print(f"[OCR] Proceso cancelado antes del análisis LLM.")
+        return
+
+    try:
+        await _update_ocr_progress(
+            doc_id, filename,
+            stage="Extrayendo información",
+            progress=100,
+            current_page=total_pages,
+            total_pages=total_pages,
+            pages_ok=pages_ok,
+            pages_error=pages_error,
+            error_pages=error_pages,
+        )
+
+        print(f"[OCR] Solicitando Análisis Visual TRD para: {filename}")
+        messages = [SystemMessage(content=TRD_ARCHITECT_PROMPT)]
         user_content = [
-            {"type": "text", "text": f"Analiza esta TRD. Texto extraído: \n{extracted_text[:4000]}"}
+            {"type": "text", "text": f"Analiza esta TRD. Texto extraído:\n{extracted_text[:OCR_MAX_TEXT_CHARS]}"}
         ]
-        
-        for b64_img in images_base64[:5]:
+        for b64_img in images_base64[:OCR_MAX_VISION_IMAGES]:
             user_content.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:image/png;base64,{b64_img}"}
             })
-            
         messages.append(HumanMessage(content=user_content))
-        
+
         parsed_actions = []
         ai_message = "Módulo de Visión completó el análisis."
-        
         try:
             response_ai = llm.invoke(messages)
             content_ai = response_ai.content.strip()
-            
-            # Limpieza de JSON
             if "```json" in content_ai:
                 content_ai = content_ai.split("```json")[-1].split("```")[0].strip()
             elif "```" in content_ai:
@@ -423,42 +560,61 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                 end = content_ai.rfind('}')
                 if start != -1 and end != -1:
                     content_ai = content_ai[start:end+1]
-            
             ai_data = json.loads(content_ai)
             parsed_actions = ai_data.get("actions", [])
             ai_message = ai_data.get("message", ai_message)
         except Exception as ai_err:
-            print(f"Error en IA: {ai_err}")
-            ai_message = f"Error en procesamiento: {str(ai_err)}"
+            print(f"[OCR] Error en LLM: {ai_err}")
+            ai_message = f"Error en análisis IA: {str(ai_err)}"
 
-        # Guardar resultado final
+        # --- FASE 4: Guardar resultado final ---
+        final_status = "error" if (pages_ok == 0 and pages_error > 0) else "reviewing"
+        error_summary = f"Páginas con error: {error_pages}" if error_pages else None
+
         doc_metadata = {
             "source": filename,
             "type": "temp_trd_session",
             "file_url": file_url,
             "entidad_id": entidad_id,
-            "status": "reviewing",
+            "file_size_bytes": file_size_bytes,
+            "status": final_status,
+            "ocr_stage": "Listo para verificación" if final_status == "reviewing" else "Error en el procesamiento",
+            "ocr_progress": 100,
+            "ocr_current_page": total_pages,
+            "ocr_total_pages": total_pages,
+            "ocr_pages_ok": pages_ok,
+            "ocr_pages_error": pages_error,
+            "ocr_error_pages": error_pages,
             "actions": parsed_actions,
             "message": ai_message,
+            "error_summary": error_summary,
             "created_at": datetime.now().isoformat()
         }
-        
-        supabase_client.table("rag_documents").update({
-            "metadata": doc_metadata
-        }).eq("id", doc_id).execute()
-        
-        print(f"OK: Proceso terminado para: {filename}")
-        
+        supabase_client.table("rag_documents").update({"metadata": doc_metadata}).eq("id", doc_id).execute()
+        print(f"[OCR] Proceso terminado para: {filename} → Estado: {final_status}")
+
     except Exception as e:
-        print(f"Error crítico: {e}")
+        print(f"[OCR] Error crítico en fase LLM: {e}")
         try:
             supabase_client.table("rag_documents").update({
                 "metadata": {
-                    "source": filename, "status": "error", "message": str(e),
-                    "type": "temp_trd_session", "created_at": datetime.now().isoformat()
+                    "source": filename, "status": "error",
+                    "ocr_stage": "Error en el procesamiento",
+                    "ocr_progress": 100,
+                    "ocr_current_page": total_pages,
+                    "ocr_total_pages": total_pages,
+                    "ocr_pages_ok": pages_ok,
+                    "ocr_pages_error": pages_error,
+                    "ocr_error_pages": error_pages,
+                    "message": str(e),
+                    "type": "temp_trd_session",
+                    "file_url": file_url, "entidad_id": entidad_id,
+                    "file_size_bytes": file_size_bytes,
+                    "created_at": datetime.now().isoformat()
                 }
             }).eq("id", doc_id).execute()
-        except: pass
+        except:
+            pass
 
 
 #  Endpoints 
@@ -1592,50 +1748,82 @@ async def delete_entity(entity_id: str):
     return {"status": "success"}
 
 @router.post("/analyze-trd")
-async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = Form(""), user: dict = Depends(get_current_user)):
+async def analyze_trd(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    entidad_id: str = Form(""),
+    user: dict = Depends(get_current_user)
+):
     if not supabase_client: raise HTTPException(503)
+
     content = await file.read()
-    
+    file_size_bytes = len(content)
+
+    # --- Validación de tamaño ---
+    max_bytes = MAX_OCR_FILE_SIZE_MB * 1024 * 1024
+    if file_size_bytes > max_bytes:
+        size_mb = file_size_bytes / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Este archivo es demasiado pesado para procesarse ({size_mb:.1f} MB). "
+                f"El límite permitido es {MAX_OCR_FILE_SIZE_MB} MB. "
+                "Intenta reducir su tamaño o dividirlo en varios archivos."
+            )
+        )
+
     # Asegurar que el filename sea seguro para Storage
     safe_name = file.filename.replace(' ', '_').replace('/', '_')
     filename_clean = f"{int(datetime.now().timestamp())}_{safe_name}"
-    
-    supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
-    file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
-    
+
+    file_url = None
+    try:
+        supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
+        file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
+    except Exception as storage_err:
+        print(f"[analyze-trd] Error subiendo a Storage: {storage_err}")
+
     # Lógica de entidad: estricta para administrador, flexible para superadmin
     if user.get("role") == "superadmin":
         entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
     else:
         entidad_final = user.get("entity_id")
-        
+
     if not entidad_final or entidad_final == "null":
         raise HTTPException(400, "No se puede importar sin una entidad válida.")
-    
+
     res = supabase_client.table("rag_documents").insert({
         "content": f"Import Session Snapshot: {file.filename}",
         "metadata": {
-            "source": file.filename, 
-            "status": "processing", 
-            "file_url": file_url, 
-            "entidad_id": entidad_final, 
+            "source": file.filename,
+            "status": "processing",
+            "ocr_stage": "Archivo recibido",
+            "ocr_progress": 0,
+            "ocr_current_page": 0,
+            "ocr_total_pages": 0,
+            "ocr_pages_ok": 0,
+            "ocr_pages_error": 0,
+            "ocr_error_pages": [],
+            "file_url": file_url,
+            "file_size_bytes": file_size_bytes,
+            "entidad_id": entidad_final,
             "type": "temp_trd_session",
             "created_at": datetime.now().isoformat()
         }
     }).execute()
-    
+
     if not res.data:
         raise HTTPException(500, detail="No se pudo crear la sesión de importación")
-        
+
     doc_id = res.data[0]["id"]
-    
-    # Iniciar procesos paralelos en segundo plano
-    # 1. OCR para aprobación inmediata (Prioridad Máxima del Sistema)
+    print(f"[analyze-trd] Sesión creada: {doc_id} | Archivo: {file.filename} | Tamaño: {file_size_bytes / 1024 / 1024:.2f} MB | Entidad: {entidad_final}")
+
+    # 1. OCR por lotes en segundo plano (prioridad máxima)
     background_tasks.add_task(process_ocr_task, doc_id, content, file.filename)
-    
-    # 2. RAG Indexing en background (Proceso Secundario y no bloqueante)
+
+    # 2. RAG Indexing en background (proceso secundario)
     background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
-    
+
     return {"id": doc_id, "status": "processing", "import_id": doc_id}
 
 
