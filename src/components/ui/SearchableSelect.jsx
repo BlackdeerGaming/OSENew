@@ -52,8 +52,8 @@ export default function SearchableSelect({
           className
         )}
       >
-        <span className={cn("truncate", !selectedOption && "text-muted-foreground")}>
-          {selectedOption ? selectedOption.label : placeholder}
+        <span className={cn("truncate", !selectedOption && !value && "text-muted-foreground")}>
+          {selectedOption ? selectedOption.label : (value || placeholder)}
         </span>
         <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
       </button>

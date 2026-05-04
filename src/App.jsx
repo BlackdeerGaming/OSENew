@@ -112,6 +112,7 @@ function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
 
   // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
@@ -939,7 +940,6 @@ function App() {
     if (cleaned.length > 0) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
     if (activeField) {
-      // (Lógica de validación omitida para brevedad pero mantenemos la estructura)
       if (cleaned.toLowerCase() === 'no aplica' || cleaned.toLowerCase() === 'ninguna') cleaned = "";
       setActiveFormData(prev => ({ ...prev, [activeField]: cleaned }));
       
@@ -956,6 +956,57 @@ function App() {
   const handleSave = async () => {
     if (isSaving) return;
     
+    // --- VALIDATION LOGIC ---
+    const errors = {};
+    const data = activeFormData;
+    
+    if (activeModule === 'dependencias') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.pais?.trim()) errors.pais = "El país es obligatorio.";
+      if (!data.direccion?.trim()) errors.direccion = "La dirección es obligatoria.";
+      
+      if (data.pais === "Colombia") {
+        if (!data.departamento?.trim()) errors.departamento = "Selecciona un departamento.";
+        if (!data.ciudad?.trim()) errors.ciudad = "Selecciona una ciudad.";
+      }
+    } else if (activeModule === 'series') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia productora es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre de la serie es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
+    } else if (activeModule === 'subseries') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
+      if (!data.serieId) errors.serieId = "La serie asociada es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre de la subserie es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
+    } else if (activeModule === 'trdform') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
+      if (!data.serieId) errors.serieId = "La serie es obligatoria.";
+      if (!data.estadoConservacion) errors.estadoConservacion = "El estado de conservación es obligatorio.";
+      if (!data.retencionGestion) errors.retencionGestion = "La retención en gestión es obligatoria.";
+      if (!data.retencionCentral) errors.retencionCentral = "La retención central es obligatoria.";
+      if (!data.ddhh) errors.ddhh = "Este campo es obligatorio.";
+      if (!data.procedimiento?.trim()) errors.procedimiento = "El procedimiento es obligatorio.";
+      if (!data.actoAdmo?.trim()) errors.actoAdmo = "El acto administrativo es obligatorio.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'error', 
+        message: 'Faltan campos obligatorios. Por favor, revisa el formulario.' 
+      });
+      return;
+    }
+
+    setFormErrors({});
     setIsSaving(true);
     setModalStatus({ isOpen: true, type: 'loading', message: 'Verificando datos y guardando en base de datos...' });
     
@@ -1311,6 +1362,7 @@ function App() {
   // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
     setActiveModule(moduleId);
+    setFormErrors({});
     
     // Si tenemos data persistida para este módulo (escrita por el usuario antes), la recuperamos
     const persisted = formsPersistence[moduleId];
@@ -1326,6 +1378,7 @@ function App() {
       setActiveFormData(autoData);
     }
     setFlowStep(0);
+    setFormErrors({});
   };
 
   // Renderización de Autenticación
@@ -1453,19 +1506,56 @@ function App() {
               />
             )}
             {activeModule === 'dependencias' && (
-              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+              <DependenciaForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'orgchart' && (
               <OrgChartView dependencias={dependencias} currentUser={currentUser} entities={entities} onEdit={handleEdit} />
             )}
             {activeModule === 'series' && (
-              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+              <SerieForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser}
+                errors={formErrors}
+              />
             )}
             {activeModule === 'subseries' && (
-              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} />
+              <SubserieForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                series={series} 
+                entities={userEntities} 
+                currentUser={currentUser}
+                errors={formErrors}
+              />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} />
+              <TRDForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                series={series} 
+                subseries={subseries} 
+                entities={userEntities} 
+                funciones={funciones} 
+                currentUser={currentUser} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
