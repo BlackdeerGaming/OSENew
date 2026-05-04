@@ -77,48 +77,46 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
-    const newRecord = { 
-      ...data, 
-      id: data.id || Date.now().toString()
-    };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
 
     // Optimistic Update
     setDependencias(prev => {
-      const exists = prev.find(x => String(x.id) === String(newRecord.id));
-      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(tempId));
+      return exists ? prev.map(x => String(x.id) === String(tempId) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
       if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          console.error("❌ No se puede guardar dependencia: entityId es inválido", entityId);
           throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
       }
-      const isCreate = !dependencias.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
-        method: method,
+        method,
         headers: authHeaders(),
         body: JSON.stringify(mapDependenciaToDB(newRecord))
       });
       
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        console.error(`API Error [${method} dependencias]:`, errData);
-        
-        // Extraer mensaje de error más legible
         let detail = errData.detail || 'Error al guardar la dependencia';
         if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "El código ingresado ya existe para esta entidad. Por favor usa uno diferente.";
+          detail = "El código ingresado ya existe para esta entidad.";
         }
-        
         throw new Error(detail);
       }
-      return await response.json();
+      
+      const savedRecord = await response.json();
+      // After successful save, we REFRESH data to ensure IDs are synced from DB
+      await refreshData();
+      return savedRecord;
     } catch (err) {
-      console.error('❌ Error guardando dependencia:', err);
-      // Re-lanzar para que el componente lo maneje (mostrar modal y no limpiar form)
+      // Rollback on error
+      await refreshData();
       throw err;
     }
   };
@@ -139,37 +137,36 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
     setSeries(prev => {
-      const exists = prev.find(x => String(x.id) === String(newRecord.id));
-      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(tempId));
+      return exists ? prev.map(x => String(x.id) === String(tempId) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
       if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          console.error("❌ No se puede guardar serie: entityId es inválido", entityId);
-          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+          throw new Error("Contexto de entidad no válido.");
       }
-      const isCreate = !series.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: authHeaders(),
         body: JSON.stringify(mapSerieToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        let detail = errData.detail || 'Error al guardar la serie';
-        if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "El código de serie ingresado ya existe para esta entidad.";
-        }
-        throw new Error(detail);
+        throw new Error(errData.detail || 'Error al guardar la serie');
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
-      console.error('❌ Error guardando serie:', err);
+      await refreshData();
       throw err;
     }
   };
@@ -181,37 +178,36 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
     setSubseries(prev => {
-      const exists = prev.find(x => String(x.id) === String(newRecord.id));
-      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(tempId));
+      return exists ? prev.map(x => String(x.id) === String(tempId) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
       if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          console.error("❌ No se puede guardar subserie: entityId es inválido", entityId);
-          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+          throw new Error("Contexto de entidad no válido.");
       }
-      const isCreate = !subseries.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: authHeaders(),
         body: JSON.stringify(mapSubserieToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        let detail = errData.detail || 'Error al guardar la subserie';
-        if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "Ya existe una subserie con este código dentro de la misma dependencia y serie";
-        }
-        throw new Error(detail);
+        throw new Error(errData.detail || 'Error al guardar la subserie');
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
-      console.error('❌ Error guardando subserie:', err);
+      await refreshData();
       throw err;
     }
   };
@@ -222,38 +218,36 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
-    const newRecord = { ...data, id: data.id || Date.now().toString() };
+    const isUpdate = !!data.id;
+    const tempId = data.id || `temp-${Date.now()}`;
+    const newRecord = { ...data, id: tempId };
+
     setTrdRecords(prev => {
-      const exists = prev.find(x => String(x.id) === String(newRecord.id));
-      return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
+      const exists = prev.find(x => String(x.id) === String(tempId));
+      return exists ? prev.map(x => String(x.id) === String(tempId) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
       if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          console.error("❌ No se puede guardar TRD record: entityId es inválido", entityId);
-          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
+          throw new Error("Contexto de entidad no válido.");
       }
-      const isCreate = !trdRecords.find(x => String(x.id) === String(newRecord.id));
-      const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isCreate ? '' : '/' + newRecord.id}`;
-      const method = isCreate ? 'POST' : 'PUT';
+      const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isUpdate ? '/' + data.id : ''}`;
+      const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: authHeaders(),
         body: JSON.stringify(mapTRDToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        let detail = errData.detail || 'Error al guardar la valoración TRD';
-        // TRD might not have a simple "code" but a unique constraint on dep+ser+sub
-        if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "Ya existe una valoración para esta combinación de Dependencia/Serie/Subserie.";
-        }
-        throw new Error(detail);
+        throw new Error(errData.detail || 'Error al guardar la valoración TRD');
       }
-      return await res.json();
+      const saved = await res.json();
+      await refreshData();
+      return saved;
     } catch (err) {
-      console.error('❌ Error guardando TRD record:', err);
+      await refreshData();
       throw err;
     }
   };

@@ -143,18 +143,14 @@ async def create_dependencia_entity(
     
     await db.put_item("dependencias", data)
     
-    # Cloud upload to S3
+    # Cloud upload to S3 (non-blocking)
     try:
-        await upload_record(
-            entity_id,
-            "dependencias",
-            data["id"],
-            data,
-        )
+        if background:
+            background.add_task(upload_record, entity_id, "dependencias", data["id"], data)
+        else:
+            await upload_record(entity_id, "dependencias", data["id"], data)
     except Exception as e:
-        # Rollback DynamoDB entry
-        await db.delete_item("dependencias", data["PK"], data["SK"])
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+        print(f"[CloudSync] Warning: S3 upload failed for dependency {data['id']}: {e}")
     return data
 
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
@@ -169,6 +165,7 @@ async def update_dependencia_entity(
     dep_id: str,
     payload: DependenciaCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
@@ -179,15 +176,14 @@ async def update_dependencia_entity(
     
     # Get full item for S3 update
     full_item = await db.get_item("dependencias", pk, sk)
+    # Update cloud storage representation (non-blocking)
     try:
-        await upload_record(
-            entity_id,
-            "dependencias",
-            dep_id,
-            full_item,
-        )
+        if background:
+            background.add_task(upload_record, entity_id, "dependencias", dep_id, full_item)
+        else:
+            await upload_record(entity_id, "dependencias", dep_id, full_item)
     except Exception as e:
-        print(f"Cloud sync failed: {e}")
+        print(f"[CloudSync] Warning: S3 update failed for dependency {dep_id}: {e}")
     return full_item
 
 @router.delete("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
@@ -222,11 +218,11 @@ async def create_serie_entity(
     data["SK"] = f"SER#{data['id']}"
     
     await db.put_item("series", data)
-    try:
-        await upload_record(entity_id, "series", data["id"], data)
-    except Exception as e:
-        await db.delete_item("series", data["PK"], data["SK"])
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+    if background:
+        background.add_task(upload_record, entity_id, "series", data["id"], data)
+    else:
+        try: await upload_record(entity_id, "series", data["id"], data)
+        except Exception as e: print(f"[CloudSync] Warning: {e}")
     return data
 
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
@@ -240,14 +236,19 @@ async def update_serie_entity(
     serie_id: str,
     payload: SerieCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
     pk, sk = f"ENTITY#{entity_id}", f"SER#{serie_id}"
     await db.update_item("series", pk, sk, data)
     record = await db.get_item("series", pk, sk)
-    try:
-        await upload_record(entity_id, "series", serie_id, record)
+    if background:
+        background.add_task(upload_record, entity_id, "series", serie_id, record)
+    else:
+        try: await upload_record(entity_id, "series", serie_id, record)
+        except Exception as e: print(f"[CloudSync] Warning: {e}")
+    return record
     except Exception: pass
     return record
 
@@ -266,6 +267,7 @@ async def create_subserie_entity(
     entity_id: str,
     payload: SubserieCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -287,11 +289,11 @@ async def create_subserie_entity(
     data["SK"] = f"SUB#{data['id']}"
     
     await db.put_item("subseries", data)
-    try:
-        await upload_record(entity_id, "subseries", data["id"], data)
-    except Exception as e:
-        await db.delete_item("subseries", data["PK"], data["SK"])
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+    if background:
+        background.add_task(upload_record, entity_id, "subseries", data["id"], data)
+    else:
+        try: await upload_record(entity_id, "subseries", data["id"], data)
+        except Exception as e: print(f"[CloudSync] Warning: {e}")
     return data
 
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
@@ -305,15 +307,18 @@ async def update_subserie_entity(
     subserie_id: str,
     payload: SubserieCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
     pk, sk = f"ENTITY#{entity_id}", f"SUB#{subserie_id}"
     await db.update_item("subseries", pk, sk, data)
     record = await db.get_item("subseries", pk, sk)
-    try:
-        await upload_record(entity_id, "subseries", subserie_id, record)
-    except Exception: pass
+    if background:
+        background.add_task(upload_record, entity_id, "subseries", subserie_id, record)
+    else:
+        try: await upload_record(entity_id, "subseries", subserie_id, record)
+        except Exception: pass
     return record
 
 @router.delete("/entity/{entity_id}/subseries/{subserie_id}")
@@ -331,6 +336,7 @@ async def create_trd_record_entity(
     entity_id: str,
     payload: TRDRecordCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -340,11 +346,11 @@ async def create_trd_record_entity(
     data["SK"] = f"TRD#{data['id']}"
     
     await db.put_item("trd_records", data)
-    try:
-        await upload_record(entity_id, "trd_records", data["id"], data)
-    except Exception as e:
-        await db.delete_item("trd_records", data["PK"], data["SK"])
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+    if background:
+        background.add_task(upload_record, entity_id, "trd_records", data["id"], data)
+    else:
+        try: await upload_record(entity_id, "trd_records", data["id"], data)
+        except Exception as e: print(f"[CloudSync] Warning: {e}")
     return data
 
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
@@ -358,15 +364,18 @@ async def update_trd_record_entity(
     record_id: str,
     payload: TRDRecordCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
     pk, sk = f"ENTITY#{entity_id}", f"TRD#{record_id}"
     await db.update_item("trd_records", pk, sk, data)
     record = await db.get_item("trd_records", pk, sk)
-    try:
-        await upload_record(entity_id, "trd_records", record_id, record)
-    except Exception: pass
+    if background:
+        background.add_task(upload_record, entity_id, "trd_records", record_id, record)
+    else:
+        try: await upload_record(entity_id, "trd_records", record_id, record)
+        except Exception: pass
     return record
 
 @router.delete("/entity/{entity_id}/trd_records/{record_id}")
@@ -383,6 +392,7 @@ async def create_funcion_entity(
     entity_id: str,
     payload: FuncionCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict()
@@ -392,11 +402,11 @@ async def create_funcion_entity(
     data["SK"] = f"FUN#{data['id']}"
     
     await db.put_item("funciones", data)
-    try:
-        await upload_record(entity_id, "funciones", data["id"], data)
-    except Exception as e:
-        await db.delete_item("funciones", data["PK"], data["SK"])
-        raise HTTPException(status_code=500, detail=f"Cloud upload failed: {e}")
+    if background:
+        background.add_task(upload_record, entity_id, "funciones", data["id"], data)
+    else:
+        try: await upload_record(entity_id, "funciones", data["id"], data)
+        except Exception as e: print(f"[CloudSync] Warning: {e}")
     return data
 
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])
@@ -410,16 +420,18 @@ async def update_funcion_entity(
     func_id: str,
     payload: FuncionCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     data = payload.dict(exclude_unset=True)
     pk, sk = f"ENTITY#{entity_id}", f"FUN#{func_id}"
     await db.update_item("funciones", pk, sk, data)
     record = await db.get_item("funciones", pk, sk)
-    try:
-        await upload_record(entity_id, "funciones", func_id, record)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
+    if background:
+        background.add_task(upload_record, entity_id, "funciones", func_id, record)
+    else:
+        try: await upload_record(entity_id, "funciones", func_id, record)
+        except Exception: pass
     return record
 
 @router.delete("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
@@ -442,6 +454,7 @@ async def create_entrevista_entity(
     entity_id: str,
     payload: EntrevistaCreate,
     user: dict = Depends(get_current_user),
+    background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
     
@@ -480,10 +493,11 @@ async def create_entrevista_entity(
         "fecha_entrevista": payload.fecha_entrevista
     }
     await db.put_item("entrevistas", entrevista_data)
-    try:
-        await upload_record(entity_id, "entrevistas", ent_id, entrevista_data)
-    except Exception as e:
-        pass # Ignore minor cloud sync upload error on create
+    if background:
+        background.add_task(upload_record, entity_id, "entrevistas", ent_id, entrevista_data)
+    else:
+        try: await upload_record(entity_id, "entrevistas", ent_id, entrevista_data)
+        except Exception as e: pass
     return entrevista_data
 
 @router.get("/entity/{entity_id}/entrevistas", response_model=List[dict])
