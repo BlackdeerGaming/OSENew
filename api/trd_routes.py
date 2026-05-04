@@ -249,8 +249,6 @@ async def update_serie_entity(
         try: await upload_record(entity_id, "series", serie_id, record)
         except Exception as e: print(f"[CloudSync] Warning: {e}")
     return record
-    except Exception: pass
-    return record
 
 @router.delete("/entity/{entity_id}/series/{serie_id}")
 async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depends(get_current_user)):
