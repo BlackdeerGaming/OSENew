@@ -160,15 +160,12 @@ export default function DependenciaForm({
               <p className="text-[11px] text-slate-500 font-medium">Define dónde se encuentra físicamente esta dependencia.</p>
             </div>
           </div>
-          <label className="flex items-center gap-3 cursor-pointer group bg-white px-4 py-2 rounded-lg border border-primary/20 shadow-sm hover:border-primary transition-all">
-            <input 
-              type="checkbox" 
-              checked={heredar} 
-              onChange={(e) => handleHeredarChange(e.target.checked)} 
-              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-            />
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Heredar datos de Entidad</span>
-          </label>
+          <Checkbox 
+            checked={heredar} 
+            onChange={(e) => handleHeredarChange(e.target.checked)} 
+            label="Heredar datos de Entidad"
+            className="bg-white px-4 py-2 rounded-lg border border-primary/20 shadow-sm hover:border-primary transition-all"
+          />
         </div>
 
         <FormGroup label="País" required isActive={activeField === 'pais'} error={errors.pais}>
