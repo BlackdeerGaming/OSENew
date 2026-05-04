@@ -111,6 +111,7 @@ function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
   
   const [trdData, setTrdData] = useState([]);
   const [mainView, setMainView] = useState('dashboard');
@@ -918,6 +919,57 @@ function App() {
   };
 
   const handleSave = async (moduleType, data) => {
+    if (isSaving) return;
+
+    // --- VALIDATION LOGIC ---
+    const errors = {};
+    if (moduleType === 'dependencias') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.pais?.trim()) errors.pais = "El país es obligatorio.";
+      if (!data.direccion?.trim()) errors.direccion = "La dirección es obligatoria.";
+      
+      if (data.pais === "Colombia") {
+        if (!data.departamento?.trim()) errors.departamento = "Selecciona un departamento.";
+        if (!data.ciudad?.trim()) errors.ciudad = "Selecciona una ciudad.";
+      }
+    } else if (moduleType === 'series') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia productora es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre de la serie es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
+    } else if (moduleType === 'subseries') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
+      if (!data.serieId) errors.serieId = "La serie asociada es obligatoria.";
+      if (!data.nombre?.trim()) errors.nombre = "El nombre de la subserie es obligatorio.";
+      if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
+      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
+    } else if (moduleType === 'trdform') {
+      if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
+      if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
+      if (!data.serieId) errors.serieId = "La serie es obligatoria.";
+      if (!data.estadoConservacion) errors.estadoConservacion = "El estado de conservación es obligatorio.";
+      if (!data.retencionGestion) errors.retencionGestion = "La retención en gestión es obligatoria.";
+      if (!data.retencionCentral) errors.retencionCentral = "La retención central es obligatoria.";
+      if (!data.ddhh) errors.ddhh = "Este campo es obligatorio.";
+      if (!data.procedimiento?.trim()) errors.procedimiento = "El procedimiento es obligatorio.";
+      if (!data.actoAdmo?.trim()) errors.actoAdmo = "El acto administrativo es obligatorio.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'error', 
+        message: 'Faltan campos obligatorios. Por favor, revisa el formulario.' 
+      });
+      return;
+    }
+
+    setFormErrors({});
     setIsSaving(true);
     setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con la nube...' });
     
@@ -1261,6 +1313,7 @@ function App() {
       setActiveFormData(autoData);
     }
     setFlowStep(0);
+    setFormErrors({});
   };
 
   // Renderización de Autenticación
@@ -1388,19 +1441,59 @@ function App() {
               />
             )}
             {activeModule === 'dependencias' && (
-              <DependenciaForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
+              <DependenciaForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'orgchart' && (
               <OrgChartView dependencias={dependencias} currentUser={currentUser} entities={entities} onEdit={handleEdit} />
             )}
             {activeModule === 'series' && (
-              <SerieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
+              <SerieForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'subseries' && (
-              <SubserieForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} entities={userEntities} currentUser={currentUser} selectedEntityId={selectedEntityId} />
+              <SubserieForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                series={series} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'trdform' && (
-              <TRDForm data={activeFormData} onChange={setActiveFormData} activeField={activeField} dependencias={dependencias} series={series} subseries={subseries} entities={userEntities} funciones={funciones} currentUser={currentUser} selectedEntityId={selectedEntityId} />
+              <TRDForm 
+                data={activeFormData} 
+                onChange={setActiveFormData} 
+                activeField={activeField} 
+                dependencias={dependencias} 
+                series={series} 
+                subseries={subseries} 
+                entities={userEntities} 
+                funciones={funciones} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId} 
+                errors={formErrors}
+              />
             )}
             {activeModule === 'datos' && (
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
@@ -1500,9 +1593,12 @@ function App() {
              <button 
                onClick={() => handleSave(activeModule, activeFormData)}
                disabled={isSaving}
-               className="flex items-center gap-3 bg-primary text-white hover:bg-primary/90 px-10 py-4 rounded-2xl shadow-xl shadow-primary/20 text-base font-black uppercase tracking-widest transition-all transform active:scale-95 disabled:opacity-50"
+               className={cn(
+                 "flex items-center gap-3 px-10 py-4 rounded-2xl shadow-xl text-base font-black uppercase tracking-widest transition-all transform active:scale-95",
+                 isSaving ? "bg-slate-300 cursor-not-allowed text-slate-500" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+               )}
              >
-               <Save className="h-6 w-6" />
+               {isSaving ? <Activity className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
                {isSaving ? "Guardando..." : (activeFormData.id ? "Actualizar Registro" : "Guardar Registro")}
              </button>
            </div>

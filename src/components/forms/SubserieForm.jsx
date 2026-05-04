@@ -3,7 +3,7 @@ import { FormGroup } from "./DependenciaForm";
 import { inputClass, textareaClass } from "./SerieForm";
 import SearchableSelect from "../ui/SearchableSelect";
 
-export default function SubserieForm({ data, onChange, activeField, dependencias = [], series = [], entities = [], currentUser = null, selectedEntityId = null }) {
+export default function SubserieForm({ data, onChange, activeField, dependencias = [], series = [], entities = [], currentUser = null, errors = {} }) {
   const handleChange = (e) => {
     const { name, value } = e.target;
     onChange({ ...data, [name]: value });
@@ -36,7 +36,7 @@ export default function SubserieForm({ data, onChange, activeField, dependencias
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({ entidadId: data.entidadId })} 
+            onClick={() => onChange({})} 
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
             + Nueva Subserie
@@ -46,39 +46,38 @@ export default function SubserieForm({ data, onChange, activeField, dependencias
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
         <div className="md:col-span-2">
-          <FormGroup label="Nombre Entidad (Contexto)" required isActive={activeField === 'entidadId'}>
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'} error={errors.entidadId}>
             <select
               name="entidadId"
-              value={selectedEntityId || data.entidadId || ""}
+              value={data.entidadId || ""}
               onChange={handleChange}
-              className={cn(inputClass, "opacity-75 cursor-not-allowed bg-slate-50")}
-              disabled
+              className={cn(inputClass, errors.entidadId && "border-destructive focus-visible:ring-destructive")}
             >
               <option value="">Seleccione una entidad...</option>
               {entities.map(ent => (
-                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.nombre}</option>
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
               ))}
             </select>
           </FormGroup>
         </div>
 
-        <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'}>
+        <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
           <SearchableSelect 
             name="dependenciaId" 
             value={data.dependenciaId || ""} 
             onChange={handleChange} 
-            className={inputClass}
+            className={cn(inputClass, errors.dependenciaId && "border-destructive")}
             placeholder="Seleccione una dependencia..."
             options={dependencias.map(dep => ({ value: dep.id, label: `${dep.codigo} - ${dep.nombre}` }))}
           />
         </FormGroup>
 
-        <FormGroup label="Serie Asociada" required isActive={activeField === 'serieId'}>
+        <FormGroup label="Serie Asociada" required isActive={activeField === 'serieId'} error={errors.serieId}>
           <SearchableSelect 
             name="serieId" 
             value={data.serieId || ""} 
             onChange={handleSerieChange} 
-            className={inputClass}
+            className={cn(inputClass, errors.serieId && "border-destructive")}
             disabled={filteredSeries.length === 0}
             placeholder="Seleccione una serie..."
             options={filteredSeries.map(s => ({ value: s.id, label: `${s.codigo} - ${s.nombre}` }))}
@@ -86,18 +85,36 @@ export default function SubserieForm({ data, onChange, activeField, dependencias
         </FormGroup>
 
         <div className="md:col-span-2">
-          <FormGroup label="Nombre de la Subserie" required isActive={activeField === 'nombre'}>
-            <input name="nombre" value={data.nombre || ""} onChange={handleChange} className={inputClass} placeholder="Ej. Licitaciones Públicas" />
+          <FormGroup label="Nombre de la Subserie" required isActive={activeField === 'nombre'} error={errors.nombre}>
+            <input 
+              name="nombre" 
+              value={data.nombre || ""} 
+              onChange={handleChange} 
+              className={cn(inputClass, errors.nombre && "border-destructive focus-visible:ring-destructive")} 
+              placeholder="Ej. Licitaciones Públicas" 
+            />
           </FormGroup>
         </div>
 
-        <FormGroup label="Código" required isActive={activeField === 'codigo'}>
-          <input name="codigo" value={data.codigo || ""} onChange={handleChange} className={inputClass} placeholder="Ej. 100-01-01" />
+        <FormGroup label="Código" required isActive={activeField === 'codigo'} error={errors.codigo}>
+          <input 
+            name="codigo" 
+            value={data.codigo || ""} 
+            onChange={handleChange} 
+            className={cn(inputClass, errors.codigo && "border-destructive focus-visible:ring-destructive")} 
+            placeholder="Ej. 100-01-01" 
+          />
         </FormGroup>
 
         <div className="md:col-span-2">
-          <FormGroup label="Tipos Documentales" required isActive={activeField === 'tipoDocumental'}>
-            <textarea name="tipoDocumental" value={data.tipoDocumental || ""} onChange={handleChange} className={textareaClass} placeholder="Escriba los tipos documentales..." />
+          <FormGroup label="Tipos Documentales" required isActive={activeField === 'tipoDocumental'} error={errors.tipoDocumental}>
+            <textarea 
+              name="tipoDocumental" 
+              value={data.tipoDocumental || ""} 
+              onChange={handleChange} 
+              className={cn(textareaClass, errors.tipoDocumental && "border-destructive focus-visible:ring-destructive")} 
+              placeholder="Escriba los tipos documentales..." 
+            />
           </FormGroup>
         </div>
 

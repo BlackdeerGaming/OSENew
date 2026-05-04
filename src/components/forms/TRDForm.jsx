@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
 import FuncionesMultiSelect from "../ui/FuncionesMultiSelect";
 
-export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [], entities = [], funciones = [], currentUser = null, selectedEntityId = null }) {
+export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [], entities = [], funciones = [], currentUser = null, errors = {} }) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -43,7 +43,7 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({ entidadId: data.entidadId })} 
+            onClick={() => onChange({})} 
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
             + Nueva Valoración
@@ -54,28 +54,27 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
       {/* Top Filter Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end mb-4 border-b border-border/50 pb-8">
         <div className="md:col-span-2">
-          <FormGroup label="Nombre Entidad (Contexto)" required isActive={activeField === 'entidadId'}>
+          <FormGroup label="Nombre Entidad" required isActive={activeField === 'entidadId'} error={errors.entidadId}>
             <select
               name="entidadId"
-              value={selectedEntityId || data.entidadId || ""}
+              value={data.entidadId || ""}
               onChange={handleChange}
-              className={cn(inputClass, "opacity-75 cursor-not-allowed bg-slate-50")}
-              disabled
+              className={cn(inputClass, errors.entidadId && "border-destructive focus-visible:ring-destructive")}
             >
               <option value="">Seleccione una entidad...</option>
               {entities.map(ent => (
-                <option key={ent.id} value={ent.id}>{ent.razonSocial || ent.nombre}</option>
+                <option key={ent.id} value={ent.id}>{ent.razonSocial}</option>
               ))}
             </select>
           </FormGroup>
         </div>
 
-        <FormGroup label="Dependencia" required isActive={activeField === 'dependenciaId'}>
+        <FormGroup label="Dependencia" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
           <SearchableSelect 
             name="dependenciaId" 
             value={data.dependenciaId || ""} 
             onChange={handleChange} 
-            className={inputClass}
+            className={cn(inputClass, errors.dependenciaId && "border-destructive")}
             placeholder="Seleccione..."
             options={dependencias.map(dep => ({ value: dep.id, label: dep.nombre }))}
           />
@@ -85,12 +84,12 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
           <input disabled value={activeDependencia ? activeDependencia.codigo : ""} className={cn(inputClass, "bg-secondary text-muted-foreground")} />
         </FormGroup>
 
-        <FormGroup label="Serie" isActive={activeField === 'serieId'}>
+        <FormGroup label="Serie" required isActive={activeField === 'serieId'} error={errors.serieId}>
           <SearchableSelect 
             name="serieId" 
             value={data.serieId || ""} 
             onChange={handleChange} 
-            className={inputClass}
+            className={cn(inputClass, errors.serieId && "border-destructive")}
             placeholder="Seleccione..."
             options={filteredSeries.map(s => ({ value: s.id, label: s.nombre }))}
           />
@@ -120,8 +119,13 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
 
       {/* Valuation Section */}
       <div className="grid grid-cols-1 gap-x-6 gap-y-6">
-        <FormGroup label="Estado Conservación *" isActive={activeField === 'estadoConservacion'}>
-          <select name="estadoConservacion" value={data.estadoConservacion || ""} onChange={handleChange} className={inputClass}>
+        <FormGroup label="Estado Conservación *" isActive={activeField === 'estadoConservacion'} error={errors.estadoConservacion}>
+          <select 
+            name="estadoConservacion" 
+            value={data.estadoConservacion || ""} 
+            onChange={handleChange} 
+            className={cn(inputClass, errors.estadoConservacion && "border-destructive focus-visible:ring-destructive")}
+          >
             <option value="" disabled>Seleccione</option>
             <option value="Bueno">Bueno</option>
             <option value="Regular">Regular</option>
@@ -171,16 +175,33 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <FormGroup label="Archivo de Gestión (Años) *" isActive={activeField === 'retencionGestion'}>
-            <input type="number" name="retencionGestion" value={data.retencionGestion || ""} onChange={handleChange} className={inputClass} />
+          <FormGroup label="Archivo de Gestión (Años) *" isActive={activeField === 'retencionGestion'} error={errors.retencionGestion}>
+            <input 
+              type="number" 
+              name="retencionGestion" 
+              value={data.retencionGestion || ""} 
+              onChange={handleChange} 
+              className={cn(inputClass, errors.retencionGestion && "border-destructive focus-visible:ring-destructive")} 
+            />
           </FormGroup>
 
-          <FormGroup label="Archivo Central *" isActive={activeField === 'retencionCentral'}>
-            <input type="number" name="retencionCentral" value={data.retencionCentral || ""} onChange={handleChange} className={inputClass} />
+          <FormGroup label="Archivo Central *" isActive={activeField === 'retencionCentral'} error={errors.retencionCentral}>
+            <input 
+              type="number" 
+              name="retencionCentral" 
+              value={data.retencionCentral || ""} 
+              onChange={handleChange} 
+              className={cn(inputClass, errors.retencionCentral && "border-destructive focus-visible:ring-destructive")} 
+            />
           </FormGroup>
 
-          <FormGroup label="Serie de DDHH/DIH *" isActive={activeField === 'ddhh'}>
-            <select name="ddhh" value={data.ddhh || ""} onChange={handleChange} className={inputClass}>
+          <FormGroup label="Serie de DDHH/DIH *" isActive={activeField === 'ddhh'} error={errors.ddhh}>
+            <select 
+              name="ddhh" 
+              value={data.ddhh || ""} 
+              onChange={handleChange} 
+              className={cn(inputClass, errors.ddhh && "border-destructive focus-visible:ring-destructive")}
+            >
               <option value="" disabled>Seleccione...</option>
               <option value="Si">Si</option>
               <option value="No">No</option>
@@ -218,12 +239,22 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
           </div>
         </div>
 
-        <FormGroup label="Procedimiento *" isActive={activeField === 'procedimiento'}>
-            <textarea name="procedimiento" value={data.procedimiento || ""} onChange={handleChange} className={textareaClass} />
+        <FormGroup label="Procedimiento *" isActive={activeField === 'procedimiento'} error={errors.procedimiento}>
+            <textarea 
+              name="procedimiento" 
+              value={data.procedimiento || ""} 
+              onChange={handleChange} 
+              className={cn(textareaClass, errors.procedimiento && "border-destructive focus-visible:ring-destructive")} 
+            />
         </FormGroup>
         
-        <FormGroup label="Acto Administrativo *" isActive={activeField === 'actoAdmo'}>
-            <textarea name="actoAdmo" value={data.actoAdmo || ""} onChange={handleChange} className={textareaClass} />
+        <FormGroup label="Acto Administrativo *" isActive={activeField === 'actoAdmo'} error={errors.actoAdmo}>
+            <textarea 
+              name="actoAdmo" 
+              value={data.actoAdmo || ""} 
+              onChange={handleChange} 
+              className={cn(textareaClass, errors.actoAdmo && "border-destructive focus-visible:ring-destructive")} 
+            />
         </FormGroup>
 
       </div>
