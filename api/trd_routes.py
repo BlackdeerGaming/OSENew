@@ -117,8 +117,23 @@ async def create_dependencia_entity(
 ):
     # Permission check: entity admin only for their entity
     require_entity_admin(user, entity_id)
-    # Insert into Supabase DB
+    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
+    clean_codigo = payload.codigo.strip()
+    # Buscamos coincidencias (case-insensitive)
+    existing = supabase_client.table("dependencias") \
+        .select("id") \
+        .eq("entidad_id", entity_id) \
+        .ilike("codigo", clean_codigo) \
+        .execute()
+    
+    if existing.data:
+        # Si es una actualizaciÃ³n, permitimos que sea el mismo ID
+        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
+             raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el cÃ³digo '{clean_codigo}' en esta entidad. Usa un cÃ³digo diferente.")
+
+    # 2. Insert into Supabase DB
     data = payload.dict()
+    data["codigo"] = clean_codigo # Guardar normalizado
     data["entidad_id"] = entity_id
     try:
         res = supabase_client.table("dependencias").upsert(data).execute()
@@ -207,7 +222,21 @@ async def create_serie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
+    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad y dependencia)
+    clean_codigo = payload.codigo.strip()
+    existing = supabase_client.table("series") \
+        .select("id") \
+        .eq("entidad_id", entity_id) \
+        .eq("dependencia_id", payload.dependencia_id) \
+        .ilike("codigo", clean_codigo) \
+        .execute()
+    
+    if existing.data:
+        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
+             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el cÃ³digo '{clean_codigo}' para esta dependencia.")
+
     data = payload.dict()
+    data["codigo"] = clean_codigo
     data["entidad_id"] = entity_id
     try:
         res = supabase_client.table("series").upsert(data).execute()
@@ -272,7 +301,21 @@ async def create_subserie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
+    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad y serie)
+    clean_codigo = payload.codigo.strip()
+    existing = supabase_client.table("subseries") \
+        .select("id") \
+        .eq("entidad_id", entity_id) \
+        .eq("serie_id", payload.serie_id) \
+        .ilike("codigo", clean_codigo) \
+        .execute()
+    
+    if existing.data:
+        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
+             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el cÃ³digo '{clean_codigo}' para esta serie.")
+
     data = payload.dict()
+    data["codigo"] = clean_codigo
     data["entidad_id"] = entity_id
     try:
         res = supabase_client.table("subseries").upsert(data).execute()

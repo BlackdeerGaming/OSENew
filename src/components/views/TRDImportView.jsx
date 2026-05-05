@@ -16,12 +16,13 @@ const MAX_FILE_SIZE_MB = 50;
 
 const STATUS_CONFIG = {
   uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
-  processing: { label: 'Preparando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  analyzing: { label: 'Extrayendo Datos...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  ocr_running: { label: 'Procesando...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
-  reviewing: { label: 'Pendiente de Revisión', color: 'bg-amber-50 text-amber-600', icon: Scan, animate: false },
-  success: { label: 'Integrado', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
-  error: { label: 'Error', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  processing: { label: 'Iniciando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  analyzing: { label: 'Procesando Imágenes...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  ocr_running: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
+  reviewing: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
+  integrating: { label: 'Integrando en la Nube...', color: 'bg-indigo-50 text-indigo-600', icon: Database, animate: true },
+  success: { label: 'Integrado con Éxito', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
+  error: { label: 'Error de Integración', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
   cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
 };
 
@@ -51,14 +52,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
   // Polling for analyzing tasks
   useEffect(() => {
-    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing'].includes(imp.status));
+    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing', 'ocr_running', 'integrating'].includes(imp.status));
     if (!hasActiveTasks) return;
     
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchImports();
       }
-    }, 5000); // Polling cada 5 segundos para ver el progreso del OCR
+    }, 5000); 
     
     return () => clearInterval(interval);
   }, [imports]);
@@ -71,7 +72,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
-        headers: { "Authorization": `Bearer ${currentUser.token}` }
+        headers: { 
+          "Authorization": `Bearer ${currentUser.token}`,
+          "x-entity-context": entId
+        }
       });
       if (res.ok) {
         const data = await res.json();
@@ -85,9 +89,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
              const statusValue = d.status || d.metadata?.status;
              const mappedStatus = statusValue === 'success' ? 'success' : 
                                   statusValue === 'reviewing' ? 'reviewing' :
-                                  statusValue === 'processing' ? 'analyzing' : 
+                                  statusValue === 'integrating' ? 'integrating' :
+                                  statusValue === 'ocr_running' ? 'ocr_running' :
+                                  statusValue === 'processing' ? 'processing' : 
                                   statusValue === 'uploading' ? 'uploading' :
-                                  statusValue === 'error' ? 'error' : 'analyzing';
+                                  statusValue === 'error' ? 'error' : 
+                                  statusValue === 'cancelled' ? 'cancelled' : 'analyzing';
 
              const mappedImport = {
                 id: d.id,
@@ -152,7 +159,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
         method: 'POST',
-        headers: { "Authorization": `Bearer ${currentUser?.token}` },
+        headers: { 
+          "Authorization": `Bearer ${currentUser?.token}`,
+          "x-entity-context": currentEntity?.id
+        },
         body: formData,
       });
 
@@ -289,8 +299,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       setIsProcessingNew(true);
       
-      // Update local state immediately for responsiveness
-      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+      // Update local state to 'integrating'
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'integrating' } : imp));
 
       // 1. Ejecutar acciones en App state / Database
       if (onImportComplete) {
@@ -315,11 +325,31 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       if (addActivityLog) addActivityLog(`Importación TRD Exitosa: ${currentPreviewImport.filename}`);
       
       setPreviewImportId(null);
-      // No forzamos un fetch inmediato pesado para evitar mostrar estados de RAG
-      // Simplemente dejamos que el estado local se mantenga en 'success'
+      // Refrescar para asegurar sincronía con DB
+      await fetchImports();
     } catch (err) {
       console.error("Error al integrar:", err);
       const detail = err.message || "Error desconocido";
+      
+      // Marcar como error en el estado local y DB
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'error', error_summary: detail } : imp));
+      
+      try {
+        await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({ 
+            status: 'error',
+            metadata: { ...currentPreviewImport.metadata, error_summary: detail } 
+          })
+        });
+      } catch (dbErr) {
+        console.error("Error updating fail status in DB:", dbErr);
+      }
+
       alert(`Hubo un error al guardar los datos estructurados.\nDetalle técnico: ${detail}`);
     } finally {
       setIsProcessingNew(false);
@@ -416,19 +446,19 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                      <History className="h-3 w-3 text-primary" />
-                     Tareas en Curso ({imports.filter(i => i.status !== 'success').length})
+                     Tareas en Curso ({imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'integrating'].includes(i.status)).length})
                   </div>
               </div>
 
               <div className="space-y-3 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                      {imports.filter(i => i.status !== 'success').length === 0 ? (
+                      {imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'integrating'].includes(i.status)).length === 0 ? (
                           <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
                               <Database className="h-6 w-6 opacity-20" />
                               <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">No hay tareas activas</span>
                           </motion.div>
                       ) : (
-                          imports.filter(i => i.status !== 'success').map((imp) => {
+                          imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'integrating'].includes(i.status)).map((imp) => {
                               const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
                               const progress = imp.ocr_progress || 0;
                               return (
@@ -526,7 +556,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
                      <ClipboardCheck className="h-3.5 w-3.5" />
-                     Historial de Integración ({imports.filter(i => i.status === 'success').length})
+                     Historial de Integración ({imports.filter(i => ['success', 'error', 'reviewing', 'cancelled'].includes(i.status)).length})
                   </div>
                   {imports.filter(i => i.status === 'success').length > 0 && (
                     <button 
@@ -540,35 +570,62 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2.5 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                    {imports.filter(i => i.status === 'success').length === 0 ? (
+                    {imports.filter(i => ['success', 'error', 'reviewing', 'cancelled'].includes(i.status)).length === 0 ? (
                         <div className="sm:col-span-2 xl:col-span-1 h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
                             <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
                             <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros integrados</span>
                         </div>
                     ) : (
-                        imports.filter(i => i.status === 'success').map(imp => (
-                            <motion.div 
-                              key={imp.id} 
-                              layout
-                              className="flex items-center justify-between p-3 bg-emerald-50/40 border border-emerald-100/50 rounded-lg group hover:shadow-sm transition-all"
-                            >
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                                        <CheckCircle2 className="h-3.5 w-3.5" />
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight truncate">{imp.filename}</span>
-                                        <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-widest">Integrado con éxito</span>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={(e) => handleDeleteImport(imp.id, e)}
-                                    className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-md hover:bg-rose-50"
+                        imports.filter(i => ['success', 'error', 'reviewing', 'cancelled'].includes(i.status)).map(imp => {
+                            const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.success;
+                            return (
+                                <motion.div 
+                                  key={imp.id} 
+                                  layout
+                                  onClick={() => imp.status !== 'success' && openReview(imp)}
+                                  className={cn(
+                                    "flex items-center justify-between p-3 border rounded-lg group hover:shadow-sm transition-all cursor-pointer",
+                                    imp.status === 'success' ? "bg-emerald-50/40 border-emerald-100/50" :
+                                    imp.status === 'error' ? "bg-rose-50/40 border-rose-100/50" :
+                                    imp.status === 'reviewing' ? "bg-amber-50/40 border-amber-100/50" :
+                                    "bg-slate-50/40 border-slate-100/50"
+                                  )}
                                 >
-                                    <Trash2 className="h-3 w-3" />
-                                </button>
-                            </motion.div>
-                        ))
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0", 
+                                            imp.status === 'success' ? "bg-emerald-100 text-emerald-600" :
+                                            imp.status === 'error' ? "bg-rose-100 text-rose-600" :
+                                            imp.status === 'reviewing' ? "bg-amber-100 text-amber-600" :
+                                            "bg-slate-100 text-slate-600"
+                                        )}>
+                                            <config.icon className="h-3.5 w-3.5" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[11.5px] font-bold text-slate-700 uppercase tracking-tight truncate">{imp.filename}</span>
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", 
+                                                imp.status === 'success' ? "text-emerald-600" :
+                                                imp.status === 'error' ? "text-rose-600" :
+                                                imp.status === 'reviewing' ? "text-amber-600" :
+                                                "text-slate-600"
+                                            )}>
+                                                {config.label}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {imp.status === 'reviewing' && (
+                                            <span className="text-[7px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded uppercase animate-pulse">Pendiente</span>
+                                        )}
+                                        <button 
+                                            onClick={(e) => handleDeleteImport(imp.id, e)}
+                                            className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-md hover:bg-rose-50"
+                                        >
+                                            <Trash2 className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            );
+                        })
                     )}
                   </AnimatePresence>
               </div>

@@ -76,11 +76,23 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
-    const isUpdate = !!data.id;
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
+    
+    // 1. Local Validation (Prevention)
+    if (newRecord.codigo) {
+      const normalizedInput = newRecord.codigo.trim().toLowerCase();
+      const isDuplicate = dependencias.some(x => 
+        String(x.codigo).trim().toLowerCase() === normalizedInput && 
+        String(x.id) !== String(newRecord.id)
+      );
+      if (isDuplicate) {
+        throw new Error(`El código "${newRecord.codigo}" ya está en uso por otra dependencia. Por favor usa uno diferente.`);
+      }
+    }
 
-    // Optimistic Update
+    // 2. Optimistic Update
     const previousState = [...dependencias];
     setDependencias(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
@@ -134,11 +146,25 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
-    const isUpdate = !!data.id;
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
     const previousState = [...series];
+    
+    // 1. Local Validation
+    if (newRecord.codigo) {
+       const normalizedInput = newRecord.codigo.trim().toLowerCase();
+       const isDuplicate = series.some(x => 
+         String(x.codigo).trim().toLowerCase() === normalizedInput && 
+         String(x.id) !== String(newRecord.id) &&
+         String(x.dependenciaId) === String(newRecord.dependenciaId)
+       );
+       if (isDuplicate) {
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta dependencia.`);
+       }
+    }
+
     setSeries(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
@@ -178,11 +204,25 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
-    const isUpdate = !!data.id;
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
     const previousState = [...subseries];
+
+    // 1. Local Validation
+    if (newRecord.codigo) {
+       const normalizedInput = newRecord.codigo.trim().toLowerCase();
+       const isDuplicate = subseries.some(x => 
+         String(x.codigo).trim().toLowerCase() === normalizedInput && 
+         String(x.id) !== String(newRecord.id) &&
+         String(x.serieId) === String(newRecord.serieId)
+       );
+       if (isDuplicate) {
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta serie.`);
+       }
+    }
+
     setSubseries(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
@@ -221,7 +261,7 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
-    const isUpdate = !!data.id;
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 

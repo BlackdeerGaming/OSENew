@@ -855,12 +855,13 @@ function App() {
         }
       } catch (err) {
         console.error(`Error en acción ${action.type} sobre ${entity}:`, err);
+        const errorMsg = `La sincronización falló al procesar ${entityLabel}: ${name}.`;
         setModalStatus({ 
           isOpen: true, 
           type: 'error', 
-          message: `La sincronización falló al procesar ${entityLabel}: ${name}. Por favor, refresca e intenta de nuevo.` 
+          message: `${errorMsg} Por favor, refresca e intenta de nuevo.` 
         });
-        return; // Detener todo el procesamiento si algo falla para mantener integridad
+        throw new Error(errorMsg); // Lanzar error para que el llamador lo detecte
       }
     }
     
