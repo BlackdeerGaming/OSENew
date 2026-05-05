@@ -13,11 +13,15 @@ import TRDExportPreview from '../trd/TRDGenerator';
 import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
 const STATUS_CONFIG = {
-  uploading: { label: 'Preparando...', color: 'bg-primary/10 text-primary', icon: Loader2, animate: true },
-  analyzing: { label: 'Extrayendo Datos...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  reviewing: { label: 'Pendiente de Revisión', color: 'bg-amber-50 text-amber-600', icon: Scan, animate: false },
-  success: { label: 'Integrado', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
-  error: { label: 'Error', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
+  processing: { label: 'Iniciando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  analyzing: { label: 'Procesando Imágenes...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  ocr_running: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
+  reviewing: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
+  integrating: { label: 'Integrando en la Nube...', color: 'bg-indigo-50 text-indigo-600', icon: Database, animate: true },
+  success: { label: 'Integrado con Éxito', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
+  error: { label: 'Error de Integración', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
 };
 
 const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
@@ -398,55 +402,96 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                      <History className="h-3 w-3 text-primary" />
-                     Tareas en Curso ({imports.filter(i => i.status !== 'success').length})
+                     Tareas en Curso ({imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).length})
                   </div>
               </div>
 
               <div className="space-y-3 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                      {imports.filter(i => i.status !== 'success').length === 0 ? (
+                      {imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).length === 0 ? (
                           <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
                               <Database className="h-6 w-6 opacity-20" />
                               <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">No hay tareas activas</span>
                           </motion.div>
                       ) : (
-                          imports.filter(i => i.status !== 'success').map((imp) => {
+                          imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).map((imp) => {
                               const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
+                              const progress = imp.ocr_progress || 0;
                               return (
                                   <motion.div
                                       key={imp.id}
                                       layout
-                                      className="bg-card border border-border shadow-sm rounded-lg p-2.5 hover:shadow-md transition-all flex items-center justify-between gap-3 relative group"
+                                      className={cn(
+                                        "bg-card border shadow-sm rounded-xl p-4 hover:shadow-md transition-all flex flex-col gap-3 relative group overflow-hidden",
+                                        imp.status === 'reviewing' ? "border-amber-200 bg-amber-50/20" : "border-border"
+                                      )}
                                   >
-                                      <div className="flex items-center gap-2.5 min-w-0">
-                                          <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0", config.color)}>
-                                              <config.icon className={cn("h-3.5 w-3.5", config.animate && "animate-spin")} />
+                                      {/* Background progress indicator (subtle) */}
+                                      {['processing', 'analyzing', 'ocr_running', 'integrating'].includes(imp.status) ? (
+                                          <div 
+                                              className="absolute bottom-0 left-0 h-1 bg-primary/20 transition-all duration-500 ease-out" 
+                                              style={{ width: `${progress}%` }}
+                                          />
+                                      ) : null}
+
+                                      <div className="flex items-center justify-between gap-4">
+                                          <div className="flex items-center gap-3 min-w-0">
+                                              <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm", config.color)}>
+                                                  <config.icon className={cn("h-5 w-5", config.animate && "animate-spin")} />
+                                              </div>
+                                              <div className="flex flex-col gap-0.5 min-w-0">
+                                                  <div className="flex items-center gap-2">
+                                                      <span className="text-[13px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                      <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
+                                                          {imp.ocr_stage || config.label}
+                                                      </span>
+                                                      {imp.ocr_total_pages > 0 && (
+                                                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                                              {imp.ocr_current_page} / {imp.ocr_total_pages} Páginas
+                                                          </span>
+                                                      )}
+                                                  </div>
+                                              </div>
                                           </div>
-                                          <div className="flex flex-col gap-0 min-w-0">
-                                              <span className="text-[11px] font-bold text-foreground truncate uppercase tracking-tight leading-tight">{imp.filename}</span>
-                                              <span className={cn("text-[7.5px] font-bold px-1 py-0 rounded-md uppercase tracking-wider w-fit", config.color)}>
-                                                  {config.label}
-                                              </span>
+
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                              {imp.status === 'reviewing' && (
+                                                  <button 
+                                                      onClick={() => openReview(imp)}
+                                                      className="h-9 px-4 bg-amber-600 text-white hover:bg-amber-500 rounded-lg text-[10px] font-black tracking-widest transition-all uppercase flex items-center gap-2 shadow-lg shadow-amber-200/50 active:scale-95"
+                                                  >
+                                                      Verificar
+                                                      <ArrowRight className="h-4 w-4" />
+                                                  </button>
+                                              )}
+                                              <button 
+                                                  onClick={(e) => handleDeleteImport(imp.id, e)} 
+                                                  className="p-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                                                  title={imp.status === 'reviewing' ? 'Eliminar' : 'Cancelar'}
+                                              >
+                                                  <Trash2 className="h-4 w-4" />
+                                              </button>
                                           </div>
                                       </div>
 
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                          {imp.status === 'reviewing' && (
-                                              <button 
-                                                  onClick={() => openReview(imp)}
-                                                  className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-[9px] font-bold tracking-wider transition-all uppercase flex items-center gap-1.5 shadow-sm"
-                                              >
-                                                  Verificar
-                                                  <ArrowRight className="h-3 w-3" />
-                                              </button>
-                                          )}
-                                          <button 
-                                              onClick={(e) => handleDeleteImport(imp.id, e)} 
-                                              className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-all"
-                                          >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                      </div>
+                                      {/* Progress Bar & Percentage */}
+                                      {(imp.status === 'processing' || imp.status === 'analyzing' || imp.status === 'ocr_running') && (
+                                          <div className="space-y-1.5 px-0.5">
+                                              <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-slate-400">
+                                                  <span>Progreso del OCR</span>
+                                                  <span>{progress}%</span>
+                                              </div>
+                                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                  <motion.div 
+                                                      initial={{ width: 0 }}
+                                                      animate={{ width: `${progress}%` }}
+                                                      className="h-full bg-primary"
+                                                  />
+                                              </div>
+                                          </div>
+                                      )}
                                   </motion.div>
                               );
                           })
@@ -460,7 +505,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
                      <ClipboardCheck className="h-3.5 w-3.5" />
-                     Historial de Integración ({imports.filter(i => i.status === 'success').length})
+                     Historial de Integración ({imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).length})
                   </div>
                   {imports.filter(i => i.status === 'success').length > 0 && (
                     <button 
@@ -472,37 +517,62 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                   )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2.5 min-h-[200px]">
+              <div className="grid grid-cols-1 gap-2 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                    {imports.filter(i => i.status === 'success').length === 0 ? (
-                        <div className="sm:col-span-2 xl:col-span-1 h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
+                    {imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).length === 0 ? (
+                        <div className="h-24 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
                             <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros integrados</span>
+                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros finalizados</span>
                         </div>
                     ) : (
-                        imports.filter(i => i.status === 'success').map(imp => (
-                            <motion.div 
-                              key={imp.id} 
-                              layout
-                              className="flex items-center justify-between p-2 bg-emerald-50/40 border border-emerald-100/50 rounded-lg group hover:shadow-sm transition-all"
-                            >
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <div className="h-7 w-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                                        <CheckCircle2 className="h-3 w-3" />
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight truncate leading-tight">{imp.filename}</span>
-                                        <span className="text-[7.5px] text-emerald-600 font-bold uppercase tracking-widest">Integrado</span>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={(e) => handleDeleteImport(imp.id, e)}
-                                    className="p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-md hover:bg-rose-50"
+                        imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).map(imp => {
+                            const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.success;
+                            return (
+                                <motion.div 
+                                  key={imp.id} 
+                                  layout
+                                  className={cn(
+                                    "flex items-center justify-between py-2 px-3 border rounded-lg group hover:shadow-sm transition-all",
+                                    imp.status === 'success' ? "bg-emerald-50/30 border-emerald-100/50" :
+                                    imp.status === 'error' ? "bg-rose-50/30 border-rose-100/50" :
+                                    "bg-slate-50/40 border-slate-100/50"
+                                  )}
                                 >
-                                    <Trash2 className="h-3 w-3" />
-                                </button>
-                            </motion.div>
-                        ))
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm", 
+                                            imp.status === 'success' ? "bg-emerald-100 text-emerald-600" :
+                                            imp.status === 'error' ? "bg-rose-100 text-rose-600" :
+                                            "bg-slate-100 text-slate-600"
+                                        )}>
+                                            <config.icon className="h-3.5 w-3.5" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0 leading-tight">
+                                            <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight truncate max-w-[180px] sm:max-w-[250px]">
+                                              {imp.filename}
+                                            </span>
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-[0.1em]", 
+                                                imp.status === 'success' ? "text-emerald-600" :
+                                                imp.status === 'error' ? "text-rose-600" :
+                                                "text-slate-500"
+                                            )}>
+                                                {config.label}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button 
+                                              onClick={(e) => handleDeleteImport(imp.id, e)}
+                                              className="p-1.5 text-slate-400 hover:text-rose-500 rounded-md hover:bg-rose-50 transition-colors"
+                                              title="Eliminar del historial"
+                                          >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            );
+                        })
                     )}
                   </AnimatePresence>
               </div>
