@@ -126,16 +126,28 @@ async def create_dependencia_entity(
 ):
     # Permission check: entity admin only for their entity
     require_entity_admin(user, entity_id)
-    # Insert into DynamoDB
+    # 1. Validación de duplicados (Código único por entidad) en DynamoDB
+    clean_codigo = payload.codigo.strip()
+    
+    # Obtenemos solo los registros de la entidad actual (más eficiente que scan completo)
+    entity_deps = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+    
+    # Buscamos coincidencias (case-insensitive) en el listado de la entidad
+    is_duplicate = any(
+        d.get("codigo", "").strip().lower() == clean_codigo.lower() and 
+        str(d.get("id")) != str(payload.id if payload.id else "")
+        for d in entity_deps
+    )
+    
+    if is_duplicate:
+        raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el código '{clean_codigo}' en esta entidad.")
+
+    # 2. Insert into DynamoDB
     data = payload.dict()
+    data["codigo"] = clean_codigo
     data["entidad_id"] = entity_id
     if not data.get("id"):
         data["id"] = str(uuid.uuid4())
-    
-    # Reparación: Check for duplicate code in same entity
-    all_deps = await db.scan_table("dependencias")
-    if any(d.get("entidad_id") == entity_id and d.get("codigo") == data["codigo"] for d in all_deps):
-        raise HTTPException(status_code=400, detail="El código de dependencia ya existe para esta entidad.")
 
     # Partition Key: entity_id, Sort Key: id (for dependencias)
     data["PK"] = f"ENTITY#{entity_id}"
@@ -205,14 +217,23 @@ async def create_serie_entity(
     user: dict = Depends(get_current_user),
 ):
     require_entity_admin(user, entity_id)
+    # 1. Validación de duplicados (Código único por entidad y dependencia)
+    clean_codigo = payload.codigo.strip()
+    entity_series = await db.query_by_entity("series", entity_id, sk_prefix="SER#")
+    
+    is_duplicate = any(
+        s.get("codigo", "").strip().lower() == clean_codigo.lower() and 
+        str(s.get("id")) != str(payload.id if payload.id else "") and
+        str(s.get("dependencia_id")) == str(payload.dependencia_id)
+        for s in entity_series
+    )
+    if is_duplicate:
+        raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' para esta dependencia.")
+
     data = payload.dict()
+    data["codigo"] = clean_codigo
     data["entidad_id"] = entity_id
     if not data.get("id"): data["id"] = str(uuid.uuid4())
-
-    # Reparación: Check for duplicate code in same entity
-    all_series = await db.scan_table("series")
-    if any(s.get("entidad_id") == entity_id and s.get("codigo") == data["codigo"] for s in all_series):
-        raise HTTPException(status_code=400, detail="El código de serie ya existe para esta entidad.")
 
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"SER#{data['id']}"
@@ -268,20 +289,23 @@ async def create_subserie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
+    # 1. Validación de duplicados (Código único por serie)
+    clean_codigo = payload.codigo.strip()
+    entity_subs = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
+    
+    is_duplicate = any(
+        s.get("codigo", "").strip().lower() == clean_codigo.lower() and 
+        str(s.get("id")) != str(payload.id if payload.id else "") and
+        str(s.get("serie_id")) == str(payload.serie_id)
+        for s in entity_subs
+    )
+    if is_duplicate:
+        raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' para esta serie.")
+
     data = payload.dict()
+    data["codigo"] = clean_codigo
     data["entidad_id"] = entity_id
     if not data.get("id"): data["id"] = str(uuid.uuid4())
-
-    # Reparación: Check for duplicate code in same entity, dependency and series
-    all_subs = await db.scan_table("subseries")
-    if any(
-        s.get("entidad_id") == entity_id and 
-        s.get("dependencia_id") == data.get("dependencia_id") and
-        s.get("serie_id") == data.get("serie_id") and
-        s.get("codigo") == data["codigo"] 
-        for s in all_subs
-    ):
-        raise HTTPException(status_code=400, detail="Ya existe una subserie con este código dentro de la misma dependencia y serie")
 
     data["PK"] = f"ENTITY#{entity_id}"
     data["SK"] = f"SUB#{data['id']}"
