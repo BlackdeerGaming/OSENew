@@ -39,8 +39,21 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
             payload['allowed_entities'] = [] # Superadmin ve todo via query global
         elif supabase_client:
             # Obtener todas las entidades permitidas y roles para este usuario
-            all_perms = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
-            
+            # Agregamos reintento por error de socket en Windows (httpx.ReadError / WinError 10035)
+            all_perms = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    all_perms = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
+                    break
+                except Exception as e:
+                    if "10035" in str(e) or "ReadError" in str(type(e)):
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(0.1 * (attempt + 1))
+                            continue
+                    raise e
+
             allowed_entities = [p['entity_id'] for p in (all_perms.data or [])]
             entity_roles = {p['entity_id']: p['role'] for p in (all_perms.data or [])}
             
