@@ -933,7 +933,7 @@ function App() {
       
       if (data.pais === "Colombia") {
         if (!data.departamento?.trim()) errors.departamento = "Selecciona un departamento.";
-        if (!data.ciudad?.trim()) errors.ciudad = "Selecciona una ciudad.";
+        if (!data.ciudad?.trim()) errors.ciudad = "Escribe la ciudad.";
       }
     } else if (moduleType === 'series') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
@@ -962,10 +962,11 @@ function App() {
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      const fieldList = Object.values(errors).join(" ");
       setModalStatus({ 
         isOpen: true, 
         type: 'error', 
-        message: 'Faltan campos obligatorios. Por favor, revisa el formulario.' 
+        message: `Faltan campos obligatorios: ${fieldList}` 
       });
       return;
     }
