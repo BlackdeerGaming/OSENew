@@ -1052,8 +1052,6 @@ function App() {
     setIsSaving(true);
     setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con la nube...' });
     
-<<<<<<< HEAD
-=======
     const isUpdate = !!activeFormData.id;
     const record = activeFormData;
 
@@ -1076,8 +1074,6 @@ function App() {
       });
       return;
     }
-
->>>>>>> 357baa9 (feat: Implement global duplicate prevention system for TRD entities and import conflict resolution)
     try {
       if (moduleType === 'dependencias') {
         await addDependencia(data);
