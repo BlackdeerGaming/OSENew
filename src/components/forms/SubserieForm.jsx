@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 import { FormGroup } from "./DependenciaForm";
 import { inputClass, textareaClass } from "./SerieForm";
 import SearchableSelect from "../ui/SearchableSelect";
