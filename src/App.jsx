@@ -34,9 +34,11 @@ import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import StatusModal from './components/ui/StatusModal';
+import ConflictModal from './components/ui/ConflictModal';
 import { handleExportPDFGeneral } from './utils/exportUtils';
 import { exportTRDToExcel } from './utils/excelUtils';
 import { normalizeText } from './utils/stringUtils';
+import { findDuplicate } from './utils/duplicateUtils';
 
 
 const DEPS_FLOW = [
@@ -389,6 +391,8 @@ function App() {
 
   const [printOrientation, setPrintOrientation] = useState('landscape'); // portrait | landscape — default horizontal
   const [aiQueryResult, setAiQueryResult] = useState(null); // Para mostrar resultados de consultas de Orianna
+  const [conflictModal, setConflictModal] = useState({ isOpen: false, info: null });
+  const [conflictResolver, setConflictResolver] = useState(null);
 
   // Auto-persist form data
   useEffect(() => {
@@ -646,23 +650,56 @@ function App() {
     }, 800 + Math.random() * 500); // slightly faster interactions
   };
 
+  const handleConflictResolution = (decision) => {
+    if (conflictResolver) {
+      conflictResolver(decision);
+      setConflictResolver(null);
+    }
+    setConflictModal({ isOpen: false, info: null });
+  };
+
   const executeAgentActions = async (actions) => {
     console.log('🤖 Orianna procesando acciones:', actions);
     setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando cambios automáticos con la nube...' });
     const idMap = {};
     let actionsProcessed = 0;
+    let skippedCount = 0;
+    let duplicateAcceptedCount = 0;
 
-    for (const action of actions) {
-      let entity = action.entity?.toLowerCase();
-      if (entity === 'dependency') entity = 'dependencias';
-      if (entity === 'serie') entity = 'series';
-      if (entity === 'subserie') entity = 'subseries';
-      if (entity === 'trd_records') entity = 'TRD';
+    const checkDuplicateAndAsk = async (record, type) => {
+      const pool = type === 'dependencias' ? dependencias : 
+                   (type === 'series' ? series : 
+                   (type === 'subseries' ? subseries : trdRecords));
+      
+      const existing = findDuplicate(record, pool, type);
+      if (existing) {
+        console.warn(`⚠️ Posible duplicado detectado para ${type}:`, record);
+        setModalStatus(prev => ({ ...prev, isOpen: false }));
+        
+        return new Promise((resolve) => {
+          setConflictModal({ 
+            isOpen: true, 
+            info: { type, data: record, existing } 
+          });
+          setConflictResolver(() => (decision) => {
+            setModalStatus({ isOpen: true, type: 'loading', message: 'Procesando decisión y continuando...' });
+            resolve(decision);
+          });
+        });
+      }
+      return 'create';
+    };
 
-      const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
-      const name = action.payload?.nombre || action.payload?.name || "Registro";
+    try {
+      for (const action of actions) {
+        let entity = action.entity?.toLowerCase();
+        if (entity === 'dependency') entity = 'dependencias';
+        if (entity === 'serie') entity = 'series';
+        if (entity === 'subserie') entity = 'subseries';
+        if (entity === 'trd_records') entity = 'TRD';
 
-      try {
+        const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
+        const name = action.payload?.nombre || action.payload?.name || "Registro";
 
         if (action.type === 'CREATE') {
           const rawPayload = { ...action.payload };
@@ -682,19 +719,29 @@ function App() {
                } else if (idMap[depIdInput]) {
                  finalDepId = idMap[depIdInput];
                } else {
-                 const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
-                 idMap[depIdInput] = strId;
-                  await addDependencia({ 
-                    id: strId, 
-                    entidadId: currentEntity?.id || userEntities[0]?.id, 
-                    user_id: currentUser?.id,
-                    import_session_id: action.import_session_id || null,
-                    nombre: depIdInput, 
+                 const newDep = { 
+                   entidadId: selectedEntityId || userEntities?.[0]?.id, 
+                   user_id: currentUser?.id,
+                   import_session_id: action.import_session_id || null,
+                   nombre: depIdInput, 
                    sigla: "GEN", 
                    codigo: rawPayload.dependenciaCodigo || (Math.floor(Math.random() * 900) + 100).toString() 
-                 });
-                 addActivityLog(`Auto-creación Dependencia: ${depIdInput}`);
-                 finalDepId = strId;
+                 };
+
+                 const decision = await checkDuplicateAndAsk(newDep, 'dependencias');
+                 if (decision === 'cancel') throw new Error("IMPORT_CANCELLED");
+                 if (decision === 'skip') {
+                   const existing = findDuplicate(newDep, dependencias, 'dependencias');
+                   finalDepId = existing?.id;
+                   skippedCount++;
+                 } else {
+                   const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
+                   idMap[depIdInput] = strId;
+                   await addDependencia({ ...newDep, id: strId });
+                   addActivityLog(`Auto-creación Dependencia: ${depIdInput}`);
+                   finalDepId = strId;
+                   if (decision === 'continue') duplicateAcceptedCount++;
+                 }
                }
             }
 
@@ -708,24 +755,34 @@ function App() {
                  const foundSer = series.find(x => x.id === serIdInput || normalizeText(x.nombre) === targetName);
                  if (foundSer) {
                    finalSerId = foundSer.id;
-                } else if (idMap[serIdInput]) {
-                  finalSerId = idMap[serIdInput];
-                } else {
-                  const strId = Date.now().toString() + "_ser_" + Math.floor(Math.random()*100);
-                  idMap[serIdInput] = strId;
-                  await addSerie({ 
-                    id: strId, 
-                    entidadId: currentEntity?.id || userEntities[0]?.id, 
-                    user_id: currentUser?.id,
-                    import_session_id: action.import_session_id || null,
-                    dependenciaId: finalDepId, 
-                    nombre: serIdInput, 
-                    codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
-                    tipoDocumental: rawPayload.tipoDocumental || "Documentos" 
-                  });
-                  addActivityLog(`Auto-creación Serie: ${serIdInput}`);
-                  finalSerId = strId;
-                }
+                 } else if (idMap[serIdInput]) {
+                   finalSerId = idMap[serIdInput];
+                 } else {
+                   const newSerie = { 
+                     entidadId: selectedEntityId || userEntities?.[0]?.id, 
+                     user_id: currentUser?.id,
+                     import_session_id: action.import_session_id || null,
+                     dependenciaId: finalDepId, 
+                     nombre: serIdInput, 
+                     codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
+                     tipoDocumental: rawPayload.tipoDocumental || "Documentos" 
+                   };
+
+                   const decision = await checkDuplicateAndAsk(newSerie, 'series');
+                   if (decision === 'cancel') throw new Error("IMPORT_CANCELLED");
+                   if (decision === 'skip') {
+                     const existing = findDuplicate(newSerie, series, 'series');
+                     finalSerId = existing?.id;
+                     skippedCount++;
+                   } else {
+                     const strId = Date.now().toString() + "_ser_" + Math.floor(Math.random()*100);
+                     idMap[serIdInput] = strId;
+                     await addSerie({ ...newSerie, id: strId });
+                     addActivityLog(`Auto-creación Serie: ${serIdInput}`);
+                     finalSerId = strId;
+                     if (decision === 'continue') duplicateAcceptedCount++;
+                   }
+                 }
               }
               rawPayload.dependenciaId = finalDepId;
               rawPayload.serieId = finalSerId;
@@ -741,11 +798,8 @@ function App() {
                   } else if (idMap[subIdInput]) {
                     rawPayload.subserieId = idMap[subIdInput];
                   } else {
-                    const strId = Date.now().toString() + "_sub_" + Math.floor(Math.random()*100);
-                    idMap[subIdInput] = strId;
-                    await addSubserie({
-                      id: strId,
-                      entidadId: currentEntity?.id || userEntities?.[0]?.id,
+                    const newSub = {
+                      entidadId: selectedEntityId || userEntities?.[0]?.id,
                       user_id: currentUser?.id,
                       import_session_id: action.import_session_id || null,
                       dependenciaId: finalDepId,
@@ -753,9 +807,22 @@ function App() {
                       nombre: subIdInput,
                       codigo: rawPayload.subserieCodigo || (Math.floor(Math.random() * 90) + 10).toString(),
                       tipoDocumental: rawPayload.tipoDocumental || "Documentos"
-                    });
-                    addActivityLog(`Auto-creación Subserie: ${subIdInput}`);
-                    rawPayload.subserieId = strId;
+                    };
+
+                    const decision = await checkDuplicateAndAsk(newSub, 'subseries');
+                    if (decision === 'cancel') throw new Error("IMPORT_CANCELLED");
+                    if (decision === 'skip') {
+                      const existing = findDuplicate(newSub, subseries, 'subseries');
+                      rawPayload.subserieId = existing?.id;
+                      skippedCount++;
+                    } else {
+                      const strId = Date.now().toString() + "_sub_" + Math.floor(Math.random()*100);
+                      idMap[subIdInput] = strId;
+                      await addSubserie({ ...newSub, id: strId });
+                      addActivityLog(`Auto-creación Subserie: ${subIdInput}`);
+                      rawPayload.subserieId = strId;
+                      if (decision === 'continue') duplicateAcceptedCount++;
+                    }
                   }
                 }
               }
@@ -769,7 +836,7 @@ function App() {
           if (action.id) idMap[action.id] = finalId;
 
           const payload = {
-              entidadId: currentEntity?.id || userEntities?.[0]?.id || null,
+              entidadId: selectedEntityId || userEntities?.[0]?.id || null,
               user_id: currentUser?.id,
               import_session_id: action.import_session_id || null,
               nombre: name,
@@ -789,10 +856,22 @@ function App() {
               "disp_Medio Técnico": rawPayload.disposicion === 'MT' || rawPayload.disposicion?.includes('MT'),
           };
 
-          if (entity === 'dependencias') await addDependencia({ ...payload, id: finalId });
-          else if (entity === 'series') await addSerie({ ...payload, id: finalId });
-          else if (entity === 'subseries') await addSubserie({ ...payload, id: finalId });
-          else if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion') await addTrdRecord({ ...payload, id: finalId });
+          if (entity === 'TRD' || entity === 'trd_records' || entity === 'valoracion') {
+             const decision = await checkDuplicateAndAsk(payload, 'TRD');
+             if (decision === 'cancel') throw new Error("IMPORT_CANCELLED");
+             if (decision === 'skip') {
+               skippedCount++;
+               continue;
+             }
+             await addTrdRecord({ ...payload, id: finalId });
+             if (decision === 'continue') duplicateAcceptedCount++;
+          } else if (entity === 'dependencias') {
+             await addDependencia({ ...payload, id: finalId });
+          } else if (entity === 'series') {
+             await addSerie({ ...payload, id: finalId });
+          } else if (entity === 'subseries') {
+             await addSubserie({ ...payload, id: finalId });
+          }
           
           addActivityLog(`Integrado ${entityLabel}: ${name}`);
           actionsProcessed++;
@@ -812,36 +891,34 @@ function App() {
           }
         }
         else if (action.type === 'DELETE') {
-          addActivityLog(`Borrado ${entityLabel} - ${name}`);
+          addActivityLog(`Eliminación ${entityLabel} - ID ${action.id}`);
           if (entity === 'dependencias') await deleteDependencia(action.id);
           else if (entity === 'series') await deleteSerie(action.id);
           else if (entity === 'subseries') await deleteSubserie(action.id);
+          else if (entity === 'TRD' || entity === 'trd_records') await deleteTrdRecord(action.id);
           actionsProcessed++;
         }
-      } catch (err) {
-        console.error(`Error en acción ${action.type} sobre ${entity}:`, err);
+      }
+
+      if (actionsProcessed > 0 || skippedCount > 0) {
         setModalStatus({ 
           isOpen: true, 
-          type: 'error', 
-          message: `La sincronización falló al procesar ${entityLabel}: ${name}. Por favor, refresca e intenta de nuevo.` 
+          type: 'success', 
+          message: `Sincronización finalizada.\n- Creados: ${actionsProcessed}\n- Omitidos (Duplicados): ${skippedCount}\n- Duplicados aceptados: ${duplicateAcceptedCount}` 
         });
-        return; // Detener todo el procesamiento si algo falla para mantener integridad
+        setMainView('trd');
+        setActiveModule('datos');
+      } else {
+        setModalStatus({ isOpen: false, type: 'loading', message: '' });
+      }
+    } catch (error) {
+      if (error.message === "IMPORT_CANCELLED") {
+        setModalStatus({ isOpen: true, type: 'error', message: 'Importación cancelada por el usuario debido a duplicados detectados.' });
+      } else {
+        console.error('Error procesando acciones:', error);
+        setModalStatus({ isOpen: true, type: 'error', message: 'Error durante la integración automática de datos.' });
       }
     }
-    
-    if (actionsProcessed > 0) {
-      setModalStatus({ 
-        isOpen: true, 
-        type: 'success', 
-        message: `¡Sincronización completa! Se han procesado y guardado ${actionsProcessed} registros exitosamente en la nube de ${currentEntity?.razonSocial || currentEntity?.nombre || 'la entidad'}.` 
-      });
-      // Navegar automáticamente a la vista de TRD para ver los datos integrados
-      setMainView('trd');
-      setActiveModule('datos');
-    } else {
-      setModalStatus({ isOpen: false, type: 'loading', message: '' });
-    }
-    return actionsProcessed;
   };
 
   const handleUserMessage = (text) => {
@@ -975,6 +1052,32 @@ function App() {
     setIsSaving(true);
     setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con la nube...' });
     
+<<<<<<< HEAD
+=======
+    const isUpdate = !!activeFormData.id;
+    const record = activeFormData;
+
+    // --- CHECK FOR DUPLICATES (Manual Entry & Edit) ---
+    const poolMap = {
+      'dependencias': dependencias,
+      'series': series,
+      'subseries': subseries,
+      'trdform': trdRecords
+    };
+    const pool = poolMap[activeModule];
+    const existing = findDuplicate(record, pool, activeModule);
+    
+    if (existing) {
+      setIsSaving(false);
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'error', 
+        message: 'Este registro ya existe en la entidad actual. Por favor verifica los datos.' 
+      });
+      return;
+    }
+
+>>>>>>> 357baa9 (feat: Implement global duplicate prevention system for TRD entities and import conflict resolution)
     try {
       if (moduleType === 'dependencias') {
         await addDependencia(data);
@@ -1800,6 +1903,12 @@ function App() {
             </div>
          </div>
       
+      <ConflictModal 
+        isOpen={conflictModal.isOpen}
+        conflictInfo={conflictModal.info}
+        onResolve={handleConflictResolution}
+      />
+
       <StatusModal 
         isOpen={modalStatus.isOpen} 
         type={modalStatus.type} 
