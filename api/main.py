@@ -87,6 +87,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import json
 
 import uuid
+import hashlib
 
 from datetime import datetime, timedelta, timezone
 
@@ -1700,6 +1701,9 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     print(f" POST /analyze-trd - File: {file.filename}")
     
     content = await file.read()
+    file_size_bytes = len(content)
+    file_hash = hashlib.sha256(content).hexdigest()
+    
     doc_id = str(uuid.uuid4())
     entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
     pk_val = f"ENTITY#{entidad_actual}" if entidad_actual else "ENTITY#GLOBAL"
@@ -1716,6 +1720,8 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
             "type": "trd_import_session",
             "entidad_id": entidad_actual,
             "user_id": user.get("user_id"),
+            "file_size_bytes": file_size_bytes,
+            "file_hash": file_hash,
             "created_at": datetime.now().isoformat()
         }
     }
