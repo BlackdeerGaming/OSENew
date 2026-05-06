@@ -455,12 +455,13 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/activity-logs`, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${currentUser.token}`
+          "Authorization": `Bearer ${currentUser.token}`,
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ 
           message, 
-          user_name: currentUser?.nombre || "Usuario" 
+          user_name: currentUser?.nombre || "Usuario",
+          entidad_id: currentUser?.entity_id 
         })
       });
       if (response.ok) {

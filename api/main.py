@@ -412,12 +412,9 @@ class InvitationCreate(BaseModel):
 
 
 class ActivityLogCreate(BaseModel):
-
     message: str
-
     user_name: str
-
-    # Opcional: mensajes personalizados, etc.
+    entidad_id: str | None = None
 
 
 
