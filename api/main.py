@@ -1,6 +1,7 @@
 import os
 import re
 import base64
+import hashlib
 from dotenv import load_dotenv
 
 #  CRITICAL: Load env vars FIRST before any other imports that read os.getenv 
@@ -1844,6 +1845,7 @@ async def analyze_trd(
 
     content = await file.read()
     file_size_bytes = len(content)
+    file_hash = hashlib.sha256(content).hexdigest()
 
     # --- Validación de tamaño ---
     max_bytes = MAX_OCR_FILE_SIZE_MB * 1024 * 1024
@@ -1901,6 +1903,7 @@ async def analyze_trd(
             "ocr_error_pages": [],
             "file_url": file_url,
             "file_size_bytes": file_size_bytes,
+            "file_hash": file_hash,
             "entidad_id": entidad_final,
             "type": "temp_trd_session",
             "created_at": datetime.now().isoformat()

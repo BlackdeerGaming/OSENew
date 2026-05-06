@@ -34,6 +34,13 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+const calculateFileHash = async (file) => {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingNew, setIsProcessingNew] = useState(false);
@@ -44,6 +51,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   const [reviewMode, setReviewMode] = useState('data'); // 'data' | 'split'
   const [localActions, setLocalActions] = useState([]); // This is the editable version of imp.actions
   const [editingIndex, setEditingIndex] = useState(null);
+  
+  // Duplicate File Detection State
+  const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, existing: null });
+  const [pendingFile, setPendingFile] = useState(null);
 
   // Initial load
   useEffect(() => {
@@ -108,6 +119,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 ocr_total_pages: d.metadata?.ocr_total_pages || 0,
                 ocr_current_page: d.metadata?.ocr_current_page || 0,
                 file_size_bytes: d.metadata?.file_size_bytes || 0,
+                file_hash: d.metadata?.file_hash || null,
+                created_at: d.created_at || d.metadata?.created_at,
                 error_summary: d.metadata?.error_summary || null,
                 isUploading: false,
                 rawFile: null
@@ -130,13 +143,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     }
   };
 
-  const processFile = async (file) => {
-    // Validar tamaño en el cliente
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      alert(`Este archivo es demasiado pesado para procesarse (${(file.size / (1024*1024)).toFixed(1)} MB). El límite permitido es ${MAX_FILE_SIZE_MB} MB. Intenta reducir su tamaño o dividirlo en varios archivos.`);
-      return;
-    }
-
+  const uploadFile = async (file, force = false) => {
     const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const newImp = {
        id: tempId,
@@ -155,6 +162,9 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     const formData = new FormData();
     formData.append('file', file);
     if (currentEntity?.id) formData.append('entidad_id', currentEntity.id);
+    
+    // Si el usuario decidió continuar con un repetido, lo marcamos en metadata
+    if (force) formData.append('force_reprocess', 'true');
 
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
@@ -174,6 +184,31 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     } catch (err) {
       setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
     }
+  };
+
+  const processFile = async (file) => {
+    // Validar tamaño en el cliente
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      alert(`Este archivo es demasiado pesado para procesarse (${(file.size / (1024*1024)).toFixed(1)} MB). El límite permitido es ${MAX_FILE_SIZE_MB} MB. Intenta reducir su tamaño o dividirlo en varios archivos.`);
+      return;
+    }
+
+    // Calcular hash para detección de duplicados
+    const hash = await calculateFileHash(file);
+    
+    // Buscar si ya existe en la misma entidad
+    const existing = imports.find(imp => 
+      imp.file_hash === hash || 
+      (imp.filename === file.name && imp.file_size_bytes === file.size)
+    );
+
+    if (existing) {
+      setPendingFile(file);
+      setDuplicateModal({ isOpen: true, existing });
+      return; // Detenemos aquí, esperamos respuesta del modal
+    }
+
+    await uploadFile(file);
   };
 
   const onDrop = useCallback(async (acceptedFiles) => {
@@ -954,6 +989,90 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                       </button>
                   </div>
               </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Duplicate File Detection Modal */}
+      <AnimatePresence>
+        {duplicateModal.isOpen && duplicateModal.existing && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100 flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="bg-slate-900 p-8 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-12 bg-primary/20 rounded-full -mr-16 -mt-16 blur-3xl" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="h-14 w-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20 border-4 border-white/10">
+                    <AlertCircle className="h-8 w-8" />
+                  </div>
+                  <div className="flex flex-col">
+                    <h3 className="text-2xl font-black uppercase tracking-tighter italic">Archivo ya <span className="text-amber-400">importado</span></h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Duplicado detectado en esta entidad</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-8 space-y-6">
+                <p className="text-sm text-slate-500 leading-relaxed font-medium">
+                  Este archivo ya fue cargado anteriormente en <span className="text-slate-900 font-bold">{currentEntity?.razonSocial || 'esta entidad'}</span>. Si continúas, podrías repetir información o volver a procesar datos ya existentes.
+                </p>
+
+                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-3">
+                   <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre del archivo</span>
+                      <span className="text-[11px] font-bold text-slate-700 truncate max-w-[200px]">{duplicateModal.existing.filename}</span>
+                   </div>
+                   <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha importación</span>
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {duplicateModal.existing.created_at ? new Date(duplicateModal.existing.created_at).toLocaleString() : 'Desconocida'}
+                      </span>
+                   </div>
+                   <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado anterior</span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[9px] font-black uppercase",
+                        STATUS_CONFIG[duplicateModal.existing.status]?.color || 'bg-slate-100'
+                      )}>
+                        {STATUS_CONFIG[duplicateModal.existing.status]?.label || 'Procesado'}
+                      </span>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                   <button 
+                     onClick={() => {
+                       setDuplicateModal({ isOpen: false, existing: null });
+                       setPendingFile(null);
+                     }}
+                     className="w-full py-4 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95"
+                   >
+                     Cancelar
+                   </button>
+                   <button 
+                     onClick={() => {
+                       if (pendingFile) {
+                         uploadFile(pendingFile, true);
+                         setPendingFile(null);
+                         setDuplicateModal({ isOpen: false, existing: null });
+                       }
+                     }}
+                     className="w-full py-4 bg-slate-900 text-white hover:bg-primary rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-slate-200 transition-all active:scale-95"
+                   >
+                     Continuar
+                   </button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
