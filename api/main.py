@@ -200,7 +200,7 @@ class InvitationCreate(BaseModel):
 class ActivityLogCreate(BaseModel):
     message: str
     user_name: str
-    # Opcional: mensajes personalizados, etc.
+    entidad_id: str | None = None
 
 class InvitationRespond(BaseModel):
     action: str # 'accept' o 'reject'
@@ -2352,7 +2352,18 @@ async def send_rejection_notification(sender_email, recipient_email, entity_name
 @router.post("/activity-logs")
 async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
     if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    res = supabase_client.table("activity_logs").insert({"user_name": req.user_name, "message": req.message}).execute()
+    
+    # Priorizar entidad del request, si no usar la del usuario activo
+    eid = req.entidad_id or current_user.get("entity_id")
+    
+    log_data = {
+        "user_name": req.user_name, 
+        "message": req.message,
+        "entidad_id": eid,
+        "user_id": current_user.get("user_id")
+    }
+    
+    res = supabase_client.table("activity_logs").insert(log_data).execute()
     return res.data
 
 @router.patch("/invitations/{inv_id}/archive")
@@ -2412,13 +2423,19 @@ async def get_activity_logs(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         print(f"Error cleaning up old logs: {e}")
 
-    # 2. Fetch logs only for the current month
-    res = supabase_client.table("activity_logs")\
-        .select("*")\
-        .gte("created_at", first_day_current_month)\
-        .order("created_at", desc=True)\
-        .execute()
-        
+    # 2. Fetch logs with filtering
+    query = supabase_client.table("activity_logs").select("*").gte("created_at", first_day_current_month)
+    
+    # Si no es superadmin, filtrar por entidad
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        eid = current_user.get("entity_id")
+        if eid:
+            query = query.eq("entidad_id", eid)
+        else:
+            # Si no tiene entidad, no debería ver nada o solo sus propios logs
+            query = query.eq("user_id", current_user.get("user_id"))
+            
+    res = query.order("created_at", desc=True).execute()
     return res.data or []
 
 @router.get("/activity-logs/export")
@@ -2435,12 +2452,17 @@ async def export_activity_logs(
     query_start = f"{start_date}T00:00:00"
     query_end = f"{end_date}T23:59:59"
     
-    res = supabase_client.table("activity_logs")\
-        .select("*")\
-        .gte("created_at", query_start)\
-        .lte("created_at", query_end)\
-        .order("created_at", desc=True)\
-        .execute()
+    query = supabase_client.table("activity_logs").select("*").gte("created_at", query_start).lte("created_at", query_end)
+    
+    # Filtro de entidad para no superadmins
+    if current_user.get("role") != SUPERADMIN_ROLE:
+        eid = current_user.get("entity_id")
+        if eid:
+            query = query.eq("entidad_id", eid)
+        else:
+            query = query.eq("user_id", current_user.get("user_id"))
+            
+    res = query.order("created_at", desc=True).execute()
         
     if not res.data:
         raise HTTPException(status_code=404, detail="No se encontraron registros en el rango seleccionado")
