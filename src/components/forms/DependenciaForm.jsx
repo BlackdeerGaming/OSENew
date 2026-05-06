@@ -82,9 +82,56 @@ export default function DependenciaForm({
   // Determinar si mostrar dropdowns de Colombia
   const isColombia = data.pais === "Colombia";
   const departamentosOptions = COLOMBIA_DEPARTAMENTOS.map(d => ({ value: d, label: d }));
-  const ciudadesOptions = (data.departamento && COLOMBIA_MUNICIPIOS[data.departamento]) 
-    ? COLOMBIA_MUNICIPIOS[data.departamento].map(m => ({ value: m, label: m }))
-    : [];
+  
+  const currentDeptCities = (data.departamento && COLOMBIA_MUNICIPIOS[data.departamento]) || [];
+  
+  // Determinar si la ciudad actual es "especial" (no está en el listado oficial)
+  const isCityInList = React.useMemo(() => {
+    if (!isColombia || !data.departamento || !data.ciudad) return true;
+    return currentDeptCities.includes(data.ciudad);
+  }, [isColombia, data.departamento, data.ciudad, currentDeptCities]);
+
+  // Estado local para manejar la opción "Otro"
+  const [showOtraCiudad, setShowOtraCiudad] = React.useState(false);
+  const [manualCity, setManualCity] = React.useState("");
+
+  // Sincronizar estado de "Otro" basado en la data entrante (útil para edición y herencia)
+  React.useEffect(() => {
+    if (isColombia && data.ciudad && !isCityInList) {
+      if (!showOtraCiudad) {
+        setShowOtraCiudad(true);
+        setManualCity(data.ciudad);
+      }
+    } else if (isColombia && isCityInList && data.ciudad && data.ciudad !== "Otro") {
+      if (showOtraCiudad) {
+        setShowOtraCiudad(false);
+      }
+    }
+  }, [data.ciudad, isCityInList, isColombia]);
+
+  const handleCityChange = (e) => {
+    const val = e.target.value;
+    if (val === "Otro") {
+      setShowOtraCiudad(true);
+      setManualCity("");
+      onChange({ ...data, ciudad: "" });
+    } else {
+      setShowOtraCiudad(false);
+      onChange({ ...data, ciudad: val });
+    }
+  };
+
+  const handleManualCityChange = (e) => {
+    const val = e.target.value;
+    setManualCity(val);
+    onChange({ ...data, ciudad: val });
+  };
+
+  const ciudadesOptions = React.useMemo(() => {
+    const opts = currentDeptCities.map(m => ({ value: m, label: m }));
+    opts.push({ value: "Otro", label: "Otro (Especificar)" });
+    return opts;
+  }, [currentDeptCities]);
 
   const inputClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors";
 
@@ -99,7 +146,7 @@ export default function DependenciaForm({
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({})} 
+            onClick={() => onChange({ pais: "Colombia" })} 
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
             + Nueva Dependencia
@@ -175,6 +222,7 @@ export default function DependenciaForm({
             onChange={(e) => {
               const newPais = e.target.value;
               onChange({ ...data, pais: newPais, departamento: "", ciudad: "" });
+              setShowOtraCiudad(false);
             }} 
             className={cn(inputClass, errors.pais && "border-destructive")}
             placeholder="Seleccione un país..."
@@ -226,27 +274,47 @@ export default function DependenciaForm({
           )}
         </FormGroup>
 
-        <FormGroup label="Ciudad" required={isColombia} isActive={activeField === 'ciudad'} error={errors.ciudad}>
-          {isColombia ? (
-            <SearchableSelect
-              name="ciudad"
-              value={data.ciudad || ""}
-              onChange={handleChange}
-              className={cn(inputClass, errors.ciudad && "border-destructive")}
-              options={ciudadesOptions}
-              placeholder={data.departamento ? "Seleccione ciudad..." : "Primero elija departamento"}
-              disabled={!data.departamento}
-            />
-          ) : (
-            <input 
-              name="ciudad" 
-              value={data.ciudad || ""} 
-              onChange={handleChange} 
-              className={inputClass} 
-              placeholder="Ciudad / Municipio" 
-            />
+        <div className="flex flex-col gap-4">
+          <FormGroup label="Ciudad" required={isColombia} isActive={activeField === 'ciudad'} error={errors.ciudad}>
+            {isColombia ? (
+              <SearchableSelect
+                name="ciudad"
+                value={showOtraCiudad ? "Otro" : (data.ciudad || "")}
+                onChange={handleCityChange}
+                className={cn(inputClass, errors.ciudad && "border-destructive")}
+                options={ciudadesOptions}
+                placeholder={data.departamento ? "Seleccione ciudad..." : "Primero elija departamento"}
+                disabled={!data.departamento}
+              />
+            ) : (
+              <input 
+                name="ciudad" 
+                value={data.ciudad || ""} 
+                onChange={handleChange} 
+                className={inputClass} 
+                placeholder="Ciudad / Municipio" 
+              />
+            )}
+          </FormGroup>
+
+          {isColombia && showOtraCiudad && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="pt-2"
+            >
+              <FormGroup label="Escribe la ciudad" required error={errors.otraCiudad}>
+                <input 
+                  type="text"
+                  value={manualCity}
+                  onChange={handleManualCityChange}
+                  className={cn(inputClass, errors.otraCiudad && "border-destructive")}
+                  placeholder="Ej. La Calera Rural"
+                />
+              </FormGroup>
+            </motion.div>
           )}
-        </FormGroup>
+        </div>
 
         <FormGroup label="Dirección" required isActive={activeField === 'direccion'} error={errors.direccion}>
           <input 
