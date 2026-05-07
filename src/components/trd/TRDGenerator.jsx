@@ -22,8 +22,31 @@ export default function TRDGenerator({
   logoBase64,
   orientation = 'landscape',
   onExportPDF,
+  // New props
+  availableDependencias = [],
+  selectedPrintDependencias = ["TODAS"],
+  onSelectDependencia = () => {},
 }) {
   const isLandscape = orientation === 'landscape';
+
+  const handleDepChange = (e) => {
+    const value = e.target.value;
+    if (value === "TODAS") {
+      onSelectDependencia(["TODAS"]);
+    } else {
+      let current = [...selectedPrintDependencias];
+      if (current.includes("TODAS")) current = [];
+      
+      if (current.includes(value)) {
+        current = current.filter(d => d !== value);
+      } else {
+        current.push(value);
+      }
+      
+      if (current.length === 0) onSelectDependencia(["TODAS"]);
+      else onSelectDependencia(current);
+    }
+  };
 
   // Si hay IDs seleccionados filtramos, si no mostramos todo
   const exportRows =
@@ -97,22 +120,44 @@ export default function TRDGenerator({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 border border-slate-300 bg-white">
-            <Info className="h-3.5 w-3.5" />
-            {selectedIds.size > 0
-              ? `${selectedIds.size} seleccionados`
-              : `Todos los registros (${rows.length})`}
+
+        <div className="flex items-center gap-4">
+          {/* Selector de dependencias a imprimir */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Dependencias a imprimir</span>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              <select
+                value={selectedPrintDependencias.length === 1 ? selectedPrintDependencias[0] : ""}
+                onChange={handleDepChange}
+                className="text-[11px] font-bold bg-transparent text-slate-700 outline-none w-48 truncate cursor-pointer"
+              >
+                <option value="TODAS">--- TODAS LAS TRD ---</option>
+                {availableDependencias.map(dep => (
+                  <option key={dep} value={dep}>
+                    {selectedPrintDependencias.includes(dep) ? "✓ " : ""}{dep}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          {onExportPDF && (
-            <button
-              onClick={onExportPDF}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Descargar TRD
-            </button>
-          )}
+
+          <div className="flex items-center gap-3 self-end">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 border border-slate-300 bg-white">
+              <Info className="h-3.5 w-3.5" />
+              {selectedIds.size > 0
+                ? `${selectedIds.size} seleccionados`
+                : `Mostrando: ${selectedPrintDependencias.includes("TODAS") ? "Todo" : selectedPrintDependencias.length + " dependencias"}`}
+            </div>
+            {onExportPDF && (
+              <button
+                onClick={onExportPDF}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Descargar TRD
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
