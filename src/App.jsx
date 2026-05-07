@@ -1675,6 +1675,7 @@ function App() {
                 onChange={setActiveFormData} 
                 activeField={activeField} 
                 dependencias={dependencias} 
+                series={series}
                 entities={userEntities} 
                 currentUser={currentUser}
                 errors={formErrors}
@@ -1687,6 +1688,7 @@ function App() {
                 activeField={activeField} 
                 dependencias={dependencias} 
                 series={series} 
+                subseries={subseries}
                 entities={userEntities} 
                 currentUser={currentUser}
                 errors={formErrors}
@@ -1700,6 +1702,7 @@ function App() {
                 dependencias={dependencias} 
                 series={series} 
                 subseries={subseries} 
+                trdRecords={trdRecords}
                 entities={userEntities} 
                 funciones={funciones} 
                 currentUser={currentUser} 

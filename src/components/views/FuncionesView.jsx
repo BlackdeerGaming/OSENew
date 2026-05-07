@@ -233,6 +233,7 @@ export default function FuncionesView({ dependencias, entities, currentUser }) {
            loadFunciones(); // recargar para consistencia
         }}
         dependencias={dependencias}
+        funciones={funciones}
         entities={entities}
         currentUser={currentUser}
         editData={editFuncion}

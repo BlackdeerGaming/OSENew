@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Save, AlertCircle, Loader2 } from "lucide-react";
+import { X, Save, AlertCircle, Loader2, LayoutGrid, PlusCircle } from "lucide-react";
 import SearchableSelect from "../ui/SearchableSelect";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
@@ -22,6 +22,7 @@ export default function FuncionModal({
   onClose, 
   onSave, 
   dependencias = [], 
+  funciones = [],
   entities = [],
   currentUser,
   editData = null 
@@ -39,6 +40,27 @@ export default function FuncionModal({
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const handleSelectFuncionForEdit = (e) => {
+    const funId = e.target.value;
+    if (!funId) {
+      setFormData({
+        proyecto_nombre: "",
+        proyecto_sigla: "",
+        dependencia_id: "",
+        sigla: "",
+        codigo: "",
+        titulo: "",
+        codigo_funcion: "",
+        descripcion: ""
+      });
+      return;
+    }
+    const fun = funciones.find(f => String(f.id) === String(funId));
+    if (fun) {
+      setFormData({ ...fun });
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -163,6 +185,53 @@ export default function FuncionModal({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+          {/* Selector de Edición Rápida */}
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-center gap-4 mb-6">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="p-2 bg-primary/10 rounded-xl">
+                <LayoutGrid className="w-5 h-5 text-primary" />
+              </div>
+              <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Editar Existente:</span>
+            </div>
+            <div className="flex-1 w-full">
+              <SearchableSelect
+                name="edit_selector"
+                value={formData?.id || ""}
+                onChange={handleSelectFuncionForEdit}
+                placeholder="Buscar función para editar..."
+                className="bg-white"
+                options={[
+                  { value: "", label: "--- Crear Nueva Función ---" },
+                  ...funciones.map(f => {
+                    const dep = dependencias.find(d => String(d.id) === String(f.dependencia_id));
+                    return { 
+                      value: f.id, 
+                      label: `${f.codigo_funcion || "S/C"} - ${f.titulo} ${dep ? `[${dep.sigla || dep.nombre}]` : ""}` 
+                    };
+                  })
+                ]}
+              />
+            </div>
+            {formData?.id && (
+              <button 
+                onClick={() => setFormData({
+                  proyecto_nombre: "",
+                  proyecto_sigla: "",
+                  dependencia_id: "",
+                  sigla: "",
+                  codigo: "",
+                  titulo: "",
+                  codigo_funcion: "",
+                  descripcion: ""
+                })} 
+                className="flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Nuevo Registro
+              </button>
+            )}
+          </div>
+
           {errors.form && (
             <div className="mb-6 p-4 rounded-lg bg-destructive/10 text-destructive text-sm flex items-start gap-3 border border-destructive/20 font-medium">
               <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
