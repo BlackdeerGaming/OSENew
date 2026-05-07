@@ -4,8 +4,21 @@ import { inputClass, textareaClass } from "./SerieForm";
 import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
 import FuncionesMultiSelect from "../ui/FuncionesMultiSelect";
+import { LayoutGrid, PlusCircle } from "lucide-react";
 
-export default function TRDForm({ data, onChange, activeField, dependencias = [], series = [], subseries = [], entities = [], funciones = [], currentUser = null, errors = {} }) {
+export default function TRDForm({ 
+  data, 
+  onChange, 
+  activeField, 
+  dependencias = [], 
+  series = [], 
+  subseries = [], 
+  trdRecords = [],
+  entities = [], 
+  funciones = [], 
+  currentUser = null, 
+  errors = {} 
+}) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -13,6 +26,18 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
       onChange({ ...data, [name]: checked });
     } else {
       onChange({ ...data, [name]: value });
+    }
+  };
+
+  const handleSelectTRDForEdit = (e) => {
+    const trdId = e.target.value;
+    if (!trdId) {
+      onChange({ entidadId: data.entidadId });
+      return;
+    }
+    const trd = trdRecords.find(t => String(t.id) === String(trdId));
+    if (trd) {
+      onChange({ ...trd });
     }
   };
 
@@ -34,21 +59,57 @@ export default function TRDForm({ data, onChange, activeField, dependencias = []
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-card rounded-xl border border-border shadow-sm max-w-4xl w-full mx-auto">
-      <div className="border-b border-border pb-4 mb-2 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            {data?.id ? "Editar Valoración TRD" : "Nueva Valoración TRD"}
-          </h2>
-          <p className="text-sm text-muted-foreground">Formulario de registro de Tiempos de Retención y Disposición Documental.</p>
+      {/* Selector de Edición Rápida */}
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-center gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="p-2 bg-primary/10 rounded-xl">
+            <LayoutGrid className="w-5 h-5 text-primary" />
+          </div>
+          <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Editar Existente:</span>
+        </div>
+        <div className="flex-1 w-full">
+          <SearchableSelect
+            name="edit_selector"
+            value={data?.id || ""}
+            onChange={handleSelectTRDForEdit}
+            placeholder="Buscar valoración para editar..."
+            className="bg-white"
+            options={[
+              { value: "", label: "--- Crear Nueva Valoración ---" },
+              ...trdRecords.map(t => {
+                const dep = dependencias.find(d => String(d.id) === String(t.dependenciaId));
+                const ser = series.find(ser => String(ser.id) === String(t.serieId));
+                const sub = t.subserieId ? subseries.find(sub => String(sub.id) === String(t.subserieId)) : null;
+                return { 
+                  value: t.id, 
+                  label: `${dep?.sigla || "DEP"} | ${ser?.codigo || "SER"}${sub ? `-${sub.codigo}` : ""} - ${t.nombre || "Valoración"}` 
+                };
+              })
+            ]}
+          />
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({})} 
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
+            onClick={() => onChange({ entidadId: data.entidadId })} 
+            className="flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap"
           >
-            + Nueva Valoración
+            <PlusCircle className="w-4 h-4" />
+            Nuevo Registro
           </button>
         )}
+      </div>
+
+      <div className="border-b border-border pb-4 mb-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            {data?.id ? (
+              <>
+                <span className="text-primary italic">Editar:</span> {data.nombre || "Valoración"}
+              </>
+            ) : "Nueva Valoración TRD"}
+          </h2>
+          <p className="text-sm text-muted-foreground">Formulario de registro de Tiempos de Retención y Disposición Documental.</p>
+        </div>
       </div>
 
       {/* Top Filter Section */}

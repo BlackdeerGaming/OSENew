@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import SearchableSelect from "../ui/SearchableSelect";
 import { COLOMBIA_DEPARTAMENTOS, COLOMBIA_MUNICIPIOS } from "../../data/colombiaData";
-import { Checkbox } from "../ui/Checkbox";
-import { Info } from "lucide-react";
+import { Switch } from "../ui/Switch";
+import { Info, PlusCircle, LayoutGrid } from "lucide-react";
 
 export function FormGroup({ label, required, children, isActive, error }) {
   return (
@@ -79,6 +79,18 @@ export default function DependenciaForm({
     }
   };
 
+  const handleSelectDependencyForEdit = (e) => {
+    const depId = e.target.value;
+    if (!depId) {
+      onChange({ pais: "Colombia" });
+      return;
+    }
+    const dep = dependencias.find(d => String(d.id) === String(depId));
+    if (dep) {
+      onChange({ ...dep });
+    }
+  };
+
   // Determinar si mostrar dropdowns de Colombia
   const isColombia = data.pais === "Colombia";
   const departamentosOptions = COLOMBIA_DEPARTAMENTOS.map(d => ({ value: d, label: d }));
@@ -136,21 +148,52 @@ export default function DependenciaForm({
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-card rounded-xl border border-border shadow-sm max-w-4xl w-full mx-auto">
-      <div className="border-b border-border pb-4 mb-2 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            {data?.id ? "Editar Dependencia" : "Nueva Dependencia"}
-          </h2>
-          <p className="text-sm text-muted-foreground">Estructura administrativa nivel superior.</p>
+      {/* Selector de Edición Rápida */}
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-center gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="p-2 bg-primary/10 rounded-xl">
+            <LayoutGrid className="w-5 h-5 text-primary" />
+          </div>
+          <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Editar Existente:</span>
+        </div>
+        <div className="flex-1 w-full">
+          <SearchableSelect
+            name="edit_selector"
+            value={data?.id || ""}
+            onChange={handleSelectDependencyForEdit}
+            placeholder="Buscar dependencia para editar..."
+            className="bg-white"
+            options={[
+              { value: "", label: "--- Crear Nueva Dependencia ---" },
+              ...dependencias.map(d => ({ 
+                value: d.id, 
+                label: `${d.codigo} - ${d.nombre} ${d.sigla ? `(${d.sigla})` : ""}` 
+              }))
+            ]}
+          />
         </div>
         {data?.id && (
           <button 
-            onClick={() => onChange({ pais: "Colombia" })} 
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 active:scale-95"
+            onClick={() => onChange({ pais: "Colombia", entidadId: selectedEntityId })} 
+            className="flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap"
           >
-            + Nueva Dependencia
+            <PlusCircle className="w-4 h-4" />
+            Nuevo Registro
           </button>
         )}
+      </div>
+
+      <div className="border-b border-border pb-4 mb-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            {data?.id ? (
+              <>
+                <span className="text-primary italic">Editar:</span> {data.nombre}
+              </>
+            ) : "Nueva Dependencia"}
+          </h2>
+          <p className="text-sm text-muted-foreground">Estructura administrativa nivel superior.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
@@ -206,11 +249,10 @@ export default function DependenciaForm({
               <p className="text-[11px] text-slate-500 font-medium">Define dónde se encuentra físicamente esta dependencia.</p>
             </div>
           </div>
-          <Checkbox 
+          <Switch 
             checked={heredar} 
-            onChange={(e) => handleHeredarChange(e.target.checked)} 
+            onChange={handleHeredarChange} 
             label="Heredar datos de Entidad"
-            className="bg-white px-4 py-2 rounded-lg border border-primary/20 shadow-sm hover:border-primary transition-all"
           />
         </div>
 
