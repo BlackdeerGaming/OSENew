@@ -734,8 +734,22 @@ function App() {
       return 'create';
     };
 
+    const importSessionId = `import_${Date.now()}`;
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Iniciando integración de datos...' });
+
+    // 0. Validar Entidad
+    if (!selectedEntityId) {
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'error', 
+        message: 'No se detectó una entidad activa. Por favor selecciona una entidad antes de importar.' 
+      });
+      return;
+    }
+
     try {
-      for (const action of actions) {
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
         let entity = action.entity?.toLowerCase();
         if (entity === 'dependency') entity = 'dependencias';
         if (entity === 'serie') entity = 'series';
@@ -744,6 +758,12 @@ function App() {
 
         const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
         const name = action.payload?.nombre || action.payload?.name || "Registro";
+
+        // Feedback de progreso
+        setModalStatus(prev => ({ 
+          ...prev, 
+          message: `Procesando ${i + 1} de ${actions.length}: ${entityLabel} - ${name}...` 
+        }));
 
         if (action.type === 'CREATE') {
           const rawPayload = { ...action.payload };
@@ -757,6 +777,9 @@ function App() {
 
             if (depIdInput) {
                const targetName = normalizeText(depIdInput);
+               // Nota: usamos el pool de dependencias actual. 
+               // Si se acaba de crear una, dependencias (del closure) no la tendrá, 
+               // pero idMap sí tendrá el ID mapeado.
                const foundDep = dependencias.find(x => x.id === depIdInput || normalizeText(x.nombre) === targetName);
                if (foundDep) {
                  finalDepId = foundDep.id;
@@ -764,7 +787,7 @@ function App() {
                  finalDepId = idMap[depIdInput];
                } else {
                  const newDep = { 
-                   entidadId: selectedEntityId || userEntities?.[0]?.id, 
+                   entidadId: selectedEntityId, 
                    nombre: depIdInput, 
                    sigla: "GEN", 
                    codigo: rawPayload.dependenciaCodigo || (Math.floor(Math.random() * 900) + 100).toString() 
@@ -777,10 +800,11 @@ function App() {
                    finalDepId = existing?.id;
                    skippedCount++;
                  } else {
+                   setModalStatus(prev => ({ ...prev, message: `Guardando dependencia en la nube: ${depIdInput}...` }));
                    const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
                    idMap[depIdInput] = strId;
                    await addDependencia({ ...newDep, id: strId });
-                   addActivityLog(`Auto-creación Dependencia: ${depIdInput}`);
+                   addActivityLog(`[${importSessionId}] Auto-creación Dependencia: ${depIdInput}`);
                    finalDepId = strId;
                    if (decision === 'continue') duplicateAcceptedCount++;
                  }
@@ -801,7 +825,7 @@ function App() {
                    finalSerId = idMap[serIdInput];
                  } else {
                    const newSerie = { 
-                     entidadId: selectedEntityId || userEntities?.[0]?.id, 
+                     entidadId: selectedEntityId, 
                      dependenciaId: finalDepId, 
                      nombre: serIdInput, 
                      codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
@@ -815,10 +839,11 @@ function App() {
                      finalSerId = existing?.id;
                      skippedCount++;
                    } else {
+                     setModalStatus(prev => ({ ...prev, message: `Guardando serie en la nube: ${serIdInput}...` }));
                      const strId = Date.now().toString() + "_ser_" + Math.floor(Math.random()*100);
                      idMap[serIdInput] = strId;
                      await addSerie({ ...newSerie, id: strId });
-                     addActivityLog(`Auto-creación Serie: ${serIdInput}`);
+                     addActivityLog(`[${importSessionId}] Auto-creación Serie: ${serIdInput}`);
                      finalSerId = strId;
                      if (decision === 'continue') duplicateAcceptedCount++;
                    }
@@ -839,7 +864,7 @@ function App() {
                     rawPayload.subserieId = idMap[subIdInput];
                   } else {
                     const newSub = {
-                      entidadId: selectedEntityId || userEntities?.[0]?.id,
+                      entidadId: selectedEntityId,
                       dependenciaId: finalDepId,
                       serieId: finalSerId,
                       nombre: subIdInput,
@@ -854,10 +879,11 @@ function App() {
                       rawPayload.subserieId = existing?.id;
                       skippedCount++;
                     } else {
+                      setModalStatus(prev => ({ ...prev, message: `Guardando subserie en la nube: ${subIdInput}...` }));
                       const strId = Date.now().toString() + "_sub_" + Math.floor(Math.random()*100);
                       idMap[subIdInput] = strId;
                       await addSubserie({ ...newSub, id: strId });
-                      addActivityLog(`Auto-creación Subserie: ${subIdInput}`);
+                      addActivityLog(`[${importSessionId}] Auto-creación Subserie: ${subIdInput}`);
                       rawPayload.subserieId = strId;
                       if (decision === 'continue') duplicateAcceptedCount++;
                     }
@@ -874,7 +900,7 @@ function App() {
           if (action.id) idMap[action.id] = finalId;
 
           const payload = {
-              entidadId: selectedEntityId || userEntities?.[0]?.id || null,
+              entidadId: selectedEntityId,
               nombre: name,
               codigo: rawPayload.codigo || (Math.floor(Math.random() * 900) + 100).toString(),
               sigla: rawPayload.sigla || "GEN",
@@ -899,6 +925,7 @@ function App() {
                skippedCount++;
                continue;
              }
+             setModalStatus(prev => ({ ...prev, message: `Guardando valoración TRD: ${name}...` }));
              await addTrdRecord({ ...payload, id: finalId });
              if (decision === 'continue') duplicateAcceptedCount++;
           } else if (entity === 'dependencias') {
@@ -909,11 +936,11 @@ function App() {
              await addSubserie({ ...payload, id: finalId });
           }
           
-          addActivityLog(`Integrado ${entityLabel}: ${name}`);
+          addActivityLog(`[${importSessionId}] Integrado ${entityLabel}: ${name}`);
           actionsProcessed++;
         } 
         else if (action.type === 'UPDATE') {
-          addActivityLog(`Edición ${entityLabel} - ${name}`);
+          addActivityLog(`[${importSessionId}] Edición ${entityLabel} - ${name}`);
           const entityId = idMap[action.id] || action.id;
           const pool = entity === 'dependencias' ? dependencias : (entity === 'series' ? series : (entity === 'subseries' ? subseries : trdRecords));
           const existing = pool.find(x => x.id === entityId);
@@ -927,7 +954,7 @@ function App() {
           }
         }
         else if (action.type === 'DELETE') {
-          addActivityLog(`Eliminación ${entityLabel} - ID ${action.id}`);
+          addActivityLog(`[${importSessionId}] Eliminación ${entityLabel} - ID ${action.id}`);
           if (entity === 'dependencias') await deleteDependencia(action.id);
           else if (entity === 'series') await deleteSerie(action.id);
           else if (entity === 'subseries') await deleteSubserie(action.id);
@@ -936,23 +963,46 @@ function App() {
         }
       }
 
-      if (actionsProcessed > 0 || skippedCount > 0) {
+      // --- VALIDACIÓN FINAL Y REFRESCAMIENTO ---
+      if (actionsProcessed > 0) {
+        setModalStatus({ isOpen: true, type: 'loading', message: 'Validando Datos Estructurados y reconstruyendo Tabla Final...' });
+        
+        // Esperamos un momento para que la DB se estabilice y refrescamos
+        await new Promise(r => setTimeout(r, 1000));
+        await refreshData();
+        
         setModalStatus({ 
           isOpen: true, 
           type: 'success', 
-          message: `Sincronización finalizada.\n- Creados: ${actionsProcessed}\n- Omitidos (Duplicados): ${skippedCount}\n- Duplicados aceptados: ${duplicateAcceptedCount}` 
+          message: `¡Importación completada correctamente!\n\n- Registros procesados: ${actionsProcessed}\n- Duplicados omitidos: ${skippedCount}\n- Cambios aceptados: ${duplicateAcceptedCount}\n\nLos datos ya están disponibles en Datos Estructurados y Tabla Final.` 
         });
         setMainView('trd');
         setActiveModule('datos');
+      } else if (skippedCount > 0) {
+        setModalStatus({ 
+          isOpen: true, 
+          type: 'success', 
+          message: `Sincronización finalizada.\nNo se crearon nuevos registros porque ya existían en la entidad (Omitidos: ${skippedCount}).` 
+        });
       } else {
         setModalStatus({ isOpen: false, type: 'loading', message: '' });
       }
     } catch (error) {
+      addActivityLog(`[${importSessionId}] Error: ${error.message}`);
       if (error.message === "IMPORT_CANCELLED") {
         setModalStatus({ isOpen: true, type: 'error', message: 'Importación cancelada por el usuario debido a duplicados detectados.' });
       } else {
         console.error('Error procesando acciones:', error);
-        setModalStatus({ isOpen: true, type: 'error', message: 'Error durante la integración automática de datos.' });
+        let failStep = "la integración de datos";
+        if (error.message.includes("dependencia")) failStep = "el guardado de la dependencia";
+        if (error.message.includes("serie")) failStep = "el guardado de las series";
+        if (error.message.includes("TRD")) failStep = "el guardado de la valoración TRD";
+        
+        setModalStatus({ 
+          isOpen: true, 
+          type: 'error', 
+          message: `La importación falló: no se pudo completar ${failStep}.\nDetalle: ${error.message}` 
+        });
       }
     }
   };
