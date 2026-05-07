@@ -36,6 +36,7 @@ import { useTRDData } from './hooks/useTRDData';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import StatusModal from './components/ui/StatusModal';
 import ConflictModal from './components/ui/ConflictModal';
+import { LoadingOverlay } from './components/ui/LoadingOverlay';
 import { handleExportPDFGeneral } from './utils/exportUtils';
 import { exportTRDToExcel } from './utils/excelUtils';
 import { normalizeText } from './utils/stringUtils';
@@ -1957,6 +1958,7 @@ function App() {
             />
 
             <div className="flex-1 overflow-y-auto relative flex flex-col w-full">
+              <LoadingOverlay isVisible={trdLoading} message="Sincronizando Archivos..." />
               <ErrorBoundary key={mainView}>
                 {mainView === 'dashboard' && (
                   <DashboardView 
