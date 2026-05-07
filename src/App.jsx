@@ -30,6 +30,7 @@ import EntrevistasView from './components/views/EntrevistasView';
 import GeneradorDocumentalView from './components/views/GeneradorDocumentalView';
 import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
+import { supabase } from './lib/supabase';
 import { RAGProvider } from './contexts/RAGContext';
 import { useTRDData } from './hooks/useTRDData';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -114,14 +115,58 @@ function App() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [formErrors, setFormErrors] = useState({});
-  
-  const [trdData, setTrdData] = useState([]);
+
+  // SaaS Context State
   const [mainView, setMainView] = useState('dashboard');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeModule, setActiveModule] = useState('dashboard');
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
+
+  // Manejar sesión de Google (Supabase OAuth)
+  useEffect(() => {
+    if (!supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Solo actuar si es un evento de login y no tenemos usuario interno
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && !currentUser) {
+        if (session.user.app_metadata.provider === 'google') {
+          try {
+            setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con Google...' });
+            
+            const response = await fetch(`${API_BASE_URL}/auth/google`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: session.user.email,
+                nombre: session.user.user_metadata.full_name || session.user.user_metadata.name || "Usuario",
+                apellido: "",
+                uid: session.user.id
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              handleLogin(data, true);
+            } else {
+              const err = await response.json();
+              setModalStatus({ isOpen: true, type: 'error', message: err.detail || 'Error en autenticación Google' });
+              await supabase.auth.signOut();
+            }
+          } catch (e) {
+            console.error("Google Auth Error:", e);
+            setModalStatus({ isOpen: true, type: 'error', message: 'Error de conexión con el servidor' });
+            await supabase.auth.signOut();
+          } finally {
+            setModalStatus(prev => ({ ...prev, isOpen: false }));
+          }
+        }
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, [currentUser, supabase]);
 
   // Global App Data State
   const [entities, setEntities] = useState([]);
@@ -254,19 +299,14 @@ function App() {
         
         if (entitiesRes.ok) {
           const eData = await entitiesRes.json();
-          setEntities(eData.map(e => {
-            const rawId = e.id || e.PK || e.entity_id || "";
-            // Si el ID viene como "ENTITY#uuid", limpiar el prefijo para el frontend
-            const cleanId = rawId.startsWith("ENTITY#") ? rawId.replace("ENTITY#", "") : rawId;
-            return {
-              ...e,
-              id: cleanId,
-              razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
-              nombre: e.nombre || e.razonSocial || e.razon_social || "",
-              numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
-              nit: e.nit || e.numeroDocumento || e.NIT || ""
-            };
-          }));
+          setEntities(eData.map(e => ({
+            ...e,
+            id: e.id || e.PK || e.entity_id || "",
+            razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+            nombre: e.nombre || e.razonSocial || e.razon_social || "",
+            numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+            nit: e.nit || e.numeroDocumento || e.NIT || ""
+          })));
         }
         
         if (invRes.ok) {
@@ -404,7 +444,7 @@ function App() {
     }
   }, [activeFormData, activeModule]);
 
-  // 🔥 CRÍTICO: AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) 🔥
+  // --- CRÍTICO: AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) ---
   useEffect(() => {
     if (selectedEntityId) {
       console.log(" [Context] Sincronizando contexto global de entidad:", selectedEntityId);
@@ -590,21 +630,25 @@ function App() {
   const activeField = currentFlow[flowStep] ? currentFlow[flowStep].field : null;
   const quickOptions = currentOptions.length > 0 ? currentOptions : (currentFlow[flowStep] ? currentFlow[flowStep].quick : []);
 
-  // Recuperar historial de Orianna al cargar (Escopeado por Entidad)
+  // Inicializar un saludo base si no hay mensajes
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente además de las TRD y organigramas. Escribe lo que necesites.' }]);
+    }
+  }, [messages.length]);
+
+  // Recuperar historial de Orianna al cargar
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!currentUser?.token || !selectedEntityId) return;
+      if (!currentUser?.token) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/chat-history/orianna?entidad_id=${selectedEntityId}`, {
+        const res = await fetch(`${API_BASE_URL}/chat-history/orianna`, {
           headers: { "Authorization": `Bearer ${currentUser.token}` }
         });
         if (res.ok) {
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages);
-          } else {
-            // Si no hay historial para esta entidad, resetear al saludo inicial
-            setMessages([{ sender: 'agent', text: '¡Hola! Soy Orianna, tu asistente especializada en TRD. Puedo ayudarte a construir toda la estructura (Dependencias, Series, Subseries) directamente además de las TRD y organigramas. Escribe lo que necesites.' }]);
           }
         }
       } catch (e) {
@@ -612,20 +656,20 @@ function App() {
       }
     };
     fetchHistory();
-  }, [currentUser, selectedEntityId]);
+  }, [currentUser]);
 
-  // Persistir historial de Orianna automáticamente (Escopeado por Entidad)
+  // Persistir historial de Orianna automáticamente
   useEffect(() => {
     const saveHistory = async () => {
-      if (!currentUser?.token || !selectedEntityId || messages.length <= 1) return;
+      if (!currentUser?.token || messages.length <= 1) return;
       try {
-        await fetch(`${API_BASE_URL}/chat-history/orianna?entidad_id=${selectedEntityId}`, {
+        await fetch(`${API_BASE_URL}/chat-history/orianna`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
             "Authorization": `Bearer ${currentUser.token}`
           },
-          body: JSON.stringify({ messages, entidad_id: selectedEntityId })
+          body: JSON.stringify({ messages })
         });
       } catch (e) {
         console.error("Error guardando historial de Orianna:", e);
@@ -634,7 +678,7 @@ function App() {
 
     const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
     return () => clearTimeout(timer);
-  }, [messages, currentUser, selectedEntityId]);
+  }, [messages, currentUser]);
 
 
   // Unified simulateAgent
@@ -744,8 +788,6 @@ function App() {
                } else {
                  const newDep = { 
                    entidadId: selectedEntityId, 
-                   user_id: currentUser?.id,
-                   import_session_id: action.import_session_id || importSessionId,
                    nombre: depIdInput, 
                    sigla: "GEN", 
                    codigo: rawPayload.dependenciaCodigo || (Math.floor(Math.random() * 900) + 100).toString() 
@@ -784,8 +826,6 @@ function App() {
                  } else {
                    const newSerie = { 
                      entidadId: selectedEntityId, 
-                     user_id: currentUser?.id,
-                     import_session_id: action.import_session_id || importSessionId,
                      dependenciaId: finalDepId, 
                      nombre: serIdInput, 
                      codigo: rawPayload.serieCodigo || (Math.floor(Math.random() * 90) + 10).toString(), 
@@ -825,8 +865,6 @@ function App() {
                   } else {
                     const newSub = {
                       entidadId: selectedEntityId,
-                      user_id: currentUser?.id,
-                      import_session_id: action.import_session_id || importSessionId,
                       dependenciaId: finalDepId,
                       serieId: finalSerId,
                       nombre: subIdInput,
@@ -863,8 +901,6 @@ function App() {
 
           const payload = {
               entidadId: selectedEntityId,
-              user_id: currentUser?.id,
-              import_session_id: action.import_session_id || importSessionId,
               nombre: name,
               codigo: rawPayload.codigo || (Math.floor(Math.random() * 900) + 100).toString(),
               sigla: rawPayload.sigla || "GEN",
@@ -940,8 +976,6 @@ function App() {
           type: 'success', 
           message: `¡Importación completada correctamente!\n\n- Registros procesados: ${actionsProcessed}\n- Duplicados omitidos: ${skippedCount}\n- Cambios aceptados: ${duplicateAcceptedCount}\n\nLos datos ya están disponibles en Datos Estructurados y Tabla Final.` 
         });
-        setMainView('trd');
-        setActiveModule('datos');
       } else if (skippedCount > 0) {
         setModalStatus({ 
           isOpen: true, 
@@ -1017,7 +1051,7 @@ function App() {
              simulateAgentResponse(data.message || "No se identificaron acciones específicas.");
           }
           setFlowStep(0);
-          setActiveFormData({ entidadId: selectedEntityId });
+          setActiveFormData({});
        })
        .catch((err) => {
           console.error("Error en Orianna:", err);
@@ -1032,7 +1066,6 @@ function App() {
     if (cleaned.length > 0) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
     if (activeField) {
-      // (Lógica de validación omitida para brevedad pero mantenemos la estructura)
       if (cleaned.toLowerCase() === 'no aplica' || cleaned.toLowerCase() === 'ninguna') cleaned = "";
       setActiveFormData(prev => ({ ...prev, [activeField]: cleaned }));
       
@@ -1046,12 +1079,14 @@ function App() {
     }
   };
 
-  const handleSave = async (moduleType, data) => {
+  const handleSave = async () => {
     if (isSaving) return;
-
+    
     // --- VALIDATION LOGIC ---
     const errors = {};
-    if (moduleType === 'dependencias') {
+    const data = activeFormData;
+    
+    if (activeModule === 'dependencias') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
       if (!data.nombre?.trim()) errors.nombre = "El nombre es obligatorio.";
       if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
@@ -1062,20 +1097,20 @@ function App() {
         if (!data.departamento?.trim()) errors.departamento = "Selecciona un departamento.";
         if (!data.ciudad?.trim()) errors.ciudad = "Escribe la ciudad.";
       }
-    } else if (moduleType === 'series') {
+    } else if (activeModule === 'series') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
       if (!data.dependenciaId) errors.dependenciaId = "La dependencia productora es obligatoria.";
       if (!data.nombre?.trim()) errors.nombre = "El nombre de la serie es obligatorio.";
       if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
       if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
-    } else if (moduleType === 'subseries') {
+    } else if (activeModule === 'subseries') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
       if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
       if (!data.serieId) errors.serieId = "La serie asociada es obligatoria.";
       if (!data.nombre?.trim()) errors.nombre = "El nombre de la subserie es obligatorio.";
       if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
       if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
-    } else if (moduleType === 'trdform') {
+    } else if (activeModule === 'trdform') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
       if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
       if (!data.serieId) errors.serieId = "La serie es obligatoria.";
@@ -1100,7 +1135,7 @@ function App() {
 
     setFormErrors({});
     setIsSaving(true);
-    setModalStatus({ isOpen: true, type: 'loading', message: 'Sincronizando con la nube...' });
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Verificando datos y guardando en base de datos...' });
     
     const isUpdate = !!activeFormData.id;
     const record = activeFormData;
@@ -1133,34 +1168,46 @@ function App() {
       });
       return;
     }
+
     try {
-      if (moduleType === 'dependencias') {
-        await addDependencia(data);
-        addActivityLog(`Actualización Dependencia - ${data.nombre}`);
-      } else if (moduleType === 'series') {
-        await addSerie(data);
-        addActivityLog(`Actualización Serie - ${data.nombre}`);
-      } else if (moduleType === 'subseries') {
-        await addSubserie(data);
-        addActivityLog(`Actualización Subserie - ${data.nombre}`);
-      } else if (moduleType === 'trdform') {
-        await addTrdRecord(data);
-        addActivityLog(`Actualización TRD - ${data.nombre || 'Valoración'}`);
-      }
+      let savedRecord;
+      if (activeModule === 'dependencias') savedRecord = await addDependencia(record);
+      else if (activeModule === 'series') savedRecord = await addSerie(record);
+      else if (activeModule === 'subseries') savedRecord = await addSubserie(record);
+      else if (activeModule === 'trdform') savedRecord = await addTrdRecord(record);
+
+      const entityMap = {
+        'dependencias': 'Dependencia',
+        'series': 'Serie',
+        'subseries': 'Subserie',
+        'trdform': 'TRD'
+      };
+      const entityLabel = entityMap[activeModule] || 'Registro';
+      const actionLabel = isUpdate ? 'Edición' : 'Creación';
       
-      setModalStatus({ isOpen: true, type: 'success', message: '¡Datos guardados y sincronizados correctamente!' });
-      setFlowStep(0);
+      addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id || 'Nuevo'}`);
+      
+      // Limpiar persistencia de este módulo al guardar con éxito
+      setFormsPersistence(prev => ({ ...prev, [activeModule]: {} }));
+      
       setActiveFormData({});
-    } catch (error) {
-      console.error("Error saving TRD:", error);
+      setFlowStep(0);
+      
+      // La verificación ya ocurre dentro del hook (await refreshData)
+      setModalStatus({ 
+        isOpen: true, 
+        type: 'success', 
+        message: `¡${entityLabel} guardada correctamente! La base de datos ha sido actualizada.` 
+      });
+    } catch (err) {
+      console.error("Error en handleSave:", err);
       setModalStatus({ 
         isOpen: true, 
         type: 'error', 
-        message: error.message || 'Error al guardar los datos en la base de datos o en la nube.' 
+        message: `No se pudo guardar: ${err.message || 'Error de conexión'}` 
       });
     } finally {
       setIsSaving(false);
-      setTimeout(() => setModalStatus(prev => ({ ...prev, isOpen: false })), 3000);
     }
   };
 
@@ -1217,7 +1264,7 @@ function App() {
       }
 
       if (activeFormData.id === recordId) {
-        setActiveFormData({ entidadId: selectedEntityId });
+        setActiveFormData({});
       }
       setModalStatus({ isOpen: true, type: 'success', message: 'Registro eliminado correctamente de la nube.' });
     } catch (err) {
@@ -1331,9 +1378,20 @@ function App() {
               alert("¡Invitación aceptada exitosamente! Tu cuenta ha sido enlazada a la nueva entidad.");
               refreshUserProfile();
             } else {
-              res.json().then(data => alert(`Error al aceptar: ${data.detail || 'Desconocido'}`));
+              res.json().then(data => {
+                let msg = data.detail || 'Desconocido';
+                if (msg === 'Invalid authentication token') {
+                    msg = 'El enlace de invitación no es válido o tu sesión ha expirado. Por favor, solicita uno nuevo o vuelve a iniciar sesión.';
+                } else if (msg.includes('ya ha sido aceptada') || msg.includes('ya ha sido') || msg.includes('no es para ti')) {
+                    msg = 'El enlace no es válido, ya fue utilizado, o no corresponde a tu cuenta.';
+                }
+                alert(`Error al aceptar la invitación: ${msg}`);
+              });
             }
-        }).catch(console.error);
+        }).catch(err => {
+            console.error("Error accepting invitation:", err);
+            alert("Error de conexión al procesar la invitación.");
+        });
       }
       localStorage.removeItem('invitation_context');
       setInvitationContext(null);
@@ -1357,6 +1415,7 @@ function App() {
     setSelectedTrdIds(new Set());
     localStorage.removeItem('ose_user');
     localStorage.removeItem('invitation_context');
+    if (supabase) await supabase.auth.signOut();
   };
 
   // Restore session logic removed - now handled by initial state in useState
@@ -1460,17 +1519,21 @@ function App() {
   // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
     setActiveModule(moduleId);
+    setFormErrors({});
     
     // Si tenemos data persistida para este módulo (escrita por el usuario antes), la recuperamos
     const persisted = formsPersistence[moduleId];
     if (persisted && Object.keys(persisted).length > 0) {
-      console.log(`♻️ Recuperando formulario persistido para ${moduleId} (Forzando entidad contexto)`);
-      // 🔥 Forzamos que la entidad coincida SIEMPRE con el contexto actual al recuperar
-      setActiveFormData({ ...persisted, entidadId: selectedEntityId });
+      console.log(`♻️ Recuperando formulario persistido para ${moduleId}`);
+      setActiveFormData(persisted);
     } else {
-      const autoData = { entidadId: selectedEntityId };
+      const autoData = {};
       if (userEntities.length > 0) {
-        console.log("📍 Auto-seleccionando entidad:", currentEntity?.nombre || currentEntity?.razonSocial || userEntities?.[0]?.nombre);
+        console.log("📍 Auto-seleccionando entidad:", userEntities?.[0]?.nombre || userEntities?.[0]?.razonSocial);
+        autoData.entidadId = userEntities?.[0]?.id;
+      }
+      if (moduleId === 'dependencias') {
+        autoData.pais = "Colombia";
       }
       setActiveFormData(autoData);
     }
@@ -1624,8 +1687,7 @@ function App() {
                 activeField={activeField} 
                 dependencias={dependencias} 
                 entities={userEntities} 
-                currentUser={currentUser} 
-                selectedEntityId={selectedEntityId} 
+                currentUser={currentUser}
                 errors={formErrors}
               />
             )}
@@ -1637,8 +1699,7 @@ function App() {
                 dependencias={dependencias} 
                 series={series} 
                 entities={userEntities} 
-                currentUser={currentUser} 
-                selectedEntityId={selectedEntityId} 
+                currentUser={currentUser}
                 errors={formErrors}
               />
             )}
@@ -1653,7 +1714,6 @@ function App() {
                 entities={userEntities} 
                 funciones={funciones} 
                 currentUser={currentUser} 
-                selectedEntityId={selectedEntityId} 
                 errors={formErrors}
               />
             )}
@@ -1673,7 +1733,7 @@ function App() {
               <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="manual" />
             )}
             {activeModule === 'trd' && (
-              <div id="trd-final-report-area" className="print-content h-full">
+              <div id="trd-report-wrapper" className="print-content h-full">
                 <TRDGenerator 
                   rows={filteredTrdRows} 
                   selectedIds={selectedTrdIds}
@@ -1756,7 +1816,7 @@ function App() {
            !['Consulta', 'consulta', 'viewer'].includes(currentUser?.role || currentUser?.perfil || '') && (
            <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-12">
              <button 
-               onClick={() => handleSave(activeModule, activeFormData)}
+               onClick={handleSave}
                disabled={isSaving}
                className={cn(
                  "flex items-center gap-3 px-10 py-4 rounded-2xl shadow-xl text-base font-black uppercase tracking-widest transition-all transform active:scale-95",
