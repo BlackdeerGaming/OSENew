@@ -1,10 +1,8 @@
-import React from 'react';
-import { FileText, AlertTriangle, Activity, BrainCircuit, ChevronRight, Download, X, Clock, RefreshCw } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import API_BASE_URL from '../../config/api';
+import { LoadingOverlay, StatsSkeleton, SkeletonLine } from '../ui/LoadingOverlay';
 
 export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF, onRefresh, isRefreshing }) {
   const role = currentUser?.role || 'usuario';
+  // ... existing messages state ...
   const [messages, setMessages] = React.useState([
     {
       id: 1,
@@ -37,7 +35,6 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   // Persistir historial de Documencio automáticamente
   React.useEffect(() => {
     const saveHistory = async () => {
-      // No guardar si solo está el mensaje de bienvenida inicial
       if (!currentUser?.token || messages.length <= 1) return;
       try {
         await fetch(`${API_BASE_URL}/chat-history/documencio`, {
@@ -53,9 +50,10 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
       }
     };
 
-    const timer = setTimeout(saveHistory, 1500); // 1.5s debounce
+    const timer = setTimeout(saveHistory, 1500); 
     return () => clearTimeout(timer);
   }, [messages, currentUser]);
+
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
   const [showActProposal, setShowActProposal] = React.useState(false);
@@ -153,7 +151,6 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
       
       const data = await res.json();
       
-      // Generate CSV from filtered data
       const headers = ["ID Acción", "Usuario", "Actividad", "Fecha y Hora"];
       const csvContent = [
         headers.join(","),
@@ -181,21 +178,18 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     }
   };
 
-  // Lógica de Recomendaciones Reales
   const recommendations = React.useMemo(() => {
     const recs = [];
-    if (!stats) return [{ title: "Cargando", desc: "Preparando recomendaciones...", type: "neutral" }];
+    if (!stats || isRefreshing) return [{ title: "Cargando", desc: "Preparando recomendaciones...", type: "neutral" }];
     
     if (stats.expiredDocs > 0) recs.push({ title: "Eliminación", desc: "Revisar documentos vencidos para eliminación", type: "success" });
     if (stats.unapprovedTRDs > 0) recs.push({ title: "Aprobación", desc: `Revisar y aprobar ${stats.unapprovedTRDs} TRD pendientes`, type: "warning" });
     if (stats.totalDocs > 100) recs.push({ title: "Transferencia", desc: "Programar transferencia documental al Archivo Central", type: "info" });
     
-    // Default if nothing critical
     if (recs.length === 0) recs.push({ title: "Mantenimiento", desc: "Validar integridad de tablas de retención", type: "neutral" });
     return recs;
-  }, [stats]);
+  }, [stats, isRefreshing]);
 
-  // Agrupar registros por dependencia para mostrarlos individualmente
   const trdsByOficina = React.useMemo(() => {
     const groups = {};
     trdRecords.forEach(rec => {
@@ -228,12 +222,14 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
             onClick={onRefresh}
             disabled={isRefreshing}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-lg text-[12px] font-medium transition-all hover:border-primary/30 active:scale-95",
-              isRefreshing ? "text-primary opacity-70 cursor-not-allowed" : "text-muted-foreground hover:text-primary"
+              "flex items-center gap-2 px-6 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95",
+              isRefreshing 
+                ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+                : "bg-[#09C8A2] text-white hover:bg-[#07b08f] shadow-[#09C8A2]/20"
             )}
           >
-            <RefreshCw className={cn("w-3.5 h-3.5 transition-transform duration-500", isRefreshing ? "animate-spin" : "")} />
-            {isRefreshing ? "Sincronizando..." : "Actualizar"}
+            <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing ? "animate-spin" : "")} />
+            {isRefreshing ? "Actualizando..." : "Actualizar"}
           </button>
         )}
       </header>
@@ -295,7 +291,15 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {trdsByOficina.length > 0 ? (
+                    {isRefreshing ? (
+                      [1, 2, 3].map(i => (
+                        <tr key={i}>
+                          <td colSpan={4} className="px-5 py-4">
+                            <SkeletonLine className="h-8 w-full" />
+                          </td>
+                        </tr>
+                      ))
+                    ) : trdsByOficina.length > 0 ? (
                       trdsByOficina.map((trd, idx) => (
                         <tr key={idx} className="hover:bg-secondary/30 transition-colors group">
                           <td className="px-5 py-3.5">
@@ -352,20 +356,22 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
             {showAnalysis && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 animate-in fade-in duration-700">
-                <AnalysisWidget title="Series" desc={`${stats.totalDocs > 0 ? seriesCount : 0}`} type="info" />
-                <AnalysisWidget title="Estado" desc={stats.expiredDocs > 0 ? "Crítico" : "Óptimo"} type="neutral" />
-                <AnalysisWidget title="Pendientes" desc={`${stats.unapprovedTRDs}`} type="warning" />
-                <AnalysisWidget title="Insight" desc={recommendations[0].desc} type="success" />
+                <AnalysisWidget title="Series" desc={isRefreshing ? "..." : `${stats.totalDocs > 0 ? seriesCount : 0}`} type="info" />
+                <AnalysisWidget title="Estado" desc={isRefreshing ? "..." : (stats.expiredDocs > 0 ? "Crítico" : "Óptimo")} type="neutral" />
+                <AnalysisWidget title="Pendientes" desc={isRefreshing ? "..." : `${stats.unapprovedTRDs}`} type="warning" />
+                <AnalysisWidget title="Insight" desc={isRefreshing ? "Calculando..." : recommendations[0].desc} type="success" />
               </div>
             )}
 
             {showActions && (
               <div className="flex items-center gap-2 overflow-x-auto animate-in fade-in duration-500">
                 <button
-                  onClick={() => console.log("Refrescando...")}
-                  className="shrink-0 flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-[12px] font-semibold hover:bg-primary/90 transition-all active:scale-95"
+                  onClick={onRefresh}
+                  disabled={isRefreshing}
+                  className="shrink-0 flex items-center gap-2 bg-[#09C8A2] text-white px-4 py-2 rounded-lg text-[12px] font-bold shadow-lg shadow-[#09C8A2]/20 hover:bg-[#07b08f] transition-all active:scale-95 disabled:opacity-50"
                 >
-                  <Activity className="w-3.5 h-3.5" /> Actualizar Logs
+                  {isRefreshing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
+                  {isRefreshing ? "Actualizando..." : "Actualizar Logs"}
                 </button>
                 <button
                   onClick={() => setShowExportModal(true)}
@@ -383,7 +389,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                   <span className="text-[11px] text-muted-foreground">Monitoreo de acciones en tiempo real</span>
                 </div>
                 <div className="px-3 py-1 bg-card border border-border rounded-md text-[11px] font-medium text-primary">
-                  {activityLogs.length} registros
+                  {isRefreshing ? "..." : activityLogs.length} registros
                 </div>
               </div>
               <div className="overflow-auto flex-1">
@@ -397,7 +403,15 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {activityLogs.length > 0 ? (
+                    {isRefreshing ? (
+                      [1, 2, 3, 4, 5].map(i => (
+                        <tr key={i}>
+                          <td colSpan={4} className="px-5 py-4">
+                            <SkeletonLine className="h-6 w-full" />
+                          </td>
+                        </tr>
+                      ))
+                    ) : activityLogs.length > 0 ? (
                       activityLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-secondary/30 transition-colors">
                           <td className="px-5 py-3 font-mono text-[11px] text-muted-foreground">#{log.id.substring(log.id.length - 6)}</td>
@@ -429,6 +443,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
         )}
       </div>
       
+      {/* ... rest of the code (modals) ... */}
       {showActProposal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setShowActProposal(false)} />
@@ -439,7 +454,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                   <FileText className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight text-slate-900">Propuesta de Acta de Eliminación</h3>
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Propuesta de Acta de Eliminación</h3>
                   <p className="text-sm text-slate-500 font-medium">Protocolo archivístico automatizado (DANE)</p>
                 </div>
               </div>
@@ -552,8 +567,17 @@ function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, isRefresh
     <div className={cn(
       "bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all relative overflow-hidden group",
       alert && "border-l-4 border-l-destructive",
-      isRefreshing && "animate-pulse opacity-70"
+      isRefreshing && "opacity-70"
     )}>
+      {isRefreshing && (
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] z-20 flex items-center justify-center animate-in fade-in duration-300">
+           <div className="flex flex-col items-center gap-1.5">
+              <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-[9px] font-black text-primary uppercase tracking-widest">Sincronizando</span>
+           </div>
+        </div>
+      )}
+
       <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
         <Icon className="w-16 h-16" />
       </div>
@@ -563,7 +587,7 @@ function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, isRefresh
            <div className={cn("p-2 rounded-lg border", alert ? "bg-destructive/10 border-destructive/10 text-destructive" : "bg-primary/10 border-primary/10 text-primary")}>
              <Icon className="w-4 h-4" />
            </div>
-           {trend && (
+           {trend && !isRefreshing && (
              <div className={cn("px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5", 
                trend === 'up' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
              )}>
@@ -574,13 +598,15 @@ function StatsCard({ title, value, subtitle, icon: Icon, trend, alert, isRefresh
         </div>
 
         <div className="space-y-0.5">
-          <h4 className="text-2xl font-bold text-foreground tracking-tight leading-none">{value}</h4>
+          <h4 className="text-2xl font-bold text-foreground tracking-tight leading-none">
+            {isRefreshing ? "---" : value}
+          </h4>
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{title}</p>
         </div>
 
         <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground bg-secondary/50 p-2 rounded-md border border-border">
            <span className="w-1.5 h-1.5 rounded-full bg-border" />
-           <span className="line-clamp-1">{subtitle}</span>
+           <span className="line-clamp-1">{isRefreshing ? "Actualizando métricas..." : subtitle}</span>
         </div>
       </div>
     </div>
@@ -636,3 +662,4 @@ function StepItem({ num, title, desc, active }) {
     </div>
   );
 }
+
