@@ -4,51 +4,38 @@ import { normalizeText } from './stringUtils';
  * Compara dos dependencias para detectar si son duplicados exactos.
  * Criterios: entidad_id, código, nombre, sigla (opcional), padre (opcional).
  */
+/**
+ * Compara dos dependencias para detectar si hay colisión de código.
+ * Regla: El código debe ser único dentro de la misma entidad.
+ */
 export const isDuplicateDependencia = (newDep, existingDep) => {
-  // Siempre comparar dentro de la misma entidad
   if (String(newDep.entidadId) !== String(existingDep.entidadId)) return false;
-
-  const codeMatch = normalizeText(newDep.codigo) === normalizeText(existingDep.codigo);
-  const nameMatch = normalizeText(newDep.nombre) === normalizeText(existingDep.nombre);
-  
-  // Sigla y padre son opcionales pero si están deben coincidir para ser "exacto"
-  const siglaMatch = normalizeText(newDep.sigla) === normalizeText(existingDep.sigla);
-  const parentMatch = String(newDep.dependeDe || "") === String(existingDep.dependeDe || "");
-
-  return codeMatch && nameMatch && siglaMatch && parentMatch;
+  return normalizeText(newDep.codigo) === normalizeText(existingDep.codigo);
 };
 
 /**
- * Compara dos series.
- * Criterios: entidad_id, dependenciaId, código, nombre.
+ * Compara dos series para detectar colisión.
+ * Regla: El código de serie es único DENTRO de la misma dependencia.
  */
 export const isDuplicateSerie = (newSerie, existingSerie) => {
   if (String(newSerie.entidadId) !== String(existingSerie.entidadId)) return false;
   if (String(newSerie.dependenciaId) !== String(existingSerie.dependenciaId)) return false;
-
-  const codeMatch = normalizeText(newSerie.codigo) === normalizeText(existingSerie.codigo);
-  const nameMatch = normalizeText(newSerie.nombre) === normalizeText(existingSerie.nombre);
-
-  return codeMatch && nameMatch;
+  return normalizeText(newSerie.codigo) === normalizeText(existingSerie.codigo);
 };
 
 /**
- * Compara dos subseries.
- * Criterios: entidad_id, dependenciaId, serieId, código, nombre.
+ * Compara dos subseries para detectar colisión.
+ * Regla: El código de subserie es único DENTRO de la misma serie y dependencia.
  */
 export const isDuplicateSubserie = (newSub, existingSub) => {
   if (String(newSub.entidadId) !== String(existingSub.entidadId)) return false;
   if (String(newSub.dependenciaId) !== String(existingSub.dependenciaId)) return false;
   if (String(newSub.serieId) !== String(existingSub.serieId)) return false;
-
-  const codeMatch = normalizeText(newSub.codigo) === normalizeText(existingSub.codigo);
-  const nameMatch = normalizeText(newSub.nombre) === normalizeText(existingSub.nombre);
-
-  return codeMatch && nameMatch;
+  return normalizeText(newSub.codigo) === normalizeText(existingSub.codigo);
 };
 
 /**
- * Compara dos registros TRD.
+ * Compara dos registros TRD para detectar duplicados exactos de valoración.
  */
 export const isDuplicateTRD = (newTrd, existingTrd) => {
   if (String(newTrd.entidadId) !== String(existingTrd.entidadId)) return false;
@@ -58,7 +45,7 @@ export const isDuplicateTRD = (newTrd, existingTrd) => {
   // Manejo de subserie opcional
   const subMatch = String(newTrd.subserieId || "") === String(existingTrd.subserieId || "");
   
-  // Comparación de campos clave de valoración
+  // Si coinciden en jerarquía (Dep/Ser/Sub), verificamos si los datos de valoración son iguales
   const retencionMatch = 
     parseInt(newTrd.retencionGestion) === parseInt(existingTrd.retencionGestion) &&
     parseInt(newTrd.retencionCentral) === parseInt(existingTrd.retencionCentral);

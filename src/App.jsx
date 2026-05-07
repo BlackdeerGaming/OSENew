@@ -617,7 +617,7 @@ function App() {
   }, [messages]);
 
   // Selective Export TRD Filter
-  const [selectedDependencia, setSelectedDependencia] = useState("TODAS");
+  const [selectedPrintDependencias, setSelectedPrintDependencias] = useState(["TODAS"]);
   
 
   // Calculate current flow array
@@ -1104,10 +1104,19 @@ function App() {
     
     if (existing) {
       setIsSaving(false);
+      let errorMsg = 'Este registro ya existe en la entidad actual. Por favor verifica los datos.';
+      if (activeModule === 'dependencias') {
+        errorMsg = 'Ya existe una dependencia con este código en la entidad actual.';
+      } else if (activeModule === 'series') {
+        errorMsg = 'Ya existe una serie con este código en esta dependencia.';
+      } else if (activeModule === 'subseries') {
+        errorMsg = 'Ya existe una subserie con este código en esta serie y dependencia.';
+      }
+      
       setModalStatus({ 
         isOpen: true, 
         type: 'error', 
-        message: 'Este registro ya existe en la entidad actual. Por favor verifica los datos.' 
+        message: errorMsg
       });
       return;
     }
@@ -1245,10 +1254,12 @@ function App() {
   // Filtered rows for UI and PDF
   const filteredTrdRows = React.useMemo(() => {
     if (!trdRows) return [];
-    const target = normalizeText(selectedDependencia);
-    if (target === "TODAS" || !target) return trdRows;
-    return trdRows.filter(r => normalizeText(r.dependencia) === target);
-  }, [trdRows, selectedDependencia]);
+    if (selectedPrintDependencias.includes("TODAS") || selectedPrintDependencias.length === 0) {
+      return trdRows;
+    }
+    const normalizedTargets = selectedPrintDependencias.map(d => normalizeText(d));
+    return trdRows.filter(r => normalizedTargets.includes(normalizeText(r.dependencia)));
+  }, [trdRows, selectedPrintDependencias]);
 
   const uniqueDependencias = React.useMemo(() => {
     const deps = new Set(trdRows.map(r => r.dependencia || "Sin Oficina"));
@@ -1684,6 +1695,9 @@ function App() {
                   currentEntity={currentEntity}
                   logoBase64={entidadLogoBase64}
                   onExportPDF={() => setIsPrinting(true)}
+                  availableDependencias={uniqueDependencias}
+                  selectedPrintDependencias={selectedPrintDependencias}
+                  onSelectDependencia={setSelectedPrintDependencias}
                 />
               </div>
             )}
@@ -1814,16 +1828,17 @@ function App() {
 
             <button 
               onClick={() => {
-                const safeDepName = (selectedDependencia === "TODAS" || !selectedDependencia) 
+                const isGlobal = selectedPrintDependencias.includes("TODAS");
+                const safeDepName = isGlobal 
                   ? "ReporteGeneral" 
-                  : selectedDependencia.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
+                  : selectedPrintDependencias[0].toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
                 
                 const now = new Date();
                 const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
                 
                 const customFilename = `${safeDepName}_${dateStr}`;
                 
-                addActivityLog(`Descarga Excel TRD - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
+                addActivityLog(`Descarga Excel TRD - ${isGlobal ? "Global" : selectedPrintDependencias.join(", ")}`);
                 exportTRDToExcel(filteredTrdRows, customFilename);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95 border border-slate-300"
@@ -1834,9 +1849,10 @@ function App() {
 
             <button 
               onClick={() => {
-                const safeDepName = (selectedDependencia === "TODAS" || !selectedDependencia) 
+                const isGlobal = selectedPrintDependencias.includes("TODAS");
+                const safeDepName = isGlobal
                   ? "ReporteGeneral" 
-                  : selectedDependencia.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
+                  : selectedPrintDependencias[0].toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, '_');
                 
                 const now = new Date();
                 const dateStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
@@ -1844,7 +1860,7 @@ function App() {
                 
                 const customFilename = `${safeDepName}_${dateStr}_${randomId}`;
                 
-                addActivityLog(`Descarga TRD (${printOrientation}) - ${selectedDependencia === "TODAS" ? "Global" : selectedDependencia}`);
+                addActivityLog(`Descarga TRD (${printOrientation}) - ${isGlobal ? "Global" : selectedPrintDependencias.join(", ")}`);
                 handleExportPDFGeneral('trd-final-report-area', customFilename, printOrientation);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
@@ -1899,8 +1915,8 @@ function App() {
                  status: "En Progreso", 
                  rows: filteredTrdRows,
                  availableDependencias: uniqueDependencias,
-                 selectedDependencia,
-                 onSelectDependencia: setSelectedDependencia
+                 selectedPrintDependencias,
+                 onSelectDependencia: setSelectedPrintDependencias
                }}
                currentUser={currentUser}
                onNavigate={(v) => { setMainView(v); setActiveModule(v); }}

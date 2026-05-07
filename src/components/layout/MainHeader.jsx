@@ -50,29 +50,6 @@ export default function MainHeader({
             </div>
           )}
 
-          {/* TRD toolbar */}
-          {mainView === 'trd' && (
-            <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-2 py-1.5">
-              <select
-                value={selectedDependencia}
-                onChange={(e) => onSelectDependencia(e.target.value)}
-                className="text-[12px] font-medium bg-transparent text-foreground outline-none w-44 truncate"
-              >
-                <option value="TODAS">Todas las dependencias</option>
-                {availableDependencias.map(dep => (
-                  <option key={dep} value={dep}>{dep}</option>
-                ))}
-              </select>
-              <div className="w-px h-5 bg-border" />
-              <button
-                onClick={onExportPDF}
-                className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 hover:text-emerald-600 transition-colors whitespace-nowrap"
-              >
-                <Printer className="h-3.5 w-3.5" />
-                Vista PDF
-              </button>
-            </div>
-          )}
 
           {/* Account */}
           <button
