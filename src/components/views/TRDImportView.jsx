@@ -334,7 +334,9 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       // Update local state immediately for responsiveness
       setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
 
-      // 1. Ejecutar acciones en App state / Database
+      if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Iniciando fase final de integración estructural.`);
+      
+      // 1. Ejecutar acciones en App state / Database (esto lanzará el modal global de progreso)
       if (onImportComplete) {
         // Enriquecer las acciones con el ID de la sesión de importación para trazabilidad
         const enrichedActions = finalActionsToRun.map(action => ({
@@ -344,7 +346,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
         await onImportComplete(enrichedActions);
       }
 
-      // 2. Marcar sesión como exitosa
+      // 2. Marcar sesión como exitosa en la DB de RAG (trazabilidad)
       const resStatus = await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
          method: 'PUT',
          headers: { 
@@ -356,19 +358,40 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       });
 
       if (!resStatus.ok) {
-        const errorData = await resStatus.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Error del servidor: ${resStatus.status}`);
+        console.warn("La integración fue exitosa pero no se pudo actualizar el estado de la sesión RAG.");
       }
 
-      if (addActivityLog) addActivityLog(`Importación TRD Exitosa: ${currentPreviewImport.filename}`);
+      if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Importación TRD Finalizada con Éxito: ${currentPreviewImport.filename}`);
       
       setPreviewImportId(null);
-      // No forzamos un fetch inmediato pesado para evitar mostrar estados de RAG
-      // Simplemente dejamos que el estado local se mantenga en 'success'
+      // Refrescar para asegurar sincronía con DB de RAG
+      await fetchImports();
     } catch (err) {
       console.error("Error al integrar:", err);
       const detail = err.message || "Error desconocido";
-      alert(`Hubo un error al guardar los datos estructurados.\nDetalle técnico: ${detail}`);
+      
+      // Marcar como error en el estado local y DB para que el usuario pueda reintentar
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'error', error_summary: detail } : imp));
+      
+      if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Error en integración: ${detail}`);
+
+      try {
+        await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.token}`
+          },
+          body: JSON.stringify({ 
+            status: 'error',
+            metadata: { ...currentPreviewImport.metadata, error_summary: detail } 
+          })
+        });
+      } catch (dbErr) {
+        console.error("Error updating fail status in DB:", dbErr);
+      }
+
+      // No mostramos el alert aquí porque executeAgentActions ya muestra el modal de error
     } finally {
       setIsProcessingNew(false);
     }
