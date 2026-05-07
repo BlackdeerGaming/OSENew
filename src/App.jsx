@@ -976,8 +976,6 @@ function App() {
           type: 'success', 
           message: `¡Importación completada correctamente!\n\n- Registros procesados: ${actionsProcessed}\n- Duplicados omitidos: ${skippedCount}\n- Cambios aceptados: ${duplicateAcceptedCount}\n\nLos datos ya están disponibles en Datos Estructurados y Tabla Final.` 
         });
-        setMainView('trd');
-        setActiveModule('datos');
       } else if (skippedCount > 0) {
         setModalStatus({ 
           isOpen: true, 
