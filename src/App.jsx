@@ -1654,17 +1654,6 @@ function App() {
         <div className="relative p-3 pb-8 md:p-6 h-full flex flex-col gap-4">
           
           <div className="flex-1">
-            {activeModule === 'import' && (
-              <TRDImportView 
-                onImportComplete={executeAgentActions} 
-                currentUser={currentUser} 
-                currentEntity={currentEntity} 
-                logoBase64={entidadLogoBase64} 
-                imports={imports}
-                setImports={setImports}
-                addActivityLog={addActivityLog}
-              />
-            )}
             {activeModule === 'dependencias' && (
               <DependenciaForm 
                 data={activeFormData} 
@@ -1799,17 +1788,7 @@ function App() {
                   </div>
                </div>
             )}
-            <div style={{ display: activeModule === 'import' ? 'block' : 'none', height: '100%' }}>
-              <TRDImportView 
-                onImportComplete={executeAgentActions} 
-                currentUser={currentUser} 
-                currentEntity={currentEntity} 
-                logoBase64={entidadLogoBase64} 
-                imports={imports}
-                setImports={setImports}
-                addActivityLog={addActivityLog}
-              />
-            </div>
+            <div className="h-4" /> {/* Spacer */}
           </div>
 
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && 
