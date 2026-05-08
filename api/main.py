@@ -883,7 +883,8 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, entidad_i
 
         try:
 
-            response_ai = llm.invoke(messages)
+            response_ai = await llm.ainvoke(messages)
+
 
             content_ai = response_ai.content.strip()
 
@@ -2071,7 +2072,8 @@ IMPORTANTE: RESPONDE SOLO CON EL JSON VALIDO. NO incluyas markdown (```json), et
 
         ]
 
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
+
 
         content = response.content.strip()
 
@@ -2178,7 +2180,8 @@ ESTRUCTURA DE RESPUESTA (JSON PUERTO):
 
 
 
-        response = llm.invoke(messages_llm)
+        response = await llm.ainvoke(messages_llm)
+
 
         content = response.content.strip()
 
