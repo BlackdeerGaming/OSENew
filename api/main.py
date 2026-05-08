@@ -781,47 +781,36 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, entidad_i
 
     
 
+    def _sync_extract():
+        try:
+            import fitz
+            f_doc = fitz.open(stream=content, filetype="pdf")
+            p_to_process = min(len(f_doc), 5)
+            text_res = ""
+            imgs_res = []
+            
+            for i in range(p_to_process):
+                page = f_doc[i]
+                text_chunk = page.get_text().strip()
+                if text_chunk:
+                    text_res += f"\n--- PÁGINA {i+1} ---\n" + text_chunk
+                
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                img_data = pix.tobytes("png")
+                b64 = base64.b64encode(img_data).decode("utf-8")
+                imgs_res.append(b64)
+            
+            f_doc.close()
+            return text_res, imgs_res
+        except Exception as e:
+            print(f"Error procesando PDF sync: {e}")
+            return "", []
+
     try:
-
-        import fitz
-
-        from datetime import datetime
-
-        
-
-        fitz_doc = fitz.open(stream=content, filetype="pdf")
-
-        pages_to_process = min(len(fitz_doc), 5) 
-
-        
-
-        for i in range(pages_to_process):
-
-            page = fitz_doc[i]
-
-            text_chunk = page.get_text().strip()
-
-            if text_chunk:
-
-                extracted_text += f"\n--- PGINA {i+1} ---\n" + text_chunk
-
-            
-
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-
-            img_data = pix.tobytes("png")
-
-            b64 = base64.b64encode(img_data).decode("utf-8")
-
-            images_base64.append(b64)
-
-            
-
-        fitz_doc.close()
-
+        extracted_text, images_base64 = await asyncio.to_thread(_sync_extract)
     except Exception as e:
-
-        print(f"Error procesando PDF: {e}")
+        print(f"Error en thread de extracción OCR: {e}")
+        extracted_text, images_base64 = "", []
 
 
 
@@ -1893,62 +1882,47 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
 
 @router.get("/rag-documents")
-
-async def get_rag_documents(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
-    """Lista los documentos unicos en el RAG (agrupados por source)."""
-
+async def get_rag_documents(entidad_id: str | None = None, type: str | None = None, user: dict = Depends(get_current_user)):
+    """
+    Lista los documentos únicos en el RAG. 
+    Soporta filtrado por entidad y por tipo (ej: 'trd_import_session').
+    """
     try:
-
         entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
-
         if user.get("role") == SUPERADMIN_ROLE and entidad_id:
-
             entidad_actual = entidad_id
-
             
-
         items = await db.query_by_entity("RagDocuments", entidad_actual)
-
+        if not items: return []
         
-
-        # Agrupar por source para no repetir chunks
-
+        # Agrupar por source para no repetir chunks, pero mantener sesiones TRD como únicas.
         seen_sources = {}
-
-        unique_docs = []
-
+        processed_data = []
         
-
         for item in items:
-
             meta = item.get("metadata", {})
+            doc_type = meta.get("type") or type
+            source = meta.get("source") or meta.get("filename")
+            
+            # Filtro por tipo si se solicita
+            if type and doc_type != type:
+                continue
 
-            source = meta.get("source")
-
-            if source and source not in seen_sources:
-
-                seen_sources[source] = True
-
-                unique_docs.append({
-
-                    "id": item["id"],
-
-                    "filename": source,
-
-                    "metadata": meta,
-
-                    "created_at": item.get("created_at")
-
-                })
-
+            # Las sesiones de TRD siempre son únicas
+            if doc_type in ('trd_import_session', 'trd_upload', 'temp_trd_session'):
+                processed_data.append(item)
+            else:
+                # Documentos RAG generales: agrupar por source
+                if source and source not in seen_sources:
+                    seen_sources[source] = True
+                    processed_data.append(item)
+                elif not source:
+                    processed_data.append(item)
         
-
-        return unique_docs
+        return processed_data
 
     except Exception as e:
-
         print(f" Error listando documentos RAG: {e}")
-
         return []
 
 

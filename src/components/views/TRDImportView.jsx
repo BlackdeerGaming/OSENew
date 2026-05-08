@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, 
@@ -10,11 +10,21 @@ import { cn } from "@/lib/utils";
 import API_BASE_URL from '../../config/api';
 import ViewHeader from '../ui/ViewHeader';
 import TRDExportPreview from '../trd/TRDGenerator';
-const handleExportPDFGeneral = (id, filename, orientation) => {
-  // Mock o import real si existe
-};
+import { handleExportPDFGeneral } from '../../utils/exportUtils';
 
 const MAX_FILE_SIZE_MB = 50;
+
+const STATUS_CONFIG = {
+  uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
+  processing: { label: 'Iniciando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  analyzing: { label: 'Procesando Imágenes...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
+  ocr_running: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
+  reviewing: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
+  integrating: { label: 'Integrando en la Nube...', color: 'bg-indigo-50 text-indigo-600', icon: Database, animate: true },
+  success: { label: 'Integrado con Éxito', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
+  error: { label: 'Error de Integración', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
+};
 
 const formatFileSize = (bytes) => {
   if (!bytes) return '0 B';
@@ -31,18 +41,6 @@ const calculateFileHash = async (file) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-const STATUS_CONFIG = {
-  uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
-  processing: { label: 'Iniciando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  analyzing: { label: 'Procesando Imágenes...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  ocr_running: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
-  reviewing: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
-  integrating: { label: 'Integrando en la Nube...', color: 'bg-indigo-50 text-indigo-600', icon: Database, animate: true },
-  success: { label: 'Integrado con Éxito', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
-  error: { label: 'Error de Integración', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
-  cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
-};
-
 const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingNew, setIsProcessingNew] = useState(false);
@@ -57,14 +55,31 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
   // Duplicate File Detection State
   const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, existing: null });
   const [pendingFile, setPendingFile] = useState(null);
-  
-  const fetchInProgress = useRef(false);
 
-  const fetchImports = useCallback(async () => {
-    if (!currentUser?.token || fetchInProgress.current) {
+  // Initial load
+  useEffect(() => {
+    fetchImports();
+  }, [currentUser, currentEntity]);
+
+  // Polling for analyzing tasks
+  useEffect(() => {
+    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing', 'ocr_running', 'integrating'].includes(imp.status));
+    if (!hasActiveTasks) return;
+    
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchImports();
+      }
+    }, 5000); 
+    
+    return () => clearInterval(interval);
+  }, [imports]);
+
+  const fetchImports = async () => {
+    if (!currentUser?.token) {
+      setIsLoading(false);
       return;
     }
-    fetchInProgress.current = true;
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
@@ -77,19 +92,27 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
         const data = await res.json();
         setImports(prev => {
           // Filtrar temporales que ya tienen una versión real en 'data' (por nombre de archivo)
+          // Pero SOLO si el backend reporta un estado avanzado o si ya pasaron unos segundos
           const dataFiles = new Set(data.map(d => d.filename || d.metadata?.source));
-          const uploading = prev.filter(p => p.isUploading && !dataFiles.has(p.filename));
           
-          const merged = [...uploading];
+          // Mantener los que están subiendo Y NO están en la data del backend aún
+          // O los que son errores locales
+          const uploading = prev.filter(p => p.isUploading && !dataFiles.has(p.filename));
+          const localErrors = prev.filter(p => p.status === 'error' && !p.id.includes('temp')); // Errores ya procesados pero locales
+          const persistentTemps = prev.filter(p => p.id.startsWith('temp_') && p.status === 'error'); // Errores de subida
+          
+          const merged = [...uploading, ...persistentTemps];
+          
           for (const d of data) {
              const statusValue = d.status || d.metadata?.status;
-             if (['cancelled', 'deleted', 'rejected'].includes(statusValue)) continue;
-
              const mappedStatus = statusValue === 'success' ? 'success' : 
                                   statusValue === 'reviewing' ? 'reviewing' :
-                                  statusValue === 'processing' ? 'analyzing' : 
+                                  statusValue === 'integrating' ? 'integrating' :
+                                  statusValue === 'ocr_running' ? 'ocr_running' :
+                                  statusValue === 'processing' ? 'processing' : 
                                   statusValue === 'uploading' ? 'uploading' :
-                                  statusValue === 'error' ? 'error' : 'analyzing';
+                                  statusValue === 'error' ? 'error' : 
+                                  statusValue === 'cancelled' ? 'cancelled' : 'analyzing';
 
              const mappedImport = {
                 id: d.id,
@@ -98,9 +121,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 actions: d.metadata?.actions || [],
                 ai_message: d.metadata?.message || null,
                 ocr_engaged: true,
+                ocr_progress: d.metadata?.ocr_progress || 0,
+                ocr_stage: d.metadata?.ocr_stage || null,
+                ocr_total_pages: d.metadata?.ocr_total_pages || 0,
+                ocr_current_page: d.metadata?.ocr_current_page || 0,
                 file_size_bytes: d.metadata?.file_size_bytes || 0,
                 file_hash: d.metadata?.file_hash || null,
                 created_at: d.created_at || d.metadata?.created_at,
+                error_summary: d.metadata?.error_summary || null,
                 isUploading: false,
                 rawFile: null
              };
@@ -112,13 +140,6 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                merged.push(mappedImport);
             }
           }
-          
-          // Optimización: Solo actualizar si hay cambios reales en longitudes o estados críticos
-          if (prev.length === merged.length) {
-            const hasChanges = merged.some((m, i) => m.status !== prev[i].status || m.id !== prev[i].id);
-            if (!hasChanges) return prev;
-          }
-          
           return merged;
         });
       }
@@ -126,28 +147,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       console.error("Error fetching imports:", error);
     } finally {
       setIsLoading(false);
-      fetchInProgress.current = false;
     }
-  }, [currentUser, currentEntity, setImports]);
-
-  // Initial load
-  useEffect(() => {
-    fetchImports();
-  }, [fetchImports]);
-
-  // Polling for analyzing tasks
-  useEffect(() => {
-    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing'].includes(imp.status));
-    if (!hasActiveTasks) return;
-    
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchImports();
-      }
-    }, 15000); // Aumentado a 15 segundos para reducir carga
-    
-    return () => clearInterval(interval);
-  }, [imports, fetchImports]);
+  };
 
   const uploadFile = async (file, force = false) => {
     const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
@@ -155,6 +156,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
        id: tempId,
        filename: file.name,
        status: 'uploading',
+       ocr_progress: 0,
+       ocr_stage: 'Iniciando subida...',
        file_size_bytes: file.size,
        actions: [],
        isUploading: true,
@@ -166,6 +169,8 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     const formData = new FormData();
     formData.append('file', file);
     if (currentEntity?.id) formData.append('entidad_id', currentEntity.id);
+    
+    // Si el usuario decidió continuar con un repetido, lo marcamos en metadata
     if (force) formData.append('force_reprocess', 'true');
 
     try {
@@ -207,7 +212,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     if (existing) {
       setPendingFile(file);
       setDuplicateModal({ isOpen: true, existing });
-      return; 
+      return; // Detenemos aquí, esperamos respuesta del modal
     }
 
     await uploadFile(file);
@@ -215,14 +220,28 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
   const onDrop = useCallback(async (acceptedFiles) => {
     for (const file of acceptedFiles) {
-      await processFile(file);
+      try {
+        await processFile(file);
+      } catch (err) {
+        console.error("Error en procesamiento de archivo:", err);
+        // Crear un registro de error manual para que el usuario vea que falló
+        const errImp = {
+          id: "err_" + Date.now(),
+          filename: file.name,
+          status: 'error',
+          error_summary: err.message || "Error inesperado",
+          created_at: new Date().toISOString()
+        };
+        setImports(prev => [errImp, ...prev]);
+      }
     }
-  }, [imports]);
+  }, [processFile, setImports]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.png', '.jpg', '.jpeg'] },
-    multiple: true
+    multiple: true,
+    noClick: true  // Desactiva el click en el div para que solo el botón lo dispare
   });
 
   const handleDeleteImport = async (id, e) => {
@@ -230,33 +249,37 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     const imp = imports.find(i => i.id === id);
     if (!imp) return;
     
-    const isProcessing = ['uploading', 'analyzing', 'reviewing'].includes(imp.status);
+    const isProcessing = ['uploading', 'analyzing', 'processing', 'ocr_running'].includes(imp.status);
     const msg = isProcessing 
-      ? "¿Estás seguro de cancelar este proceso activo?" 
+      ? "¿Estás seguro de cancelar este proceso activo? El avance se detendrá." 
       : "¿Eliminar este registro del historial?";
       
     if (!window.confirm(msg)) return;
 
+    // Si está procesando, primero intentamos marcar como cancelado en el backend
+    if (isProcessing && !id.startsWith('temp_')) {
+      try {
+        await fetch(`${API_BASE_URL}/rag-documents/${id}`, {
+          method: 'PUT',
+          headers: { 
+            "Authorization": `Bearer ${currentUser?.token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ status: 'cancelled' })
+        });
+      } catch (err) {
+        console.error("Error cancelling process:", err);
+      }
+    }
+
     setImports(prev => prev.filter(item => item.id !== id));
     try {
-      // 1. Marcar como cancelado primero para detener cualquier worker en background
-      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
-        method: 'PUT',
-        headers: { 
-          "Authorization": `Bearer ${currentUser?.token}`,
-          "Content-Type": "application/json",
-          "x-entity-context": currentEntity?.id || ''
-        },
-        body: JSON.stringify({ status: 'cancelled' })
-      });
-      // 2. Eliminar físicamente si es necesario o simplemente dejarlo como cancelado
-      await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
-        method: 'DELETE',
-        headers: { 
-          "Authorization": `Bearer ${currentUser?.token}`,
-          "x-entity-context": currentEntity?.id || ''
-        }
-      });
+      if (!id.startsWith('temp_')) {
+        await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
+          method: 'DELETE',
+          headers: { "Authorization": `Bearer ${currentUser?.token}` }
+        });
+      }
     } catch (err) {
       console.error("Error deleting import:", err);
     }
@@ -331,19 +354,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     try {
       setIsProcessingNew(true);
       
-      // Update local state immediately for responsiveness
-      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'success' } : imp));
+      // Update local state to 'integrating'
+      setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'integrating' } : imp));
 
       if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Iniciando fase final de integración estructural.`);
       
       // 1. Ejecutar acciones en App state / Database (esto lanzará el modal global de progreso)
       if (onImportComplete) {
-        // Enriquecer las acciones con el ID de la sesión de importación para trazabilidad
-        const enrichedActions = finalActionsToRun.map(action => ({
-          ...action,
-          import_session_id: currentPreviewImport.id
-        }));
-        await onImportComplete(enrichedActions);
+        await onImportComplete(finalActionsToRun);
       }
 
       // 2. Marcar sesión como exitosa en la DB de RAG (trazabilidad)
@@ -351,8 +369,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
          method: 'PUT',
          headers: { 
            'Content-Type': 'application/json',
-           'Authorization': `Bearer ${currentUser?.token}`,
-           'x-entity-context': currentEntity?.id || ''
+           'Authorization': `Bearer ${currentUser?.token}`
          },
          body: JSON.stringify({ status: 'success' })
       });
@@ -447,8 +464,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 <h3 className="text-[13px] font-bold text-foreground uppercase tracking-tight">Inyectar Tablas</h3>
                 <p className="text-[10px] text-muted-foreground font-medium uppercase">PDF · PNG · JPG</p>
               </div>
-              <button className="px-6 py-2 bg-foreground text-background text-[10px] font-bold rounded-md hover:bg-primary transition-all uppercase tracking-widest">
-                Explorar
+              <input {...getInputProps()} />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); open(); }}
+                className="px-6 py-2 bg-foreground text-background text-[10px] font-bold rounded-md hover:bg-primary transition-all uppercase tracking-widest"
+              >
+                Seleccionar archivo
               </button>
             </div>
 
@@ -524,6 +546,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                               <div className="flex flex-col gap-0.5 min-w-0">
                                                   <div className="flex items-center gap-2">
                                                       <span className="text-[13px] font-bold text-foreground truncate uppercase tracking-tight">{imp.filename}</span>
+                                                      <span className="text-[9px] text-slate-400 font-bold">{formatFileSize(imp.file_size_bytes)}</span>
                                                   </div>
                                                   <div className="flex items-center gap-2">
                                                       <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider w-fit", config.color)}>
@@ -572,6 +595,15 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                                       className="h-full bg-primary"
                                                   />
                                               </div>
+                                          </div>
+                                      )}
+
+                                      {imp.error_summary && (
+                                          <div className="px-2 py-1.5 bg-rose-50 rounded-md border border-rose-100 flex items-center gap-2">
+                                              <AlertCircle className="h-3 w-3 text-rose-500" />
+                                              <span className="text-[9px] font-bold text-rose-600 uppercase tracking-tight leading-none">
+                                                  {imp.error_summary}
+                                              </span>
                                           </div>
                                       )}
                                   </motion.div>
@@ -644,6 +676,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
+                                        {imp.status === 'error' && imp.error_summary && (
+                                          <div className="hidden sm:flex items-center gap-1 text-rose-500 max-w-[150px]">
+                                             <AlertCircle className="h-3 w-3 shrink-0" />
+                                             <span className="text-[8px] font-bold truncate uppercase">{imp.error_summary}</span>
+                                          </div>
+                                        )}
                                         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                           <button 
                                               onClick={(e) => handleDeleteImport(imp.id, e)}
