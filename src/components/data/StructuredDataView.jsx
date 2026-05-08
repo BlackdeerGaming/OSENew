@@ -181,10 +181,76 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
   const role = currentUser?.role || currentUser?.perfil || 'user';
   const canModify = ['superadmin', 'admin', 'administrador'].includes(role);
 
-  // Opciones para los filtros
-  const depOptions = useMemo(() => [...new Set((dependencias || []).map(d => d.nombre))].sort(), [dependencias]);
-  const serieOptions = useMemo(() => [...new Set((series || []).map(s => s.nombre))].sort(), [series]);
-  const subserieOptions = useMemo(() => [...new Set((subseries || []).map(s => s.nombre))].sort(), [subseries]);
+  // ─── Funciones Auxiliares ──────────────────────────────────────────────────
+  
+  /**
+   * Ordena entidades por su código de forma numérica.
+   * - Limpia espacios.
+   * - Convierte a número si es posible.
+   * - Si no es número, lo envía al final.
+   */
+  const sortEntitiesByCode = (items) => {
+    if (!items) return [];
+    return [...items].sort((a, b) => {
+      const codeA = String(a.codigo || "").replace(/\s+/g, "");
+      const codeB = String(b.codigo || "").replace(/\s+/g, "");
+      
+      const numA = parseFloat(codeA);
+      const numB = parseFloat(codeB);
+      
+      const isNumA = !isNaN(numA) && isFinite(numA);
+      const isNumB = !isNaN(numB) && isFinite(numB);
+      
+      if (isNumA && isNumB) {
+        if (numA !== numB) return numA - numB;
+        return codeA.localeCompare(codeB);
+      }
+      
+      if (isNumA) return -1;
+      if (isNumB) return 1;
+      
+      return codeA.localeCompare(codeB);
+    });
+  };
+
+  // Opciones para los filtros (Jerárquicas y Ordenadas)
+  
+  const depOptions = useMemo(() => {
+    return sortEntitiesByCode(dependencias);
+  }, [dependencias]);
+
+  const serieOptions = useMemo(() => {
+    let base = series || [];
+    if (depFilter !== "all") {
+      const selectedDep = dependencias.find(d => d.nombre === depFilter);
+      if (selectedDep) {
+        base = base.filter(s => s.dependenciaId === selectedDep.id);
+      }
+    }
+    return sortEntitiesByCode(base);
+  }, [series, depFilter, dependencias]);
+
+  const subserieOptions = useMemo(() => {
+    let base = subseries || [];
+    
+    // Filtrar por dependencia si está seleccionada
+    if (depFilter !== "all") {
+      const selectedDep = dependencias.find(d => d.nombre === depFilter);
+      if (selectedDep) {
+        base = base.filter(ss => ss.dependenciaId === selectedDep.id);
+      }
+    }
+    
+    // Filtrar por serie si está seleccionada
+    if (serieFilter !== "all") {
+      const selectedSerie = series.find(s => s.nombre === serieFilter);
+      if (selectedSerie) {
+        base = base.filter(ss => ss.serieId === selectedSerie.id);
+      }
+    }
+    
+    return sortEntitiesByCode(base);
+  }, [subseries, depFilter, serieFilter, dependencias, series]);
 
   const resetFilters = () => {
     setSearchQuery("");
@@ -193,7 +259,18 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
     setSubFilter("all");
   };
 
-  // Lógica de Filtrado Jerárquico
+  const handleDepChange = (val) => {
+    setDepFilter(val);
+    setSerieFilter("all");
+    setSubFilter("all");
+  };
+
+  const handleSerieChange = (val) => {
+    setSerieFilter(val);
+    setSubFilter("all");
+  };
+
+  // Lógica de Filtrado Jerárquico Estricto
   const filteredData = useMemo(() => {
     const q = normalizeText(searchQuery);
 
@@ -206,47 +283,57 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
     const targetSerie = normalizeText(serieFilter);
     const targetSub = normalizeText(subFilter);
 
-    return (dependencias || [])
-      .map(dep => {
-        if (!dep) return null;
-        // Filtrar Series dentro de la Dependencia
-        const matchedSeries = (series || [])
-          .filter(s => s.dependenciaId === dep.id)
-          .map(serie => {
-            if (!serie) return null;
-            // Filtrar Subseries dentro de la Serie
-            const matchedSubseries = (subseries || []).filter(sub => {
-              if (!sub) return false;
-              const belongs = sub.serieId === serie.id;
-              if (!belongs) return false;
-              
-              const matchesSubFilter = targetSub === "ALL" || normalizeText(sub.nombre) === targetSub;
+    // 1. Filtrar Dependencias
+    let deps = (dependencias || []).filter(dep => {
+      if (!dep) return false;
+      const matchesFilter = targetDep === "ALL" || normalizeText(dep.nombre) === targetDep;
+      const matchesText = matchesSearch(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
+      return matchesFilter && matchesText;
+    });
+
+    // 2. Mapear y filtrar Series/Subseries
+    const results = deps.map(dep => {
+      // Filtrar Series dentro de la Dependencia
+      let matchedSeries = (series || [])
+        .filter(s => s.dependenciaId === dep.id)
+        .filter(serie => {
+          const matchesFilter = targetSerie === "ALL" || normalizeText(serie.nombre) === targetSerie;
+          const matchesText = matchesSearch(serie, ['nombre', 'codigo', 'tipoDocumental']);
+          return matchesFilter && matchesText;
+        })
+        .map(serie => {
+          // Filtrar Subseries dentro de la Serie
+          const matchedSubseries = (subseries || [])
+            .filter(sub => sub.serieId === serie.id)
+            .filter(sub => {
+              const matchesFilter = targetSub === "ALL" || normalizeText(sub.nombre) === targetSub;
               const matchesText = matchesSearch(sub, ['nombre', 'codigo', 'tipoDocumental']);
-              
-              return matchesSubFilter && matchesText;
+              return matchesFilter && matchesText;
             });
 
-            const hasMatchedSubseries = matchedSubseries.length > 0;
-            const matchesSerieFilter = targetSerie === "ALL" || normalizeText(serie.nombre) === targetSerie;
-            const matchesText = matchesSearch(serie, ['nombre', 'codigo', 'tipoDocumental']);
-            
-            // Una serie es visible si ella misma coincide con filtros O si alguna de sus subseries coincide
-            const isVisible = (matchesSerieFilter && matchesText) || hasMatchedSubseries;
+          // Si hay filtro de subserie activo, y esta serie no tiene la subserie buscada, la ocultamos
+          if (targetSub !== "ALL" && matchedSubseries.length === 0) return null;
+          
+          return { 
+            ...serie, 
+            subseries: sortEntitiesByCode(matchedSubseries) 
+          };
+        })
+        .filter(Boolean);
 
-            return isVisible ? { ...serie, subseries: matchedSubseries } : null;
-          })
-          .filter(Boolean);
+      // Si hay filtros de serie o subserie activos y no hay coincidencias, ocultamos la dependencia
+      if ((targetSerie !== "ALL" || targetSub !== "ALL") && matchedSeries.length === 0) {
+        return null;
+      }
 
-        const hasMatchedSeries = matchedSeries.length > 0;
-        const matchesDepFilter = targetDep === "ALL" || normalizeText(dep.nombre) === targetDep;
-        const matchesText = matchesSearch(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
+      return { 
+        ...dep, 
+        matchedSeries: sortEntitiesByCode(matchedSeries) 
+      };
+    }).filter(Boolean);
 
-        // Una dependencia es visible si ella misma coincide con filtros O si alguna de sus series/subseries coincide
-        const isVisible = (matchesDepFilter && matchesText) || hasMatchedSeries;
-
-        return isVisible ? { ...dep, matchedSeries } : null;
-      })
-      .filter(Boolean);
+    // 3. Ordenar dependencias finales por código
+    return sortEntitiesByCode(results);
   }, [dependencias, series, subseries, searchQuery, depFilter, serieFilter, subFilter]);
 
   if (dependencias.length === 0) {
@@ -343,20 +430,20 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
           
           <select 
             value={depFilter}
-            onChange={(e) => setDepFilter(e.target.value)}
+            onChange={(e) => handleDepChange(e.target.value)}
             className="text-[9px] font-bold uppercase bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer hover:bg-white hover:border-slate-300 transition-all text-slate-600"
           >
             <option value="all">Todas las Dependencias</option>
-            {depOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {depOptions.map(opt => <option key={opt.id} value={opt.nombre}>{opt.codigo} - {opt.nombre}</option>)}
           </select>
 
           <select 
             value={serieFilter}
-            onChange={(e) => setSerieFilter(e.target.value)}
+            onChange={(e) => handleSerieChange(e.target.value)}
             className="text-[9px] font-bold uppercase bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer hover:bg-white hover:border-slate-300 transition-all text-slate-600"
           >
             <option value="all">Todas las Series</option>
-            {serieOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {serieOptions.map(opt => <option key={opt.id} value={opt.nombre}>{opt.codigo} - {opt.nombre}</option>)}
           </select>
 
           <select 
@@ -365,7 +452,7 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
             className="text-[9px] font-bold uppercase bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer hover:bg-white hover:border-slate-300 transition-all text-slate-600"
           >
             <option value="all">Todas las Subseries</option>
-            {subserieOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {subserieOptions.map(opt => <option key={opt.id} value={opt.nombre}>{opt.codigo} - {opt.nombre}</option>)}
           </select>
         </div>
       </div>
@@ -378,7 +465,7 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
             </div>
             <h3 className="text-base font-black text-slate-900 uppercase">Sin resultados coincidentes</h3>
             <p className="text-xs text-slate-500 mt-2 max-w-xs font-medium leading-relaxed">
-              No encontramos registros que coincidan con tu búsqueda o filtros actuales. Prueba limpiando los criterios.
+              No hay datos estructurados para los filtros seleccionados. Prueba limpiando los criterios o ajustando tu búsqueda.
             </p>
             <button 
               onClick={resetFilters}
