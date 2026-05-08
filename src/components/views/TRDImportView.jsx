@@ -489,10 +489,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="space-y-3 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
                       {imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).length === 0 ? (
-                          <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
-                              <Database className="h-6 w-6 opacity-20" />
-                              <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">No hay tareas activas</span>
-                          </motion.div>
+                          !isLoading && (
+                            <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
+                                <Database className="h-6 w-6 opacity-20" />
+                                <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">No hay tareas activas</span>
+                            </motion.div>
+                          )
                       ) : (
                           imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).map((imp) => {
                               const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
@@ -600,10 +602,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="grid grid-cols-1 gap-2 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
                     {imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).length === 0 ? (
-                        <div className="h-24 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
-                            <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros finalizados</span>
-                        </div>
+                        !isLoading && (
+                          <div className="h-24 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
+                              <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
+                              <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Sin registros finalizados</span>
+                          </div>
+                        )
                     ) : (
                         imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).map(imp => {
                             const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.success;
