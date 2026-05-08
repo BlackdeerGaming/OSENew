@@ -20,6 +20,31 @@ const PRESETS = {
   screen:    { nodeW: 220, nodeH: 92,  hGap: 52, vGap: 68, pad: 48, fontSize: 14, connectorWidth: 1.5, backgroundColor: BG },
 };
 
+// ── Sorting helper ────────────────────────────────────────────────────────────
+const sortNodesByCode = (nodes) => {
+  if (!nodes) return [];
+  return [...nodes].sort((a, b) => {
+    const codeA = String(a.codigo || "").replace(/\s+/g, "");
+    const codeB = String(b.codigo || "").replace(/\s+/g, "");
+    
+    const numA = parseFloat(codeA);
+    const numB = parseFloat(codeB);
+    
+    const isNumA = !isNaN(numA) && isFinite(numA);
+    const isNumB = !isNaN(numB) && isFinite(numB);
+    
+    if (isNumA && isNumB) {
+      if (numA !== numB) return numA - numB;
+      return (a.nombre || "").localeCompare(b.nombre || "");
+    }
+    
+    if (isNumA) return -1;
+    if (isNumB) return 1;
+    
+    return (a.nombre || "").localeCompare(b.nombre || "");
+  });
+};
+
 // ── Canvas helpers ────────────────────────────────────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -48,7 +73,7 @@ function fitText(ctx, text, maxW) {
 // depth 1+  : vertical bracket (children stacked, offset right from parent center)
 
 function subtreeWidth(nodeId, all, opts, depth) {
-  const ch = all.filter(n => n.dependeDe === nodeId);
+  const ch = sortNodesByCode(all.filter(n => n.dependeDe === nodeId));
   if (!ch.length) return opts.nodeW;
   if (depth === 0) {
     // classic: children spread horizontally
@@ -62,7 +87,7 @@ function subtreeWidth(nodeId, all, opts, depth) {
 }
 
 function layoutTree(node, all, x, y, positions, opts, depth) {
-  const children = all.filter(n => n.dependeDe === node.id);
+  const children = sortNodesByCode(all.filter(n => n.dependeDe === node.id));
   const sw = subtreeWidth(node.id, all, opts, depth);
 
   if (depth === 0) {
@@ -96,7 +121,7 @@ function layoutTree(node, all, x, y, positions, opts, depth) {
 
 // Helper: total height consumed by a node's subtree in bracket mode
 function subtreeHeight(nodeId, all, opts, depth, gap) {
-  const ch = all.filter(n => n.dependeDe === nodeId);
+  const ch = sortNodesByCode(all.filter(n => n.dependeDe === nodeId));
   if (!ch.length) return opts.nodeH;
   const childrenH = ch.reduce((s, c) => s + subtreeHeight(c.id, all, opts, depth + 1, gap), 0)
                   + gap * (ch.length - 1);
@@ -337,7 +362,7 @@ const OrgConnectorBracket = ({ children }) => {
 
 // ── Screen TreeNode ───────────────────────────────────────────────────────────
 const TreeNode = ({ node, allNodes, onEdit, isRoot = false, depth = 0 }) => {
-  const children = allNodes.filter(n => n.dependeDe === node.id);
+  const children = sortNodesByCode(allNodes.filter(n => n.dependeDe === node.id));
   const [hovered, setHovered] = useState(false);
 
   // depth 0 = root connecting to its direct children → classic horizontal layout
@@ -469,7 +494,7 @@ function PrintModal({ orientation, setOrientation, isPrinting, onExport, onClose
 function buildHTML(rootNode, allNodes) {
   // depth 0→1: classic horizontal; depth>0: bracket vertical
   const buildTree = (node, depth) => {
-    const ch = allNodes.filter(n => n.dependeDe === node.id);
+    const ch = sortNodesByCode(allNodes.filter(n => n.dependeDe === node.id));
     const card = `<div class="card"><div class="name">${node.nombre}</div><div class="code">${node.codigo}</div></div>`;
     if (!ch.length) return `<div class="nc">${card}</div>`;
 
@@ -724,7 +749,7 @@ export default function OrgChartView({ dependencias, onEdit, currentUser, entiti
               className="h-8 min-w-[180px] rounded-md border border-input bg-card px-2 text-[12.5px] font-medium focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">Selecciona raíz…</option>
-              {dependencias.map(dep => (
+              {sortNodesByCode(dependencias).map(dep => (
                 <option key={dep.id} value={dep.id}>{dep.codigo} — {dep.nombre}</option>
               ))}
             </select>
