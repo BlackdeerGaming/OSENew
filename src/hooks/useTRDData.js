@@ -33,11 +33,16 @@ export function useTRDData(currentUser = null, entityId = null) {
 
     setIsLoading(true);
     
-    // --- CLEAR PREVIOUS DATA TO PREVENT LEAKAGE ---
-    setDependencias([]);
-    setSeries([]);
-    setSubseries([]);
-    setTrdRecords([]);
+    // --- CLEAR PREVIOUS DATA ONLY IF ENTITY CHANGED TO PREVENT LEAKAGE ---
+    // We check if the data belongs to a different entity before clearing
+    const shouldClear = dependencias.length > 0 && dependencias[0].entidadId !== entity;
+    
+    if (shouldClear) {
+      setDependencias([]);
+      setSeries([]);
+      setSubseries([]);
+      setTrdRecords([]);
+    }
 
     try {
       // Use backend API (service-key access, RLS-bypassed, entity-scoped)

@@ -1,4 +1,11 @@
+import React from 'react';
+import { 
+  Activity, RefreshCw, FileText, AlertTriangle, BrainCircuit, 
+  Clock, Download, X, ChevronRight, FileDown 
+} from 'lucide-react';
 import { LoadingOverlay, StatsSkeleton, SkeletonLine } from '../ui/LoadingOverlay';
+import API_BASE_URL from '../../config/api';
+import { cn } from "@/lib/utils";
 
 export default function DashboardView({ stats, searchQuery, currentUser, seriesCount, activityLogs = [], trdRecords = [], currentEntity, onDownloadPDF, onRefresh, isRefreshing }) {
   const role = currentUser?.role || 'usuario';
