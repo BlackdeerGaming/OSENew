@@ -380,27 +380,33 @@ async def _update_ocr_progress(
     error_pages: list,
     extra: dict = None
 ):
-    """Actualiza el progreso del OCR en Supabase sin perder metadata existente."""
+    """Actualiza el progreso del OCR en Supabase sin bloquear el event loop."""
+    def _sync_update():
+        try:
+            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            if not row.data:
+                return
+            meta = row.data[0]["metadata"] or {}
+            meta.update({
+                "status": "processing",
+                "ocr_stage": stage,
+                "ocr_progress": progress,
+                "ocr_current_page": current_page,
+                "ocr_total_pages": total_pages,
+                "ocr_pages_ok": pages_ok,
+                "ocr_pages_error": pages_error,
+                "ocr_error_pages": error_pages,
+            })
+            if extra:
+                meta.update(extra)
+            supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
+        except Exception as e:
+            print(f"[OCR PROGRESS] Error actualizando progreso sync: {e}")
+
     try:
-        row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-        if not row.data:
-            return
-        meta = row.data[0]["metadata"] or {}
-        meta.update({
-            "status": "processing",
-            "ocr_stage": stage,
-            "ocr_progress": progress,
-            "ocr_current_page": current_page,
-            "ocr_total_pages": total_pages,
-            "ocr_pages_ok": pages_ok,
-            "ocr_pages_error": pages_error,
-            "ocr_error_pages": error_pages,
-        })
-        if extra:
-            meta.update(extra)
-        supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
+        await asyncio.to_thread(_sync_update)
     except Exception as e:
-        print(f"[OCR PROGRESS] Error actualizando progreso: {e}")
+        print(f"[OCR PROGRESS] Error en thread de progreso: {e}")
 
 
 def _is_cancelled(doc_id: str) -> bool:
@@ -469,13 +475,16 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
     entidad_id = None
     file_size_bytes = len(content)
     try:
-        row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-        if row.data:
-            meta_init = row.data[0]["metadata"]
+        def _get_init_meta():
+            return supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
+            
+        res_init = await asyncio.to_thread(_get_init_meta)
+        if res_init.data:
+            meta_init = res_init.data[0]["metadata"]
             file_url = meta_init.get("file_url")
             entidad_id = meta_init.get("entidad_id")
-    except:
-        pass
+    except Exception as e:
+        print(f"[OCR] Error obteniendo metadata inicial: {e}")
 
     full_text = ""
     pages_results = {}
@@ -616,10 +625,20 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                 "created_at": datetime.now().isoformat()
             }
             
-            supabase_client.table("rag_documents").update({
-                "content": full_text,
-                "metadata": final_meta
-            }).eq("id", doc_id).execute()
+            def _final_save():
+                supabase_client.table("rag_documents").update({
+                    "content": full_text,
+                    "metadata": final_meta
+                }).eq("id", doc_id).execute()
+                
+                # Log de actividad final
+                add_activity_log(
+                    f"[{doc_id}] Importación TRD Finalizada con Éxito: {filename}",
+                    entidad_id=entidad_id,
+                    user_name="Sistema" # Podríamos pasar el nombre del usuario si lo tenemos en el contexto del task
+                )
+
+            await asyncio.to_thread(_final_save)
         else:
             raise Exception("No se pudo extraer texto de ninguna página.")
 
@@ -819,43 +838,67 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         return {"answer": "Lo siento, ocurri un error inesperado. Por favor intenta de nuevo en unos momentos.", "sources": []}
 
 @router.get("/rag-documents")
-async def get_rag_documents(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
-    """Lista los documentos \u00fanicos en el RAG (agrupados por source)."""
+async def get_rag_documents(entidad_id: str | None = None, type: str | None = None, user: dict = Depends(get_current_user)):
+    """
+    Lista los documentos en el RAG. 
+    Soporta filtrado por entidad y por tipo (ej: 'temp_trd_session').
+    """
     if not supabase_client: raise HTTPException(503)
     
     try:
-        # Si es superadmin puede ver todo, si no, solo lo de su entidad
-        query = supabase_client.table("rag_documents").select("id, metadata, created_at")
+        query = supabase_client.table("rag_documents").select("id, metadata, created_at, content")
         
-        # Filtro de entidad
-        if user.get("role") != SUPERADMIN_ROLE:
-            entidad_actual = user.get("entity_id")
-            if entidad_actual:
-                query = query.filter("metadata->>entidad_id", "eq", entidad_actual)
-        elif entidad_id and entidad_id != "e0":
-            query = query.filter("metadata->>entidad_id", "eq", entidad_id)
+        # 1. Filtro de Seguridad por Entidad
+        allowed_entities = user.get("allowed_entities", [])
+        if user.get("role") == "superadmin":
+            entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
+        else:
+            # Admin/Usuario: si pide una específica, verificar permiso. Si no pide, usar la del contexto.
+            if entidad_id:
+                entidad_final = entidad_id if entidad_id in allowed_entities else user.get("entity_id")
+            else:
+                entidad_final = user.get("entity_id")
+        
+        if entidad_final:
+            query = query.filter("metadata->>entidad_id", "eq", entidad_final)
+
+        # 2. Filtro por Tipo (Opcional)
+        if type:
+            query = query.filter("metadata->>type", "eq", type)
+        else:
+            # Si no hay tipo específico, excluimos los chunks de RAG internos si queremos una lista de 'archivos'
+            # Pero para TRD Import View, a veces queremos sesiones específicas.
+            # Por ahora, dejamos que el frontend decida o devolvemos todo lo de la entidad.
+            pass
 
         res = query.execute()
-        
-        # Agrupar por source para no repetir chunks
+        if not res.data: return []
+
+        # Agrupar por source para evitar duplicados si son chunks, 
+        # pero mantener sesiones TRD como únicas.
         seen_sources = {}
-        unique_docs = []
+        processed_data = []
         
         for item in res.data:
             meta = item.get("metadata", {})
-            source = meta.get("source")
-            if source and source not in seen_sources:
-                seen_sources[source] = True
-                unique_docs.append({
-                    "id": item["id"],
-                    "filename": source,
-                    "metadata": meta,
-                    "created_at": item.get("created_at")
-                })
-        
-        return unique_docs
+            doc_type = meta.get("type")
+            source = meta.get("source") or meta.get("filename")
+            
+            # Las sesiones de TRD siempre son únicas por ID
+            if doc_type in ('temp_trd_session', 'trd_upload'):
+                processed_data.append(item)
+            else:
+                # Documentos RAG generales: agrupar por source
+                if source and source not in seen_sources:
+                    seen_sources[source] = True
+                    processed_data.append(item)
+                elif not source:
+                    processed_data.append(item)
+
+        return processed_data
+
     except Exception as e:
-        print(f" Error listando documentos RAG: {e}")
+        print(f" Error listando documentos RAG: {str(e)}")
         return []
 
 @router.put("/rag-documents/{doc_id}")
@@ -1701,7 +1744,7 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
         
         if not res.data:
              # Si llegamos aquÃƒÂ­ y no hay data, algo fallÃƒÂ³ en la query de borrado silenciosamente
-             raise HTTPException(500, "No se pudo confirmar la eliminaciÃƒÂ³n del usuario")
+             raise HTTPException(500, "No se pudo confirmar la eliminaciÃ³n del usuario")
              
     except Exception as e:
         print(f" Error eliminando perfil {user_id}: {str(e)}")
@@ -1924,54 +1967,6 @@ async def analyze_trd(
 
     return {"id": doc_id, "status": "processing", "import_id": doc_id}
 
-
-@router.get("/rag-documents")
-async def get_rag_documents(entidad_id: str = None, user: dict = Depends(get_current_user)):
-    if not supabase_client: return []
-    
-    # FILTRO: sesiones de importación TRD (tanto temporales como integradas)
-    query = supabase_client.table("rag_documents").select("id, metadata, created_at")
-    # Nota: No usamos .contains aquí para el type porque queremos un OR de types
-    # Usaremos una lógica de filtro más flexible después o un filtro OR en metadata
-    query = query.or_('metadata->>type.eq.temp_trd_session,metadata->>type.eq.trd_upload')
-    
-    # Aplicar filtro por entidad (seguridad estricta)
-    allowed_entities = user.get("allowed_entities", [])
-    if user.get("role") == "superadmin":
-        entidad = entidad_id or user.get("entity_id")
-    else:
-        # Admin: si pide una específica, verificar permiso. Si no pide, usar la del contexto.
-        if entidad_id:
-            if entidad_id in allowed_entities:
-                entidad = entidad_id
-            else:
-                return [] # No tiene permiso para la entidad solicitada
-        else:
-            entidad = user.get("entity_id")
-        
-    if entidad and entidad != "null":
-        query = query.contains("metadata", {"entidad_id": entidad})
-    elif user.get("role") != "superadmin":
-        return [] # Un admin sin entidad no ve nada
-    
-    res = query.order("created_at", desc=True).execute()
-    
-    output = []
-    for row in (res.data or []):
-        meta = row.get("metadata") or {}
-        # HIDE COMPLETED SESSIONS: Si ya fue exitosa, no la mostramos en la lista de importación activa
-        if meta.get("status") == "success":
-            continue
-            
-        output.append({
-            "id": row["id"],
-            "filename": meta.get("source", "Documento sin nombre"),
-            "metadata": meta,
-            "status": meta.get("status", "processing"),
-            "created_at": row["created_at"]
-        })
-    
-    return output
 
 @router.post("/invitations")
 async def create_invitation(req: InvitationCreate, current_user: dict = Depends(get_current_user)):

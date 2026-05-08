@@ -92,10 +92,17 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
         const data = await res.json();
         setImports(prev => {
           // Filtrar temporales que ya tienen una versión real en 'data' (por nombre de archivo)
+          // Pero SOLO si el backend reporta un estado avanzado o si ya pasaron unos segundos
           const dataFiles = new Set(data.map(d => d.filename || d.metadata?.source));
-          const uploading = prev.filter(p => p.isUploading && !dataFiles.has(p.filename));
           
-          const merged = [...uploading];
+          // Mantener los que están subiendo Y NO están en la data del backend aún
+          // O los que son errores locales
+          const uploading = prev.filter(p => p.isUploading && !dataFiles.has(p.filename));
+          const localErrors = prev.filter(p => p.status === 'error' && !p.id.includes('temp')); // Errores ya procesados pero locales
+          const persistentTemps = prev.filter(p => p.id.startsWith('temp_') && p.status === 'error'); // Errores de subida
+          
+          const merged = [...uploading, ...persistentTemps];
+          
           for (const d of data) {
              const statusValue = d.status || d.metadata?.status;
              const mappedStatus = statusValue === 'success' ? 'success' : 
@@ -213,9 +220,22 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
   const onDrop = useCallback(async (acceptedFiles) => {
     for (const file of acceptedFiles) {
-      await processFile(file);
+      try {
+        await processFile(file);
+      } catch (err) {
+        console.error("Error en procesamiento de archivo:", err);
+        // Crear un registro de error manual para que el usuario vea que falló
+        const errImp = {
+          id: "err_" + Date.now(),
+          filename: file.name,
+          status: 'error',
+          error_summary: err.message || "Error inesperado",
+          created_at: new Date().toISOString()
+        };
+        setImports(prev => [errImp, ...prev]);
+      }
     }
-  }, [imports]);
+  }, [processFile, setImports]);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
