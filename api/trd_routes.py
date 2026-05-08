@@ -636,7 +636,7 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
     
     chain = prompt | llm | StrOutputParser()
     try:
-        html_output = chain.invoke({"data": tree_text})
+        html_output = await chain.ainvoke({"data": tree_text})
         return {"html": html_output}
     except Exception as e:
         print(f"LLM Error generating CCD: {e}")
@@ -678,7 +678,7 @@ async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: 
     
     chain = prompt | llm | StrOutputParser()
     try:
-        html_output = chain.invoke({"data": ctx})
+        html_output = await chain.ainvoke({"data": ctx})
         return {"html": html_output}
     except Exception as e:
         print(f"LLM Error generating Manual: {e}")

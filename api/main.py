@@ -579,7 +579,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             
             try:
                 # Usamos el LLM configurado
-                response_ai = llm.invoke(messages)
+                response_ai = await llm.ainvoke(messages)
                 content_ai = response_ai.content.strip()
                 
                 # Limpiar JSON de la respuesta
@@ -799,7 +799,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         print(" Generando respuesta...")
         try:
             rag_chain = ( RAG_PROMPT | llm | StrOutputParser() )
-            answer = rag_chain.invoke({
+            answer = await rag_chain.ainvoke({
                 "context": format_docs(source_docs),
                 "question": request.query
             })
@@ -1010,7 +1010,7 @@ IMPORTANTE: RESPONDE SOLO CON EL JSON VLIDO. NO incluyas markdown (```json), eti
             SystemMessage(content=system_prompt),
             HumanMessage(content=request.prompt)
         ]
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         content = response.content.strip()
         for marker in ["```json", "```"]:
             content = content.replace(marker, "")
@@ -1085,7 +1085,7 @@ ESTRUCTURA DE RESPUESTA (JSON PUERTO):
                 messages_llm.append(AIMessage(content=h.content))
         messages_llm.append(HumanMessage(content=request.prompt))
 
-        response = llm.invoke(messages_llm)
+        response = await llm.ainvoke(messages_llm)
         content = response.content.strip()
         
         # Robustly extract JSON from the response
