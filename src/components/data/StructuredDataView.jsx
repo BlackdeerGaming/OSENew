@@ -171,7 +171,7 @@ function TableView({ filteredData, onEdit, onDelete, canModify }) {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────────
-export default function StructuredDataView({ dependencias = [], series = [], subseries = [], onEdit, onDelete, currentUser }) {
+export default function StructuredDataView({ dependencias = [], series = [], subseries = [], trdRecords = [], onEdit, onDelete, currentUser }) {
   const [view, setView] = useState('hierarchy');
   const [searchQuery, setSearchQuery] = useState("");
   const [depFilter, setDepFilter] = useState("all");
@@ -293,21 +293,34 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
 
     // 2. Mapear y filtrar Series/Subseries
     const results = deps.map(dep => {
-      // Filtrar Series dentro de la Dependencia
+      // Encontrar las series asociadas a esta dependencia vía trdRecords
+      const associatedSeriesIds = new Set(
+        (trdRecords || [])
+          .filter(t => t.dependenciaId === dep.id && t.serieId)
+          .map(t => t.serieId)
+      );
+
       let matchedSeries = (series || [])
-        .filter(s => s.dependenciaId === dep.id)
+        .filter(s => associatedSeriesIds.has(s.id))
         .filter(serie => {
           const matchesFilter = targetSerie === "ALL" || normalizeText(serie.nombre) === targetSerie;
-          const matchesText = matchesSearch(serie, ['nombre', 'codigo', 'tipoDocumental']);
+          const matchesText = matchesSearch(serie, ['nombre', 'codigo']);
           return matchesFilter && matchesText;
         })
         .map(serie => {
-          // Filtrar Subseries dentro de la Serie
+          // Subseries asociadas a la dependencia y serie vía trdRecords
+          const associatedSubseriesIds = new Set(
+            (trdRecords || [])
+              .filter(t => t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId)
+              .map(t => t.subserieId)
+          );
+
+          // Filtrar Subseries asociadas vía TRD
           const matchedSubseries = (subseries || [])
-            .filter(sub => sub.serieId === serie.id)
+            .filter(sub => associatedSubseriesIds.has(sub.id))
             .filter(sub => {
               const matchesFilter = targetSub === "ALL" || normalizeText(sub.nombre) === targetSub;
-              const matchesText = matchesSearch(sub, ['nombre', 'codigo', 'tipoDocumental']);
+              const matchesText = matchesSearch(sub, ['nombre', 'codigo']);
               return matchesFilter && matchesText;
             });
 

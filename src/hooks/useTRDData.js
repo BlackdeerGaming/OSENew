@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-
+import { supabase } from '../lib/supabase';
 import API_BASE_URL from '../config/api';
 
 export function useTRDData(currentUser = null, entityId = null) {
@@ -25,7 +25,7 @@ export function useTRDData(currentUser = null, entityId = null) {
     const token  = currentUser?.token;
     const entity = entityId;
 
-    if (!token || !entity || entity === 'null' || entity === 'undefined') {
+    if (!token || !entity) {
       // No token or no entity → nothing to load
       setIsLoading(false);
       return;
@@ -42,7 +42,6 @@ export function useTRDData(currentUser = null, entityId = null) {
       setSeries([]);
       setSubseries([]);
       setTrdRecords([]);
-      setImports([]);
     }
 
     try {
@@ -106,15 +105,11 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          throw new Error("Contexto de entidad no válido. Por favor, refresca la página.");
-      }
-      
       const url = `${API_BASE_URL}/trd/entity/${entityId}/dependencias${isUpdate ? '/' + data.id : ''}`;
       const method = isUpdate ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
-        method,
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapDependenciaToDB(newRecord))
       });
@@ -123,18 +118,19 @@ export function useTRDData(currentUser = null, entityId = null) {
         const errData = await response.json().catch(() => ({}));
         let detail = errData.detail || 'Error al guardar la dependencia';
         if (detail.includes("duplicate key value violates unique constraint")) {
-          detail = "El código ingresado ya existe para esta entidad.";
+          detail = "El código ingresado ya existe para esta entidad. Por favor usa uno diferente.";
         }
         throw new Error(detail);
       }
       
       const savedRecord = await response.json();
-      // After successful save, we REFRESH data to ensure IDs are synced from DB
+      // Refrescar para obtener el ID real de la DB y limpiar el temporal
       await refreshData();
       return savedRecord;
     } catch (err) {
-      // Rollback on error
-      await refreshData();
+      console.error('❌ Error guardando dependencia:', err);
+      // Revertir cambio optimista
+      setDependencias(previousState);
       throw err;
     }
   };
@@ -166,11 +162,10 @@ export function useTRDData(currentUser = null, entityId = null) {
        const normalizedInput = newRecord.codigo.trim().toLowerCase();
        const isDuplicate = series.some(x => 
          String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id) &&
-         String(x.dependenciaId) === String(newRecord.dependenciaId)
+         String(x.id) !== String(newRecord.id)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta dependencia.`);
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
        }
     }
 
@@ -180,26 +175,28 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          throw new Error("Contexto de entidad no válido.");
-      }
       const url = `${API_BASE_URL}/trd/entity/${entityId}/series${isUpdate ? '/' + data.id : ''}`;
       const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method,
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapSerieToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Error al guardar la serie');
+        let detail = errData.detail || 'Error al guardar la serie';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "El código de serie ingresado ya existe para esta entidad.";
+        }
+        throw new Error(detail);
       }
       const saved = await res.json();
       await refreshData();
       return saved;
     } catch (err) {
-      await refreshData();
+      console.error('❌ Error guardando serie:', err);
+      setSeries(previousState);
       throw err;
     }
   };
@@ -222,11 +219,10 @@ export function useTRDData(currentUser = null, entityId = null) {
        const normalizedInput = newRecord.codigo.trim().toLowerCase();
        const isDuplicate = subseries.some(x => 
          String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id) &&
-         String(x.serieId) === String(newRecord.serieId)
+         String(x.id) !== String(newRecord.id)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta serie.`);
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
        }
     }
 
@@ -236,26 +232,28 @@ export function useTRDData(currentUser = null, entityId = null) {
     });
 
     try {
-      if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          throw new Error("Contexto de entidad no válido.");
-      }
       const url = `${API_BASE_URL}/trd/entity/${entityId}/subseries${isUpdate ? '/' + data.id : ''}`;
       const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method,
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapSubserieToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Error al guardar la subserie');
+        let detail = errData.detail || 'Error al guardar la subserie';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "El código de subserie ingresado ya existe para esta entidad.";
+        }
+        throw new Error(detail);
       }
       const saved = await res.json();
       await refreshData();
       return saved;
     } catch (err) {
-      await refreshData();
+      console.error('❌ Error guardando subserie:', err);
+      setSubseries(previousState);
       throw err;
     }
   };
@@ -270,32 +268,35 @@ export function useTRDData(currentUser = null, entityId = null) {
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
+    const previousState = [...trdRecords];
     setTrdRecords(prev => {
       const exists = prev.find(x => String(x.id) === String(newRecord.id));
       return exists ? prev.map(x => String(x.id) === String(newRecord.id) ? newRecord : x) : [...prev, newRecord];
     });
 
     try {
-      if (!entityId || entityId === 'null' || entityId === 'undefined') {
-          throw new Error("Contexto de entidad no válido.");
-      }
       const url = `${API_BASE_URL}/trd/entity/${entityId}/trd_records${isUpdate ? '/' + data.id : ''}`;
       const method = isUpdate ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
-        method,
+        method: method,
         headers: authHeaders(),
         body: JSON.stringify(mapTRDToDB(newRecord))
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Error al guardar la valoración TRD');
+        let detail = errData.detail || 'Error al guardar la valoración TRD';
+        if (detail.includes("duplicate key value violates unique constraint")) {
+          detail = "Ya existe una valoración para esta combinación de Dependencia/Serie/Subserie.";
+        }
+        throw new Error(detail);
       }
       const saved = await res.json();
       await refreshData();
       return saved;
     } catch (err) {
-      await refreshData();
+      console.error('❌ Error guardando TRD record:', err);
+      setTrdRecords(previousState);
       throw err;
     }
   };
@@ -365,9 +366,7 @@ function mapSerieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id || s.entity_id,
-    tipoDocumental: s.tipo_documental
+    entidadId: s.entidad_id || s.entity_id
   };
 }
 
@@ -376,9 +375,7 @@ function mapSerieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    dependencia_id: s.dependenciaId,
-    entidad_id: s.entidadId || s.entityId || null,
-    tipo_documental: s.tipoDocumental
+    entidad_id: s.entidadId || s.entityId || null
   };
 }
 
@@ -387,10 +384,7 @@ function mapSubserieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    serieId: s.serie_id,
-    dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id || s.entity_id,
-    tipoDocumental: s.tipo_documental
+    entidadId: s.entidad_id || s.entity_id
   };
 }
 
@@ -399,10 +393,7 @@ function mapSubserieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    serie_id: s.serieId,
-    dependencia_id: s.dependenciaId || null,
-    entidad_id: s.entidadId || s.entityId || null,
-    tipo_documental: s.tipoDocumental
+    entidad_id: s.entidadId || s.entityId || null
   };
 }
 

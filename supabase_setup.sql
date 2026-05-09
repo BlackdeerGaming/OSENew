@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS series (
   codigo TEXT NOT NULL,
   tipo_documental TEXT,
   descripcion TEXT,
-  dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
   entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS subseries (
   codigo TEXT NOT NULL,
   tipo_documental TEXT,
   descripcion TEXT,
-  serie_id TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
-  dependencia_id TEXT REFERENCES dependencias(id) ON DELETE CASCADE,
+  serie_id TEXT REFERENCES series(id) ON DELETE SET NULL,
+  dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
   entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS funciones (
   titulo TEXT NOT NULL,
   codigo_funcion TEXT,
   descripcion TEXT,
-  dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
   entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   proyecto_nombre TEXT,
   proyecto_sigla TEXT,
@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS entrevistados (
 CREATE TABLE IF NOT EXISTS entrevistas (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  dependencia_id TEXT NOT NULL REFERENCES dependencias(id) ON DELETE CASCADE,
+  dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
   entrevistado_id TEXT NOT NULL REFERENCES entrevistados(id) ON DELETE CASCADE,
   fecha_entrevista DATE NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -278,10 +278,10 @@ CREATE TABLE IF NOT EXISTS invitations (
 ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON invitations FOR ALL USING (true);
 -- ============================================================
--- 11. ROLES POR ENTIDAD Y MEJORAS DE INVITACIÓN
+-- 11. ROLES POR ENTIDAD Y MEJORAS DE INVITACIï¿½N
 -- ============================================================
 
--- A. Añadir columna de rol a la tabla de unión
+-- A. Aï¿½adir columna de rol a la tabla de uniï¿½n
 ALTER TABLE profile_entities ADD COLUMN IF NOT EXISTS role TEXT;
 
 -- Migrar roles actuales: los usuarios heredan su perfil global como rol en su entidad
@@ -290,11 +290,11 @@ SET role = p.perfil
 FROM profiles p
 WHERE pe.profile_id = p.id AND pe.role IS NULL;
 
--- Por defecto será 'usuario'
+-- Por defecto serï¿½ 'usuario'
 ALTER TABLE profile_entities ALTER COLUMN role SET DEFAULT 'usuario';
 UPDATE profile_entities SET role = 'usuario' WHERE role IS NULL;
 
--- B. Añadir columna de rol a la tabla de invitaciones
+-- B. Aï¿½adir columna de rol a la tabla de invitaciones
 ALTER TABLE invitations ADD COLUMN IF NOT EXISTS role_invited TEXT DEFAULT 'usuario';
 
 -- C. RLS para Invitaciones (Enviadas y Recibidas)
