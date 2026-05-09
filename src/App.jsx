@@ -1100,17 +1100,12 @@ function App() {
       }
     } else if (activeModule === 'series') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
-      if (!data.dependenciaId) errors.dependenciaId = "La dependencia productora es obligatoria.";
       if (!data.nombre?.trim()) errors.nombre = "El nombre de la serie es obligatorio.";
       if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
-      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
     } else if (activeModule === 'subseries') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
-      if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
-      if (!data.serieId) errors.serieId = "La serie asociada es obligatoria.";
       if (!data.nombre?.trim()) errors.nombre = "El nombre de la subserie es obligatorio.";
       if (!data.codigo?.trim()) errors.codigo = "El código es obligatorio.";
-      if (!data.tipoDocumental?.trim()) errors.tipoDocumental = "Los tipos documentales son obligatorios.";
     } else if (activeModule === 'trdform') {
       if (!data.entidadId) errors.entidadId = "La entidad es obligatoria.";
       if (!data.dependenciaId) errors.dependenciaId = "La dependencia es obligatoria.";
