@@ -1711,7 +1711,7 @@ function App() {
               />
             )}
             {activeModule === 'datos' && (
-              <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
+              <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} trdRecords={trdRecords} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
             )}
             {activeModule === 'funciones' && (
               <FuncionesView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />

@@ -50,9 +50,9 @@ export default function TRDForm({
   const activeSerie = series.find(s => s.id === data.serieId);
   const activeSubserie = subseries.find(s => s.id === data.subserieId);
 
-  // Filter series/subseries explicitly based on dependencies
-  const filteredSeries = data.dependenciaId ? series.filter(s => s.dependenciaId === data.dependenciaId) : series;
-  const filteredSubseries = data.serieId ? subseries.filter(s => s.serieId === data.serieId) : subseries;
+  // Series and Subseries are now global
+  const filteredSeries = series;
+  const filteredSubseries = subseries;
 
   const checkboxClass = "h-4 w-4 rounded border-border text-primary focus:ring-primary text-primary transition-colors cursor-pointer bg-background";
   const groupHeaderClass = "text-sm text-foreground mb-3";

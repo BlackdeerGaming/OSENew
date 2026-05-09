@@ -33,21 +33,6 @@ export default function SubserieForm({
     }
   };
 
-  // Filter series based on selected dependencia (if any)
-  const filteredSeries = data.dependenciaId 
-    ? series.filter(s => s.dependenciaId === data.dependenciaId)
-    : series;
-
-  // Auto-set dependencia if a serie is selected
-  const handleSerieChange = (e) => {
-    const serieId = e.target.value;
-    const serie = series.find(s => s.id === serieId);
-    onChange({ 
-      ...data, 
-      serieId: serieId,
-      dependenciaId: serie ? serie.dependenciaId : data.dependenciaId 
-    });
-  };
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-card rounded-xl border border-border shadow-sm max-w-4xl w-full mx-auto">
@@ -69,11 +54,9 @@ export default function SubserieForm({
             options={[
               { value: "", label: "--- Crear Nueva Subserie ---" },
               ...subseries.map(s => {
-                const dep = dependencias.find(d => String(d.id) === String(s.dependenciaId));
-                const ser = series.find(ser => String(ser.id) === String(s.serieId));
                 return { 
                   value: s.id, 
-                  label: `${s.codigo} - ${s.nombre} ${ser ? `[${ser.nombre}]` : ""} ${dep ? `(${dep.sigla || dep.nombre})` : ""}` 
+                  label: `${s.codigo} - ${s.nombre}` 
                 };
               })
             ]}
@@ -120,29 +103,6 @@ export default function SubserieForm({
           </FormGroup>
         </div>
 
-        <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
-          <SearchableSelect 
-            name="dependenciaId" 
-            value={data.dependenciaId || ""} 
-            onChange={handleChange} 
-            className={cn(inputClass, errors.dependenciaId && "border-destructive")}
-            placeholder="Seleccione una dependencia..."
-            options={dependencias.map(dep => ({ value: dep.id, label: `${dep.codigo} - ${dep.nombre}` }))}
-          />
-        </FormGroup>
-
-        <FormGroup label="Serie Asociada" required isActive={activeField === 'serieId'} error={errors.serieId}>
-          <SearchableSelect 
-            name="serieId" 
-            value={data.serieId || ""} 
-            onChange={handleSerieChange} 
-            className={cn(inputClass, errors.serieId && "border-destructive")}
-            disabled={filteredSeries.length === 0}
-            placeholder="Seleccione una serie..."
-            options={filteredSeries.map(s => ({ value: s.id, label: `${s.codigo} - ${s.nombre}` }))}
-          />
-        </FormGroup>
-
         <div className="md:col-span-2">
           <FormGroup label="Nombre de la Subserie" required isActive={activeField === 'nombre'} error={errors.nombre}>
             <input 
@@ -161,27 +121,9 @@ export default function SubserieForm({
             value={data.codigo || ""} 
             onChange={handleChange} 
             className={cn(inputClass, errors.codigo && "border-destructive focus-visible:ring-destructive")} 
-            placeholder="Ej. 100-01-01" 
+            placeholder="Ej. 100-01" 
           />
         </FormGroup>
-
-        <div className="md:col-span-2">
-          <FormGroup label="Tipos Documentales" required isActive={activeField === 'tipoDocumental'} error={errors.tipoDocumental}>
-            <textarea 
-              name="tipoDocumental" 
-              value={data.tipoDocumental || ""} 
-              onChange={handleChange} 
-              className={cn(textareaClass, errors.tipoDocumental && "border-destructive focus-visible:ring-destructive")} 
-              placeholder="Escriba los tipos documentales..." 
-            />
-          </FormGroup>
-        </div>
-
-        <div className="md:col-span-2">
-          <FormGroup label="Descripción" isActive={activeField === 'descripcion'}>
-            <textarea name="descripcion" value={data.descripcion || ""} onChange={handleChange} className={textareaClass} placeholder="Breve descripción de la subserie..." />
-          </FormGroup>
-        </div>
       </div>
     </div>
   );

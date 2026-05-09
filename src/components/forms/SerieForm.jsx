@@ -54,10 +54,9 @@ export default function SerieForm({
             options={[
               { value: "", label: "--- Crear Nueva Serie ---" },
               ...series.map(s => {
-                const dep = dependencias.find(d => String(d.id) === String(s.dependenciaId));
                 return { 
                   value: s.id, 
-                  label: `${s.codigo} - ${s.nombre} ${dep ? `[${dep.nombre}]` : ""}` 
+                  label: `${s.codigo} - ${s.nombre}` 
                 };
               })
             ]}
@@ -105,19 +104,6 @@ export default function SerieForm({
         </div>
 
         <div className="md:col-span-2">
-          <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
-            <SearchableSelect 
-              name="dependenciaId" 
-              value={data.dependenciaId || ""} 
-              onChange={handleChange} 
-              className={cn(inputClass, errors.dependenciaId && "border-destructive")}
-              placeholder="Seleccione una dependencia..."
-              options={dependencias.map(dep => ({ value: dep.id, label: `${dep.codigo} - ${dep.nombre}` }))}
-            />
-          </FormGroup>
-        </div>
-
-        <div className="md:col-span-2">
           <FormGroup label="Nombre de la Serie" required isActive={activeField === 'nombre'} error={errors.nombre}>
             <input 
               name="nombre" 
@@ -135,27 +121,9 @@ export default function SerieForm({
             value={data.codigo || ""} 
             onChange={handleChange} 
             className={cn(inputClass, errors.codigo && "border-destructive focus-visible:ring-destructive")} 
-            placeholder="Ej. 100-01" 
+            placeholder="Ej. 100" 
           />
         </FormGroup>
-
-        <div className="md:col-span-2">
-          <FormGroup label="Tipos Documentales" required isActive={activeField === 'tipoDocumental'} error={errors.tipoDocumental}>
-            <textarea 
-              name="tipoDocumental" 
-              value={data.tipoDocumental || ""} 
-              onChange={handleChange} 
-              className={cn(textareaClass, errors.tipoDocumental && "border-destructive focus-visible:ring-destructive")} 
-              placeholder="Escriba los tipos documentales separados por coma..." 
-            />
-          </FormGroup>
-        </div>
-
-        <div className="md:col-span-2">
-          <FormGroup label="Descripción" isActive={activeField === 'descripcion'}>
-            <textarea name="descripcion" value={data.descripcion || ""} onChange={handleChange} className={textareaClass} placeholder="Breve descripción del propósito de la serie..." />
-          </FormGroup>
-        </div>
       </div>
     </div>
   );

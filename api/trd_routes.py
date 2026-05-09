@@ -29,18 +29,11 @@ class SerieCreate(BaseModel):
     id: Optional[str] = None
     nombre: str
     codigo: str
-    tipo_documental: Optional[str] = None
-    descripcion: Optional[str] = None
-    dependencia_id: str
 
 class SubserieCreate(BaseModel):
     id: Optional[str] = None
     nombre: str
     codigo: str
-    tipo_documental: Optional[str] = None
-    descripcion: Optional[str] = None
-    serie_id: str
-    dependencia_id: Optional[str] = None
 
 class TRDRecordCreate(BaseModel):
     id: Optional[str] = None
@@ -222,18 +215,17 @@ async def create_serie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
-    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad y dependencia)
+    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
     clean_codigo = payload.codigo.strip()
     existing = supabase_client.table("series") \
         .select("id") \
         .eq("entidad_id", entity_id) \
-        .eq("dependencia_id", payload.dependencia_id) \
         .ilike("codigo", clean_codigo) \
         .execute()
     
     if existing.data:
         if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el cÃ³digo '{clean_codigo}' para esta dependencia.")
+             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el cÃ³digo '{clean_codigo}' para esta entidad.")
 
     data = payload.dict()
     data["codigo"] = clean_codigo
@@ -301,18 +293,17 @@ async def create_subserie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
-    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad y serie)
+    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
     clean_codigo = payload.codigo.strip()
     existing = supabase_client.table("subseries") \
         .select("id") \
         .eq("entidad_id", entity_id) \
-        .eq("serie_id", payload.serie_id) \
         .ilike("codigo", clean_codigo) \
         .execute()
     
     if existing.data:
         if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el cÃ³digo '{clean_codigo}' para esta serie.")
+             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el cÃ³digo '{clean_codigo}' para esta entidad.")
 
     data = payload.dict()
     data["codigo"] = clean_codigo

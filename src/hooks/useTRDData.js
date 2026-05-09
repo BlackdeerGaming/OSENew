@@ -162,11 +162,10 @@ export function useTRDData(currentUser = null, entityId = null) {
        const normalizedInput = newRecord.codigo.trim().toLowerCase();
        const isDuplicate = series.some(x => 
          String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id) &&
-         String(x.dependenciaId) === String(newRecord.dependenciaId)
+         String(x.id) !== String(newRecord.id)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta dependencia.`);
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
        }
     }
 
@@ -220,11 +219,10 @@ export function useTRDData(currentUser = null, entityId = null) {
        const normalizedInput = newRecord.codigo.trim().toLowerCase();
        const isDuplicate = subseries.some(x => 
          String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id) &&
-         String(x.serieId) === String(newRecord.serieId)
+         String(x.id) !== String(newRecord.id)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta serie.`);
+         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
        }
     }
 
@@ -368,9 +366,7 @@ function mapSerieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id || s.entity_id,
-    tipoDocumental: s.tipo_documental
+    entidadId: s.entidad_id || s.entity_id
   };
 }
 
@@ -379,9 +375,7 @@ function mapSerieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    dependencia_id: s.dependenciaId,
-    entidad_id: s.entidadId || s.entityId || null,
-    tipo_documental: s.tipoDocumental
+    entidad_id: s.entidadId || s.entityId || null
   };
 }
 
@@ -390,10 +384,7 @@ function mapSubserieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    serieId: s.serie_id,
-    dependenciaId: s.dependencia_id,
-    entidadId: s.entidad_id || s.entity_id,
-    tipoDocumental: s.tipo_documental
+    entidadId: s.entidad_id || s.entity_id
   };
 }
 
@@ -402,10 +393,7 @@ function mapSubserieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
-    serie_id: s.serieId,
-    dependencia_id: s.dependenciaId || null,
-    entidad_id: s.entidadId || s.entityId || null,
-    tipo_documental: s.tipoDocumental
+    entidad_id: s.entidadId || s.entityId || null
   };
 }
 
