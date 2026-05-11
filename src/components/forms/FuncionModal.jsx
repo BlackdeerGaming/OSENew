@@ -88,7 +88,7 @@ export default function FuncionModal({
   if (!isOpen) return null;
 
   // Encontrar nombre de la entidad del usuario actual o la seleccionada
-  const activeEntityId = entities?.[0]?.id || currentUser?.entity_id;
+
   const currentEntity = entities.find(e => e.id === activeEntityId);
   const entityName = currentEntity ? currentEntity.razonSocial : "Sin Entidad";
 
