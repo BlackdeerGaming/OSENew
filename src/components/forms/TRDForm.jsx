@@ -42,7 +42,7 @@ export default function TRDForm({
   };
 
   const handleFuncionesChange = (selectedIds) => {
-    onChange({ ...data, funciones_ids: selectedIds });
+    onChange({ ...data, funcionesIds: selectedIds });
   };
 
   // Extract selected entities for code population
@@ -288,7 +288,7 @@ export default function TRDForm({
             <h4 className={groupHeaderClass}>Funciones de la Dependencia</h4>
             <FuncionesMultiSelect
               funciones={funciones}
-              selectedIds={data.funciones_ids || []}
+              selectedIds={data.funcionesIds || []}
               onChange={handleFuncionesChange}
               filteredDependenciaId={data.dependenciaId || null}
             />
@@ -318,7 +318,158 @@ export default function TRDForm({
             />
         </FormGroup>
 
+        {/* --- Sección de Tipos Documentales --- */}
+        <div className="border-t border-border pt-6 mt-2">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold tracking-tight text-primary flex items-center gap-2">
+              Tipos Documentales
+              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-tighter">Dinámico</span>
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                const newList = [...(data.tiposDocumentales || []), { 
+                  titulo_documento: "", 
+                  formato: { papel: false, electronico: false }, 
+                  extension: "", 
+                  cual: "",
+                  isEditing: true
+                }];
+                onChange({ ...data, tiposDocumentales: newList });
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+            >
+              <PlusCircle className="w-4 h-4" />
+              Nuevo Tipo Documental
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {(data.tiposDocumentales || []).map((tipo, idx) => (
+              <div key={idx} className="bg-slate-50/50 border border-slate-200 rounded-2xl p-5 relative group transition-all hover:border-primary/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                  <div className="lg:col-span-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Título Documento</label>
+                    <input
+                      type="text"
+                      value={tipo.titulo_documento}
+                      onChange={(e) => {
+                        const newList = [...data.tiposDocumentales];
+                        newList[idx].titulo_documento = e.target.value;
+                        onChange({ ...data, tiposDocumentales: newList });
+                      }}
+                      className={cn(inputClass, "bg-white shadow-sm")}
+                      placeholder="Ej. Acta de Inicio"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Formato</label>
+                    <div className="flex gap-4 h-10 items-center bg-white border border-input rounded-xl px-4 shadow-sm">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tipo.formato?.papel}
+                          onChange={(e) => {
+                            const newList = [...data.tiposDocumentales];
+                            newList[idx].formato = { ...newList[idx].formato, papel: e.target.checked };
+                            onChange({ ...data, tiposDocumentales: newList });
+                          }}
+                          className={checkboxClass}
+                        />
+                        P
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tipo.formato?.electronico}
+                          onChange={(e) => {
+                            const newList = [...data.tiposDocumentales];
+                            newList[idx].formato = { ...newList[idx].formato, electronico: e.target.checked };
+                            onChange({ ...data, tiposDocumentales: newList });
+                          }}
+                          className={checkboxClass}
+                        />
+                        E
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Extensión</label>
+                    <select
+                      value={tipo.extension}
+                      onChange={(e) => {
+                        const newList = [...data.tiposDocumentales];
+                        newList[idx].extension = e.target.value;
+                        onChange({ ...data, tiposDocumentales: newList });
+                      }}
+                      className={cn(inputClass, "bg-white shadow-sm")}
+                    >
+                      <option value="">Seleccione</option>
+                      <option value="PDF">PDF</option>
+                      <option value="DOCX">DOCX</option>
+                      <option value="XLSX">XLSX</option>
+                      <option value="JPG/PNG">JPG/PNG</option>
+                      <option value="MP4">MP4</option>
+                      <option value="ZIP/RAR">ZIP/RAR</option>
+                      <option value="OTRO">OTRO</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">¿Cuál?</label>
+                    <input
+                      type="text"
+                      value={tipo.cual}
+                      onChange={(e) => {
+                        const newList = [...data.tiposDocumentales];
+                        newList[idx].cual = e.target.value;
+                        onChange({ ...data, tiposDocumentales: newList });
+                      }}
+                      className={cn(inputClass, "bg-white shadow-sm")}
+                      placeholder="..."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newList = [...data.tiposDocumentales];
+                      newList[idx].isEditing = false;
+                      onChange({ ...data, tiposDocumentales: newList });
+                    }}
+                    className="px-4 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                  >
+                    Crear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newList = data.tiposDocumentales.filter((_, i) => i !== idx);
+                      onChange({ ...data, tiposDocumentales: newList });
+                    }}
+                    className="px-4 py-1.5 bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {(data.tiposDocumentales || []).length === 0 && (
+              <div className="text-center py-12 bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-3xl">
+                <p className="text-slate-400 text-sm font-medium">No se han agregado tipos documentales todavía.</p>
+                <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest mt-1">Usa el botón superior para empezar</p>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );
 }
+

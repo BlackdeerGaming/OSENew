@@ -25,7 +25,8 @@ export default function FuncionModal({
   funciones = [],
   entities = [],
   currentUser,
-  editData = null 
+  editData = null,
+  selectedEntityId 
 }) {
   const [formData, setFormData] = useState({
     proyecto_nombre: "",
@@ -40,6 +41,8 @@ export default function FuncionModal({
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entity_id;
 
   const handleSelectFuncionForEdit = (e) => {
     const funId = e.target.value;

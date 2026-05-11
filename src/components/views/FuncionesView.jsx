@@ -6,7 +6,7 @@ import FuncionModal from "../forms/FuncionModal";
 import ViewHeader from "../ui/ViewHeader";
 
 
-export default function FuncionesView({ dependencias, entities, currentUser }) {
+export default function FuncionesView({ dependencias, entities, currentUser, selectedEntityId }) {
   const [funciones, setFunciones] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -15,7 +15,8 @@ export default function FuncionesView({ dependencias, entities, currentUser }) {
   const [editFuncion, setEditFuncion] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeEntityId = entities?.[0]?.id || currentUser?.entity_id;
+  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entity_id;
+
 
   // Load functions
   const loadFunciones = async () => {
@@ -237,6 +238,7 @@ export default function FuncionesView({ dependencias, entities, currentUser }) {
         entities={entities}
         currentUser={currentUser}
         editData={editFuncion}
+        selectedEntityId={selectedEntityId}
       />
     </div>
   );

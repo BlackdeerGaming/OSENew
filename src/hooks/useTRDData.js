@@ -425,6 +425,8 @@ function mapTRDFromDB(r) {
     val_Histórico: r.val_historico,
     rep_microfilmacion: r.rep_microfilmacion,
     rep_digitalizacion: r.rep_digitalizacion,
+    tiposDocumentales: r.tipos_documentales || [],
+    funcionesIds: r.funciones_ids || [],
     createdAt: r.created_at
   };
 }
@@ -457,5 +459,7 @@ function mapTRDToDB(r) {
     val_historico: r['val_Histórico'] || false,
     rep_microfilmacion: r.rep_microfilmacion || false,
     rep_digitalizacion: r.rep_digitalizacion || false,
+    tipos_documentales: r.tiposDocumentales || [],
+    funciones_ids: r.funcionesIds || []
   };
 }
