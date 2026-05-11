@@ -425,8 +425,27 @@ export default function TRDGenerator({
                               gap: "2px",
                             }}
                           >
-                            {row.tipoDocumental &&
-                              row.tipoDocumental.split(",").map((t, i) => (
+                            {row.tiposDocumentales && row.tiposDocumentales.length > 0 ? (
+                              row.tiposDocumentales.map((t, i) => (
+                                <div
+                                  key={i}
+                                  style={{
+                                    fontSize: isLandscape ? "7.5px" : "6.5px",
+                                    fontWeight: "bold",
+                                    fontStyle: "italic",
+                                    textTransform: "uppercase",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  <span>• {t.titulo_documento}</span>
+                                  <span style={{ fontSize: "6px", opacity: 0.7 }}>
+                                    ({t.formato?.papel ? 'P' : ''}{t.formato?.electronico ? 'E' : ''})
+                                  </span>
+                                </div>
+                              ))
+                            ) : row.tipoDocumental && row.tipoDocumental.split(",").map((t, i) => (
                                 <span
                                   key={i}
                                   style={{

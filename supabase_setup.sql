@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS trd_records (
   -- Flags de reproduccion
   rep_microfilmacion BOOLEAN DEFAULT false,
   rep_digitalizacion BOOLEAN DEFAULT false,
+  funciones_ids TEXT[] DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -322,3 +323,5 @@ FOR ALL USING (
     SELECT 1 FROM profiles WHERE id = auth.uid()::text AND perfil = 'superadmin'
   )
 );
+A L T E R   T A B L E   t r d _ r e c o r d s   A D D   C O L U M N   I F   N O T   E X I S T S   t i p o s _ d o c u m e n t a l e s   J S O N B   D E F A U L T   ' [ ] ' ;  
+ 

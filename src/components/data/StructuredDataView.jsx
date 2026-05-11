@@ -327,9 +327,15 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
           // Si hay filtro de subserie activo, y esta serie no tiene la subserie buscada, la ocultamos
           if (targetSub !== "ALL" && matchedSubseries.length === 0) return null;
           
+          const trdForSerie = (trdRecords || []).find(t => t.dependenciaId === dep.id && t.serieId === serie.id && !t.subserieId);
+          
           return { 
             ...serie, 
-            subseries: sortEntitiesByCode(matchedSubseries) 
+            subseries: sortEntitiesByCode(matchedSubseries.map(sub => {
+              const trdForSub = (trdRecords || []).find(t => t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId === sub.id);
+              return { ...sub, tiposDocumentales: trdForSub?.tiposDocumentales || [] };
+            })),
+            tiposDocumentales: trdForSerie?.tiposDocumentales || []
           };
         })
         .filter(Boolean);
@@ -547,7 +553,21 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
                               )}
                             </div>
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-1 font-bold uppercase tracking-widest line-clamp-1">{serie.tipoDocumental}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {(serie.tiposDocumentales || []).length > 0 ? (
+                              serie.tiposDocumentales.map((t, i) => (
+                                <span key={i} className="text-[9px] font-black bg-white border border-slate-200 text-slate-500 px-2 py-0.5 rounded shadow-sm flex items-center gap-1.5 uppercase tracking-tighter">
+                                  <FileText className="h-3 w-3 text-slate-300" />
+                                  {t.titulo_documento}
+                                  <span className="text-[8px] text-primary/60 font-black">
+                                    ({t.formato?.papel ? 'P' : ''}{t.formato?.electronico ? 'E' : ''})
+                                  </span>
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-widest line-clamp-1">{serie.tipoDocumental || "Sin tipos documentales asignados"}</p>
+                            )}
+                          </div>
                           
                           {/* Subseries List */}
                           {serie.subseries && serie.subseries.length > 0 && (
@@ -574,7 +594,20 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
                                         )}
                                       </div>
                                     </div>
-                                    <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mt-0.5 tracking-tighter">{sub.tipoDocumental}</p>
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                      {(sub.tiposDocumentales || []).length > 0 ? (
+                                        sub.tiposDocumentales.map((t, i) => (
+                                          <span key={i} className="text-[8px] font-black bg-white/50 border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-tighter">
+                                            {t.titulo_documento}
+                                            <span className="text-[7px] text-primary/40 font-black">
+                                              ({t.formato?.papel ? 'P' : ''}{t.formato?.electronico ? 'E' : ''})
+                                            </span>
+                                          </span>
+                                        ))
+                                      ) : (
+                                        <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mt-0.5 tracking-tighter">{sub.tipoDocumental || "Sin tipos documentales"}</p>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               ))}

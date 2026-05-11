@@ -109,7 +109,10 @@ function App() {
   const [resetToken, setResetToken] = useState(null);
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
   const [entidadLogoBase64, setEntidadLogoBase64] = useState(null);
-  const [selectedEntityId, setSelectedEntityId] = useState(null);
+  const [selectedEntityId, setSelectedEntityId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('entity');
+  });
   const [invitationContext, setInvitationContext] = useState(() => {
     const saved = localStorage.getItem('invitation_context');
     return saved ? JSON.parse(saved) : null;
@@ -118,12 +121,65 @@ function App() {
   const [formErrors, setFormErrors] = useState({});
 
   // SaaS Context State
-  const [mainView, setMainView] = useState('dashboard');
+  const [mainView, setMainView] = useState(() => {
+    const hash = window.location.hash.replace('#/', '');
+    if (hash) return hash.split('/')[0];
+    return 'dashboard';
+  });
+  const [activeModule, setActiveModule] = useState(() => {
+    const hash = window.location.hash.replace('#/', '');
+    if (hash) return hash.split('/')[1] || 'dashboard';
+    return 'dashboard';
+  });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeModule, setActiveModule] = useState('dashboard');
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
+
+  // --- Sistema de Navegación con Historial ---
+  useEffect(() => {
+    const handlePopState = (e) => {
+      // Intentar leer del estado del evento o directamente del hash/search
+      const hash = window.location.hash.replace('#/', '');
+      const params = new URLSearchParams(window.location.search);
+      const entityId = params.get('entity');
+
+      if (entityId) setSelectedEntityId(entityId);
+
+      if (!hash) {
+        setMainView('dashboard');
+        setActiveModule('dashboard');
+        return;
+      }
+
+      const [view, module] = hash.split('/');
+      if (view) setMainView(view);
+      if (module) setActiveModule(module);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Sincronizar URL al cambiar estados
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const currentHash = `#/${mainView}/${activeModule}`;
+    const params = new URLSearchParams(window.location.search);
+    
+    if (selectedEntityId) params.set('entity', selectedEntityId);
+    else params.delete('entity');
+
+    const searchStr = params.toString() ? `?${params.toString()}` : '';
+    const newUrl = `${window.location.pathname}${searchStr}${currentHash}`;
+
+    if (window.location.hash !== currentHash || window.location.search !== searchStr) {
+      window.history.pushState({ mainView, activeModule, selectedEntityId }, '', newUrl);
+    }
+  }, [mainView, activeModule, selectedEntityId, currentUser]);
+
+
 
   // Manejar sesión de Google (Supabase OAuth)
   useEffect(() => {
@@ -1116,6 +1172,11 @@ function App() {
       if (!data.ddhh) errors.ddhh = "Este campo es obligatorio.";
       if (!data.procedimiento?.trim()) errors.procedimiento = "El procedimiento es obligatorio.";
       if (!data.actoAdmo?.trim()) errors.actoAdmo = "El acto administrativo es obligatorio.";
+      
+      // Validar Tipos Documentales
+      if (data.tiposDocumentales?.some(t => !t.titulo_documento?.trim())) {
+        errors.tiposDocumentales = "Todos los tipos documentales deben tener un título.";
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1346,11 +1407,13 @@ function App() {
     let entityFromUser = user.entidadId || user.entity_id || user.entidadIds?.[0] || null;
     if (entityFromUser === "None" || entityFromUser === "null") entityFromUser = null;
 
-    if (entityFromUser) {
-      setSelectedEntityId(entityFromUser);
-    } else if (user.role === 'superadmin') {
-      // superadmin: forzamos OSE Sistema Global (e0) como principal por defecto
-      setSelectedEntityId('e0');
+    if (!selectedEntityId) {
+      if (entityFromUser) {
+        setSelectedEntityId(entityFromUser);
+      } else if (user.role === 'superadmin') {
+        // superadmin: forzamos OSE Sistema Global (e0) como principal por defecto
+        setSelectedEntityId('e0');
+      }
     }
     
     // Siempre guardamos en localStorage para persistencia en refrescos
@@ -1412,6 +1475,9 @@ function App() {
     localStorage.removeItem('ose_user');
     localStorage.removeItem('invitation_context');
     if (supabase) await supabase.auth.signOut();
+    
+    // Limpiar URL
+    window.history.replaceState(null, '', window.location.pathname);
   };
 
   // Restore session logic removed - now handled by initial state in useState
@@ -1709,7 +1775,12 @@ function App() {
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} trdRecords={trdRecords} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
             )}
             {activeModule === 'funciones' && (
-              <FuncionesView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
+              <FuncionesView 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId}
+              />
             )}
             {activeModule === 'entrevistas' && (
               <EntrevistasView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />

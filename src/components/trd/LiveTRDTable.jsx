@@ -106,7 +106,17 @@ export default function LiveTRDTable({ rows, activeRowIndex, activeField, onEdit
                             isEmpty && !isEditingCell && "text-muted-foreground/40 italic text-xs"
                           )}
                         >
-                          {value || (isEditingCell ? "Escribiendo..." : "Pendiente")}
+                          {col.id === 'tipoDocumental' && row.tiposDocumentales?.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {row.tiposDocumentales.map((t, i) => (
+                                <span key={i} className="text-[10px] font-bold bg-primary/5 text-primary px-1.5 py-0.5 rounded border border-primary/10">
+                                  {t.titulo_documento}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            value || (isEditingCell ? "Escribiendo..." : "Pendiente")
+                          )}
                         </motion.div>
                         {/* Hover hint for edit */}
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] bg-primary/10 text-primary px-1.5 rounded opacity-0 group-hover/cell:opacity-100 transition-opacity pointer-events-none">
