@@ -1786,11 +1786,24 @@ function App() {
               <EntrevistasView dependencias={dependencias} entities={userEntities} currentUser={currentUser} />
             )}
             {activeModule === 'generador_ia' && (
-              <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="ai" />
+              <GeneradorDocumentalView 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId}
+                forceMode="ai" 
+              />
             )}
             {activeModule === 'generador_manual' && (
-              <GeneradorDocumentalView dependencias={dependencias} entities={userEntities} currentUser={currentUser} forceMode="manual" />
+              <GeneradorDocumentalView 
+                dependencias={dependencias} 
+                entities={userEntities} 
+                currentUser={currentUser} 
+                selectedEntityId={selectedEntityId}
+                forceMode="manual" 
+              />
             )}
+
             {activeModule === 'trd' && (
               <div id="trd-report-wrapper" className="print-content h-full">
                 <TRDGenerator 

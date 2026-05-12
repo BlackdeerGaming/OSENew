@@ -17,7 +17,8 @@ function Chip({ label, onRemove }) {
   );
 }
 
-export default function GeneradorDocumentalView({ dependencias, entities, currentUser, forceMode }) {
+export default function GeneradorDocumentalView({ dependencias, entities, currentUser, forceMode, selectedEntityId }) {
+
   const [activeTab, setActiveTab] = useState("ccd");
   const generationMode = forceMode || "ai";
   const [entrevistadosList, setEntrevistadosList] = useState([]);
@@ -40,7 +41,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
 
-  const activeEntityId = entities?.[0]?.id || currentUser?.entity_id;
+  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
+
 
   useEffect(() => {
     if (activeEntityId) {
@@ -78,56 +80,112 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
     } catch (e) { console.error(e); }
   };
 
-  // ── Manual (literal) live preview ──────────────────────────────────────
   useEffect(() => {
-    if (generationMode === "manual") {
+    if (generationMode === "manual" || generationMode === "standard") {
       if (activeTab === "ccd") {
-        let html = `<h1>Cuadro de Clasificación Documental</h1>`;
-        html += `<h2>Fondo: ${entities.find(e => e.id === activeEntityId)?.razonSocial || "Entidad Central"}</h2>`;
-        html += `<table border="1" width="100%"><thead><tr><th>Código</th><th>Sección (Dependencia)</th><th>Serie/Función</th></tr></thead><tbody>`;
-        const rels = dependencias.filter(d => d.entity_id === activeEntityId || !d.entity_id);
-        rels.forEach(dep => {
-          const depFuns = funcionesList.filter(f => f.dependencia_id === dep.id);
-          if (depFuns.length === 0) {
-            html += `<tr><td>${dep.codigo || ""}</td><td><strong>${dep.nombre}</strong></td><td>Sin funciones</td></tr>`;
-          } else {
-            depFuns.forEach((f, idx) => {
-              html += `<tr>`;
-              if (idx === 0) {
-                html += `<td rowspan="${depFuns.length}">${dep.codigo || ""}</td>`;
-                html += `<td rowspan="${depFuns.length}"><strong>${dep.nombre}</strong></td>`;
-              }
-              html += `<td>${f.codigo_funcion ? f.codigo_funcion + " - " : ""}${f.titulo}</td></tr>`;
-            });
-          }
-        });
-        html += `</tbody></table>`;
+        let html = `<h1 style="text-align:center;">Cuadro de Clasificación Documental (CCD)</h1>`;
+        html += `<h2 style="text-align:center;color:#666;">Fondo: ${entities.find(e => e.id === activeEntityId)?.razonSocial || "Entidad Central"}</h2>`;
+        html += `<div style="margin-top:20px;"><table border="1" width="100%" style="border-collapse:collapse;">
+                  <thead style="background:#f2f2f2;">
+                    <tr>
+                      <th width="15%">CÓDIGO</th>
+                      <th width="35%">SECCIÓN / SUBSECCIÓN</th>
+                      <th width="50%">SERIE (FUNCIÓN ADMINISTRATIVA)</th>
+                    </tr>
+                  </thead>
+                  <tbody>`;
+        
+        // Filtrar dependencias por entidad activa
+        const rels = dependencias.filter(d => String(d.entidadId) === String(activeEntityId));
+        
+        if (rels.length === 0) {
+          html += `<tr><td colspan="3" style="text-align:center;padding:20px;color:#999;">No hay dependencias registradas para esta entidad.</td></tr>`;
+        } else {
+          rels.forEach(dep => {
+            const depFuns = funcionesList.filter(f => String(f.dependencia_id) === String(dep.id));
+            if (depFuns.length === 0) {
+              html += `<tr style="background:#fdfdfd;">
+                        <td style="font-family:monospace;text-align:center;font-weight:bold;">${dep.codigo || "S/C"}</td>
+                        <td><strong>${dep.nombre}</strong></td>
+                        <td style="color:#999;font-style:italic;">Sin funciones asociadas</td>
+                      </tr>`;
+            } else {
+              depFuns.forEach((f, idx) => {
+                html += `<tr>`;
+                if (idx === 0) {
+                  html += `<td rowspan="${depFuns.length}" style="font-family:monospace;text-align:center;font-weight:bold;vertical-align:middle;">${dep.codigo || "S/C"}</td>`;
+                  html += `<td rowspan="${depFuns.length}" style="vertical-align:middle;"><strong>${dep.nombre}</strong></td>`;
+                }
+                html += `<td>${f.codigo_funcion ? f.codigo_funcion + " - " : ""}${f.titulo}</td></tr>`;
+              });
+            }
+          });
+        }
+        html += `</tbody></table></div>`;
         setGeneratedHtml(html);
       } else {
-        // Multi-cargo manual preview
-        let html = `<h1>Manual de Funciones</h1>`;
-        manualEntries.forEach((entry, idx) => {
-          if (manualEntries.length > 1) {
-            html += `<hr style="margin:32px 0;border-color:#ccc;" />`;
+        // --- MANUAL DE FUNCIONES: HERENCIA AUTOMÁTICA ---
+        let html = `<h1 style="text-align:center;">Manual de Funciones y Competencias</h1>`;
+        html += `<h2 style="text-align:center;color:#666;margin-bottom:40px;">${entities.find(e => e.id === activeEntityId)?.razonSocial || "Entidad Central"}</h2>`;
+        
+        const rels = dependencias.filter(d => String(d.entidadId) === String(activeEntityId));
+        
+        if (rels.length === 0) {
+          html += `<p style="text-align:center;margin-top:60px;color:#999;">No se encontraron dependencias para generar el manual.</p>`;
+        } else {
+          let hasFunctions = false;
+          rels.forEach((dep, idx) => {
+            const depFuns = funcionesList.filter(f => String(f.dependencia_id) === String(dep.id));
+            if (depFuns.length > 0) {
+              hasFunctions = true;
+              if (idx > 0) html += `<div style="page-break-before:always;height:20px;"></div>`;
+              
+              html += `<div style="border:2px solid #333;padding:20px;margin-bottom:30px;">`;
+              html += `<h2 style="margin:0;border-bottom:1px solid #eee;padding-bottom:10px;">I. IDENTIFICACIÓN DE LA UNIDAD</h2>`;
+              html += `<table width="100%" style="margin-top:15px;border:none;">
+                        <tr><td width="30%"><strong>Denominación:</strong></td><td>${dep.nombre}</td></tr>
+                        <tr><td><strong>Código:</strong></td><td>${dep.codigo || "S/C"}</td></tr>
+                        <tr><td><strong>Sigla:</strong></td><td>${dep.sigla || "S/S"}</td></tr>
+                        <tr><td><strong>Ubicación:</strong></td><td>${dep.ciudad || ""}, ${dep.departamento || ""}</td></tr>
+                      </table>`;
+              html += `</div>`;
+
+              html += `<h2 style="background:#eee;padding:10px;">II. PROPÓSITO PRINCIPAL</h2>`;
+              html += `<p style="text-align:justify;">Ejecutar y coordinar las funciones administrativas y técnicas asignadas a la unidad de <strong>${dep.nombre}</strong>, asegurando el cumplimiento de la misión institucional y la normativa archivística vigente (Ley 594 de 2000).</p>`;
+
+              html += `<h2 style="background:#eee;padding:10px;">III. DESCRIPCIÓN DE FUNCIONES ESENCIALES</h2>`;
+              html += `<table border="1" width="100%" style="border-collapse:collapse;margin-top:10px;">
+                        <thead style="background:#f2f2f2;">
+                          <tr><th width="15%">CÓDIGO</th><th>DESCRIPCIÓN DE LA FUNCIÓN</th></tr>
+                        </thead>
+                        <tbody>`;
+              
+              depFuns.forEach(f => {
+                html += `<tr>
+                          <td style="text-align:center;font-family:monospace;">${f.codigo_funcion || "---"}</td>
+                          <td><strong>${f.titulo}</strong><br/><span style="font-size:12px;color:#555;">${f.descripcion || ""}</span></td>
+                        </tr>`;
+              });
+              
+              html += `</tbody></table>`;
+              
+              html += `<h2 style="background:#eee;padding:10px;margin-top:30px;">IV. CONTRIBUCIONES INTEGRALES</h2>`;
+              html += `<p>Los productos y servicios derivados de estas funciones contribuyen directamente a la eficiencia operativa de la entidad y al fortalecimiento del patrimonio documental del Estado.</p>`;
+            }
+          });
+
+          if (!hasFunctions) {
+            html += `<div style="text-align:center;padding:100px 0;">
+                      <p style="font-size:18px;color:#666;">No hay <strong>Funciones</strong> asociadas a las dependencias de esta entidad.</p>
+                      <p style="color:#999;">Por favor, registre las funciones en el módulo de "Funciones" para que aparezcan aquí automáticamente.</p>
+                    </div>`;
           }
-          html += `<h2>Identificación del Cargo: ${entry.cargo || "[Escriba Cargo]"}</h2>`;
-          html += `<h3>Propósito Principal</h3><p>${entry.proposito || "Describa el propósito principal aquí..."}</p>`;
-          html += `<h3>Funciones Principales y Deberes</h3><ul>`;
-          if (entry.funcionesSel && entry.funcionesSel.length > 0) {
-            entry.funcionesSel.forEach(fnId => {
-              const fnObj = funcionesList.find(f => f.id === fnId);
-              if (fnObj) html += `<li>${fnObj.titulo}</li>`;
-            });
-          } else {
-            html += `<li>No se han seleccionado funciones.</li>`;
-          }
-          html += `</ul>`;
-          html += `<h3>Relación con Otras Áreas</h3><p>${entry.relaciones || "Describa dependencias inter-áreas..."}</p>`;
-        });
+        }
         setGeneratedHtml(html);
       }
     }
-  }, [generationMode, activeTab, dependencias, funcionesList, activeEntityId, entities, manualEntries]);
+  }, [generationMode, activeTab, dependencias, funcionesList, activeEntityId, entities]);
+
 
   // ── Handlers ────────────────────────────────────────────────────────────
   const handleGenerateCCD = async () => {
@@ -260,7 +318,20 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
       <ViewHeader
         icon={Wand2}
         title="Generador Documental IA"
-        subtitle="Construcción automática de manuales y cuadros con modelo analítico archivístico"
+        subtitle="Generación automática de manuales y cuadros con herencia de funciones y modelo IA"
+        actions={
+          <button
+            onClick={() => {
+              fetchEntrevistados();
+              fetchFunciones();
+              fetchOfficialDocs();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 text-foreground rounded-lg text-xs font-bold transition-all border border-border"
+          >
+            <RotateCcw className="h-4 w-4" />
+            SINCRONIZAR DATOS
+          </button>
+        }
       />
 
       <div className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
@@ -279,7 +350,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               <Building2 className={cn("h-5 w-5", activeTab === "ccd" ? "text-primary" : "text-muted-foreground")} />
               <div className="flex flex-col">
                 <span className="font-bold text-sm">Cuadro de Clasificación</span>
-                <span className="text-xs opacity-80">CCD General Normativo</span>
+                <span className="text-xs opacity-80">CCD con Herencia de Funciones</span>
+
               </div>
             </button>
 
@@ -291,7 +363,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               <Briefcase className={cn("h-5 w-5", activeTab === "manual" ? "text-primary" : "text-muted-foreground")} />
               <div className="flex flex-col">
                 <span className="font-bold text-sm">Manual de Funciones</span>
-                <span className="text-xs opacity-80">Uno o varios cargos</span>
+                <span className="text-xs opacity-80">Herencia Automática por Dependencia</span>
+
               </div>
             </button>
           </div>
@@ -388,9 +461,10 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             ) : (
               activeTab === "ccd" ? (
                 <>
-                  <div className="text-sm font-semibold text-foreground">Ensamblaje Manual (Directo BD)</div>
-                  <p className="text-xs text-muted-foreground">El sistema cruzará dependencias y funciones como están en base de datos. Editable haciendo doble clic.</p>
+                  <div className="text-sm font-semibold text-foreground">Herencia de Funciones (Automática)</div>
+                  <p className="text-xs text-muted-foreground">El sistema sincroniza automáticamente las funciones creadas en el módulo de Funciones con sus dependencias correspondientes.</p>
                 </>
+
               ) : (
                 /* ── MANUAL LITERAL: multi-entry ────────────────────── */
                 <>
