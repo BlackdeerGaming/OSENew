@@ -42,7 +42,7 @@ export default function FuncionModal({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entity_id;
+  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
 
   const handleSelectFuncionForEdit = (e) => {
     const funId = e.target.value;

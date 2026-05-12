@@ -171,10 +171,10 @@ CREATE INDEX IF NOT EXISTS idx_subseries_cloud_key ON subseries(cloud_key);
 CREATE INDEX IF NOT EXISTS idx_trd_records_cloud_key ON trd_records(cloud_key);
 
 -- Index for entity_id lookups
-CREATE INDEX IF NOT EXISTS idx_dependencias_entity ON dependencias(entity_id);
-CREATE INDEX IF NOT EXISTS idx_series_entity ON series(entity_id);
-CREATE INDEX IF NOT EXISTS idx_subseries_entity ON subseries(entity_id);
-CREATE INDEX IF NOT EXISTS idx_trd_records_entity ON trd_records(entity_id);
+CREATE INDEX IF NOT EXISTS idx_dependencias_entity ON dependencias(entidad_id);
+CREATE INDEX IF NOT EXISTS idx_series_entity ON series(entidad_id);
+CREATE INDEX IF NOT EXISTS idx_subseries_entity ON subseries(entidad_id);
+CREATE INDEX IF NOT EXISTS idx_trd_records_entity ON trd_records(entidad_id);
 
 -- ============================================================
 -- 6. TABLA DE HISTORIAL DE CHAT (Persistencia Privada)
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS funciones (
   codigo_funcion TEXT,
   descripcion TEXT,
   dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
-  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  entidad_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   proyecto_nombre TEXT,
   proyecto_sigla TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS funciones (
 ALTER TABLE funciones ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON funciones FOR ALL USING (true);
 
-CREATE INDEX IF NOT EXISTS idx_funciones_entity ON funciones(entity_id);
+CREATE INDEX IF NOT EXISTS idx_funciones_entity ON funciones(entidad_id);
 CREATE INDEX IF NOT EXISTS idx_funciones_cloud_key ON funciones(cloud_key);
 
 -- ============================================================
@@ -222,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_funciones_cloud_key ON funciones(cloud_key);
 
 CREATE TABLE IF NOT EXISTS entrevistados (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  entidad_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   nombres TEXT NOT NULL,
   apellidos TEXT NOT NULL,
   cargo TEXT NOT NULL,
@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS entrevistados (
 
 CREATE TABLE IF NOT EXISTS entrevistas (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  entidad_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   dependencia_id TEXT REFERENCES dependencias(id) ON DELETE SET NULL,
   entrevistado_id TEXT NOT NULL REFERENCES entrevistados(id) ON DELETE CASCADE,
   fecha_entrevista DATE NOT NULL,
@@ -241,11 +241,11 @@ CREATE TABLE IF NOT EXISTS entrevistas (
 
 ALTER TABLE entrevistados ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON entrevistados FOR ALL USING (true);
-CREATE INDEX IF NOT EXISTS idx_entrevistados_entity ON entrevistados(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entrevistados_entity ON entrevistados(entidad_id);
 
 ALTER TABLE entrevistas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_service" ON entrevistas FOR ALL USING (true);
-CREATE INDEX IF NOT EXISTS idx_entrevistas_entity ON entrevistas(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entrevistas_entity ON entrevistas(entidad_id);
 CREATE INDEX IF NOT EXISTS idx_entrevistas_cloud_key ON entrevistas(cloud_key);
 
 -- ============================================================
@@ -269,7 +269,7 @@ CREATE POLICY "allow_all_service" ON activity_logs FOR ALL USING (true);
 CREATE TABLE IF NOT EXISTS invitations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL,
-  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  entidad_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   inviter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   status TEXT DEFAULT 'pendiente', -- 'pendiente', 'aceptada', 'rechazada'
   expires_at TIMESTAMPTZ NOT NULL,
@@ -323,5 +323,6 @@ FOR ALL USING (
     SELECT 1 FROM profiles WHERE id = auth.uid()::text AND perfil = 'superadmin'
   )
 );
-A L T E R   T A B L E   t r d _ r e c o r d s   A D D   C O L U M N   I F   N O T   E X I S T S   t i p o s _ d o c u m e n t a l e s   J S O N B   D E F A U L T   ' [ ] ' ;  
+A L T E R   T A B L E   t r d _ r e c o r d s   A D D   C O L U M N   I F   N O T   E X I S T S   t i p o s _ d o c u m e n t a l e s   J S O N B   D E F A U L T   ' [ ] ' ; 
+ 
  

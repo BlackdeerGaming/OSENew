@@ -15,7 +15,7 @@ export default function FuncionesView({ dependencias, entities, currentUser, sel
   const [editFuncion, setEditFuncion] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entity_id;
+  const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
 
 
   // Load functions

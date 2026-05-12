@@ -305,6 +305,21 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
+def add_activity_log(message: str, entidad_id: str = None, user_name: str = "Sistema", user_id: str = None):
+    """Helper sincrono para registrar actividad en la base de datos."""
+    if not supabase_client: return
+    try:
+        log_data = {
+            "message": message,
+            "entidad_id": entidad_id,
+            "user_name": user_name,
+            "user_id": user_id,
+            "created_at": datetime.now().isoformat()
+        }
+        supabase_client.table("activity_logs").insert(log_data).execute()
+    except Exception as e:
+        print(f" [LOG ERROR] {e}")
+
 async def index_document_rag(doc_id: str | None, content: bytes, filename: str, entidad: str, file_url: str):
     """
     Background Task: Extrae texto (Digital o Visual), realiza chunking y envía vectores a Supabase PgVector.
@@ -463,7 +478,7 @@ async def _vision_ocr_page(img_b64: str) -> str:
         print(f" [VISION-OCR] Error en página: {e}")
         return ""
 
-async def process_ocr_task(doc_id: str, content: bytes, filename: str):
+async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name: str = "Sistema", user_id: str = None, log_eid: str = None):
     """
     Proceso avanzado de OCR que detecta si el PDF es escaneado o tiene texto.
     Procesa página por página para permitir progreso en tiempo real y cancelación.
@@ -522,7 +537,8 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                     await _update_ocr_progress(
                         doc_id, filename, stage=f"OCR Visual: Página {current_page_num} de {total_pages}",
                         progress=progress_pct, current_page=current_page_num, total_pages=total_pages,
-                        pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages
+                        pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
+                        extra={"status": "processing_ocr"}
                     )
                     
                     # Renderizar a 200 DPI (mejor balance velocidad/calidad)
@@ -559,7 +575,8 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             await _update_ocr_progress(
                 doc_id, filename, stage=f"Extrayendo página {current_page_num} de {total_pages}...",
                 progress=progress_pct, current_page=current_page_num, total_pages=total_pages,
-                pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages
+                pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
+                extra={"status": "processing_ocr"}
             )
             
             if method == "visual": await asyncio.sleep(0.5)
@@ -571,7 +588,8 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             await _update_ocr_progress(
                 doc_id, filename, stage="Analizando estructura TRD...",
                 progress=85, current_page=total_pages, total_pages=total_pages,
-                pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages
+                pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
+                extra={"status": "extraction_completed"}
             )
             
             messages = [SystemMessage(content=TRD_ARCHITECT_PROMPT)]
@@ -610,7 +628,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                 ai_message = f"Error interpretando la TRD: {str(ai_err)}"
 
             # --- FASE FINAL: Guardar todo ---
-            final_status = "reviewing"
+            final_status = "pending_verification"
             final_meta = {
                 "status": final_status,
                 "ocr_stage": "Listo para verificación",
@@ -622,7 +640,9 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                 "entidad_id": entidad_id,
                 "source": filename,
                 "type": "temp_trd_session",
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
+                "user_name": user_name,
+                "user_id": user_id
             }
             
             def _final_save():
@@ -631,11 +651,12 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
                     "metadata": final_meta
                 }).eq("id", doc_id).execute()
                 
-                # Log de actividad final
+                # Log de actividad final con usuario real (Aislado si es superadmin)
                 add_activity_log(
-                    f"[{doc_id}] Importación TRD Finalizada con Éxito: {filename}",
-                    entidad_id=entidad_id,
-                    user_name="Sistema" # Podríamos pasar el nombre del usuario si lo tenemos en el contexto del task
+                    f"OCR Finalizado - Pendiente de Verificación: {filename}",
+                    entidad_id=log_eid or entidad_id,
+                    user_name=user_name,
+                    user_id=user_id
                 )
 
             await asyncio.to_thread(_final_save)
@@ -650,7 +671,13 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str):
             doc_id, filename, stage=f"Error: {str(e)[:100]}",
             progress=100, current_page=total_pages, total_pages=total_pages,
             pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
-            extra={"status": "error"}
+            extra={"status": "failed", "error_summary": str(e)}
+        )
+        add_activity_log(
+            f"Fallo en Importación TRD: {filename} - {str(e)[:50]}",
+            entidad_id=log_eid or entidad_id,
+            user_name=user_name,
+            user_id=user_id
         )
 #  Endpoints 
 
@@ -874,28 +901,40 @@ async def get_rag_documents(entidad_id: str | None = None, type: str | None = No
         res = query.execute()
         if not res.data: return []
 
-        # Agrupar por source para evitar duplicados si son chunks, 
-        # pero mantener sesiones TRD como únicas.
-        seen_sources = {}
+        # 3. Ordenar por creación descendente para ver lo más reciente primero
+        res.data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # Agrupar por source para evitar duplicados masivos. 
+        # Prioridad absoluta a las sesiones de importación (TRD) sobre los chunks RAG.
         processed_data = []
+        sources_handled = set()
         
+        # 1. Primero recolectamos todas las sesiones activas/pendientes (Solo la más reciente por fuente)
         for item in res.data:
             meta = item.get("metadata", {})
             doc_type = meta.get("type")
             source = meta.get("source") or meta.get("filename")
             
-            # Las sesiones de TRD siempre son únicas por ID
             if doc_type in ('temp_trd_session', 'trd_upload'):
+                if source and source in sources_handled:
+                    continue # Ya incluimos la versión más reciente (gracias al sort previo)
+                
                 processed_data.append(item)
-            else:
-                # Documentos RAG generales: agrupar por source
-                if source and source not in seen_sources:
-                    seen_sources[source] = True
+                if source: sources_handled.add(source)
+
+        # 2. Luego recolectamos los archivos RAG generales que no tengan una sesión activa
+        for item in res.data:
+            meta = item.get("metadata", {})
+            doc_type = meta.get("type")
+            source = meta.get("source") or meta.get("filename")
+            
+            if doc_type not in ('temp_trd_session', 'trd_upload'):
+                if not source or source not in sources_handled:
                     processed_data.append(item)
-                elif not source:
-                    processed_data.append(item)
+                    if source: sources_handled.add(source)
 
         return processed_data
+
 
     except Exception as e:
         print(f" Error listando documentos RAG: {str(e)}")
@@ -927,37 +966,44 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
         if entidad_id and str(entidad_id) != str(user_entity):
             raise HTTPException(403, "No tienes permiso para modificar documentos de otra entidad")
 
-    # 3. Aplicar cambios de estado
+    # 3. Aplicar cambios de estado y metadata
     new_status = payload.get("status")
+    incoming_meta = payload.get("metadata", {})
+    
+    # Combinar metadata existente con la nueva (si viene)
+    final_meta = {**meta, **incoming_meta}
+    
     if new_status:
-        meta["status"] = new_status
+        final_meta["status"] = new_status
         if new_status == "success":
-            meta["type"] = "trd_upload"
-            meta["integrated_at"] = datetime.now().isoformat()
-            meta["integrated_by"] = user.get("nombre", "Usuario")
+            final_meta["type"] = "trd_upload"
+            final_meta["integrated_at"] = datetime.now().isoformat()
+            final_meta["integrated_by"] = user.get("nombre", "Usuario")
             
             # --- VERIFICACIÓN DE INTEGRIDAD ---
             # Verificamos si realmente hay datos en las tablas TRD para esta entidad
             try:
-                # Comprobamos si hay registros en TRD o dependencias (mínimo indicio de éxito)
-                trd_check = supabase_client.table("TRD").select("id", count="exact").eq("entidadId", entidad_id).limit(1).execute()
+                # Comprobamos si hay registros en trd_records o dependencias (mínimo indicio de éxito)
+                trd_check = supabase_client.table("trd_records").select("id", count="exact").eq("entidad_id", entidad_id).limit(1).execute()
                 if not trd_check.data:
-                    # Si no hay TRD, comprobamos dependencias
-                    dep_check = supabase_client.table("dependencias").select("id").eq("entidadId", entidad_id).limit(1).execute()
+                    # Si no hay registros en trd_records, comprobamos dependencias
+                    dep_check = supabase_client.table("dependencias").select("id").eq("entidad_id", entidad_id).limit(1).execute()
                     if not dep_check.data:
                         print(f" [WARN] Verificación fallida para {doc_id}: No se encontraron datos integrados.")
                         # No bloqueamos el éxito, pero guardamos la advertencia
-                        meta["verification_warning"] = "No se detectaron registros nuevos en la DB."
+                        final_meta["verification_warning"] = "No se detectaron registros nuevos en la DB."
+
             except Exception as v_err:
                 print(f" [ERR] Fallo en verificación de integración: {v_err}")
+        elif new_status == "pending_verification":
+            final_meta["type"] = "temp_trd_session"
+
+    # Asegurar que no perdemos la entidad original
+    if entidad_id and not final_meta.get("entidad_id"):
+        final_meta["entidad_id"] = entidad_id
 
     # 4. Actualizar metadata (y opcionalmente otros campos si vienen en el payload)
-    # Si viene metadata completa en el payload, la mezclamos
-    if "metadata" in payload:
-        meta.update(payload["metadata"])
-    
-    # Si viene algo más que no es status/metadata, asumimos que son campos raíz del objeto payload
-    update_data = {"metadata": meta}
+    update_data = {"metadata": final_meta}
     if "content" in payload: update_data["content"] = payload["content"]
 
     try:
@@ -967,10 +1013,9 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
         # Si tiene 'source', actualizamos todos los chunks relacionados para mantener consistencia
         if source:
             # Buscamos todos los chunks por source
-            # Nota: Esto puede ser lento si hay miles, pero para TRD es manejable
-            supabase_client.table("rag_documents").update({"metadata": meta}).eq("metadata->>source", source).execute()
+            supabase_client.table("rag_documents").update({"metadata": final_meta}).eq("metadata->>source", source).execute()
             
-        return {"status": "success", "new_status": meta.get("status")}
+        return {"status": "success", "new_status": final_meta.get("status")}
     except Exception as e:
         print(f" [ERR] update_rag_document: {e}")
         raise HTTPException(500, f"Error actualizando documento: {str(e)}")
@@ -1917,7 +1962,7 @@ async def analyze_trd(
     # Lógica de entidad: estricta para administrador, flexible para superadmin
     allowed_entities = user.get("allowed_entities", [])
     if user.get("role") == "superadmin":
-        entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
+        entidad_final = entidad_id if entidad_id and entidad_id != "null" and entidad_id != "" else user.get("entity_id")
     else:
         # Si es admin, puede elegir una de sus entidades permitidas si la envía en el form
         if entidad_id and entidad_id in allowed_entities:
@@ -1926,41 +1971,80 @@ async def analyze_trd(
             # Fallback a la entidad del contexto/JWT
             entidad_final = user.get("entity_id")
 
-    if not entidad_final or entidad_final == "null":
+    if not entidad_final or entidad_final == "null" or entidad_final == "e0":
+        # Bloquear importación si no hay entidad activa (o si es la global e0 que no debe tener TRDs directas)
         raise HTTPException(
             status_code=400, 
-            detail="No se encontró la entidad activa. Por favor selecciona una entidad antes de cargar el archivo."
+            detail="No hay entidad activa seleccionada. Selecciona una entidad antes de importar una TRD."
         )
 
-    res = supabase_client.table("rag_documents").insert({
-        "content": f"Import Session Snapshot: {file.filename}",
-        "metadata": {
-            "source": file.filename,
-            "status": "processing",
-            "ocr_stage": "Archivo recibido",
-            "ocr_progress": 0,
-            "ocr_current_page": 0,
-            "ocr_total_pages": 0,
-            "ocr_pages_ok": 0,
-            "ocr_pages_error": 0,
-            "ocr_error_pages": [],
-            "file_url": file_url,
-            "file_size_bytes": file_size_bytes,
-            "file_hash": file_hash,
-            "entidad_id": entidad_final,
-            "type": "temp_trd_session",
-            "created_at": datetime.now().isoformat()
-        }
-    }).execute()
+    # --- Deduplication check por hash y entidad ---
+    active_session = None
+    try:
+        dup_check = (
+            supabase_client
+            .table("rag_documents")
+            .select("id, metadata")
+            .eq("metadata->>file_hash", file_hash)
+            .eq("metadata->>entidad_id", entidad_final)
+            .in_("metadata->>status", ["uploaded", "processing_ocr", "extraction_completed", "pending_verification"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if dup_check.data:
+            active_session = dup_check.data[0]
+            print(f" [INFO] Reusando sesión activa encontrada: {active_session['id']} para hash {file_hash}")
+    except Exception as dup_err:
+        print(f" Error en chequeo de duplicados TRD: {dup_err}")
 
-    if not res.data:
-        raise HTTPException(500, detail="No se pudo crear la sesión de importación")
+    if active_session:
+        doc_id = active_session["id"]
+        # Opcional: Actualizar el filename si cambió
+        # supabase_client.table("rag_documents").update({"metadata": {**active_session["metadata"], "source": file.filename}}).eq("id", doc_id).execute()
+    else:
+        res = supabase_client.table("rag_documents").insert({
+            "content": f"Import Session Snapshot: {file.filename}",
+            "metadata": {
+                "source": file.filename,
+                "status": "uploaded",
+                "ocr_stage": "Archivo recibido",
+                "ocr_progress": 0,
+                "ocr_current_page": 0,
+                "ocr_total_pages": 0,
+                "ocr_pages_ok": 0,
+                "ocr_pages_error": 0,
+                "ocr_error_pages": [],
+                "file_url": file_url,
+                "file_size_bytes": file_size_bytes,
+                "file_hash": file_hash,
+                "entidad_id": entidad_final,
+                "type": "temp_trd_session",
+                "created_at": datetime.now().isoformat()
+            }
+        }).execute()
 
-    doc_id = res.data[0]["id"]
-    print(f"[analyze-trd] Sesión creada: {doc_id} | Archivo: {file.filename} | Tamaño: {file_size_bytes / 1024 / 1024:.2f} MB | Entidad: {entidad_final}")
+        if not res.data:
+            raise HTTPException(500, detail="No se pudo crear la sesión de importación")
+        
+        doc_id = res.data[0]["id"]
+
+    user_name = user.get("nombre", "Superadministrador" if user.get("role") == "superadmin" else "Administrador")
+    user_id = user.get("user_id")
+
+    print(f"[analyze-trd] Sesión creada: {doc_id} | Archivo: {file.filename} | Entidad: {entidad_final} | Usuario: {user_name}")
+
+    # Log de inicio (Aislar de administradores locales si es superadmin)
+    log_eid = 'e0' if user.get("role") == "superadmin" else entidad_final
+    add_activity_log(
+        f"Iniciando Importación TRD: {file.filename} (Entidad: {entidad_final})",
+        entidad_id=log_eid,
+        user_name=user_name,
+        user_id=user_id
+    )
 
     # 1. OCR por lotes en segundo plano (prioridad máxima)
-    background_tasks.add_task(process_ocr_task, doc_id, content, file.filename)
+    background_tasks.add_task(process_ocr_task, doc_id, content, file.filename, user_name, user_id, log_eid)
 
     # 2. RAG Indexing en background (proceso secundario)
     background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
