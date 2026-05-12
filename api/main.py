@@ -1697,8 +1697,25 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     doc_id = str(uuid.uuid4())
     entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
     pk_val = f"ENTITY#{entidad_actual}" if entidad_actual else "ENTITY#GLOBAL"
-    
-    # 1. Crear registro inicial en RagDocuments (para que el frontend lo vea en 'analyzing')
+
+    # --- Deduplication check por hash y entidad (AWS/DynamoDB) ---
+
+    try:
+        items = await db.query_by_entity("RagDocuments", pk_val)
+        active_session = None
+        for item in (items or []):
+            meta = item.get("metadata", {})
+            if meta.get("file_hash") == file_hash and meta.get("status") in ("analyzing", "processing_ocr", "pending_verification"):
+                active_session = item
+                break
+        
+        if active_session:
+            print(f" [INFO] Reusando sesión activa DynamoDB: {active_session['id']} para hash {file_hash}")
+            return {"import_id": active_session["id"], "status": active_session.get("metadata", {}).get("status", "analyzing")}
+    except Exception as dup_err:
+        print(f" Error en chequeo de duplicados DynamoDB: {dup_err}")
+
+    # 1. Crear registro inicial en RagDocuments
     item = {
         "PK": pk_val,
         "SK": f"IMPORT#{doc_id}",
@@ -1722,6 +1739,7 @@ async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File
     background_tasks.add_task(process_ocr_task, doc_id, content, file.filename, entidad_actual, user.get("user_id"))
     
     return {"import_id": doc_id, "status": "analyzing"}
+
 
 @router.post("/upload")
 async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
@@ -1895,74 +1913,87 @@ async def get_rag_documents(entidad_id: str | None = None, type: str | None = No
         items = await db.query_by_entity("RagDocuments", entidad_actual)
         if not items: return []
         
-        # Agrupar por source para no repetir chunks, pero mantener sesiones TRD como únicas.
-        seen_sources = {}
+        # Ordenar por creación descendente (lo más reciente primero)
+        items.sort(key=lambda x: x.get("metadata", {}).get("created_at", ""), reverse=True)
+
+        # Deduplicación por source (filename)
         processed_data = []
+        sources_handled = set()
         
+        # 1. Primero recolectamos sesiones TRD (la más reciente por fuente)
         for item in items:
             meta = item.get("metadata", {})
-            doc_type = meta.get("type") or type
-            source = meta.get("source") or meta.get("filename")
+            doc_type = meta.get("type")
+            source = meta.get("source") or item.get("filename")
             
-            # Filtro por tipo si se solicita
-            if type and doc_type != type:
-                continue
-
-            # Las sesiones de TRD siempre son únicas
             if doc_type in ('trd_import_session', 'trd_upload', 'temp_trd_session'):
+                if source and source in sources_handled:
+                    continue
                 processed_data.append(item)
-            else:
-                # Documentos RAG generales: agrupar por source
-                if source and source not in seen_sources:
-                    seen_sources[source] = True
+                if source: sources_handled.add(source)
+
+        # 2. Luego recolectamos archivos RAG generales que no tengan sesión activa
+        for item in items:
+            meta = item.get("metadata", {})
+            doc_type = meta.get("type")
+            source = meta.get("source") or item.get("filename")
+            
+            if doc_type not in ('trd_import_session', 'trd_upload', 'temp_trd_session'):
+                if source and source not in sources_handled:
                     processed_data.append(item)
+                    sources_handled.add(source)
                 elif not source:
                     processed_data.append(item)
         
         return processed_data
 
     except Exception as e:
-        print(f" Error listando documentos RAG: {e}")
+        print(f" Error listando documentos RAG (AWS): {e}")
         return []
 
 
 
 @router.put("/rag-documents/{doc_id}")
-
 async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(get_current_user)):
-    """Actualiza la metadata de un documento en DynamoDB."""
-
+    """Actualiza el estado o metadata de un documento en DynamoDB."""
     try:
-
         entidad_raw = user.get("entity_id") or "GLOBAL"
         pk = f"ENTITY#{entidad_raw}" if entidad_raw != "GLOBAL" else "ENTITY#GLOBAL"
         
-        # Si el payload contiene solo 'status', lo metemos en metadata
-        if "status" in payload and len(payload) == 1:
-            # Primero obtenemos el item para no perder el resto de metadata
-            sk_options = [f"IMPORT#{doc_id}", f"RAG#{doc_id}"]
-            for sk in sk_options:
-                item = await db.get_item("RagDocuments", pk, sk)
-                if item:
-                    meta = item.get("metadata", {})
-                    meta["status"] = payload["status"]
-                    await db.update_item("RagDocuments", pk, sk, {"metadata": meta})
-                    return {"status": "success"}
+        # 1. Buscar el item original (puede ser IMPORT o RAG)
+        item = None
+        current_sk = None
+        for sk_prefix in ["IMPORT#", "RAG#"]:
+            res_item = await db.get_item("RagDocuments", pk, f"{sk_prefix}{doc_id}")
+            if res_item:
+                item = res_item
+                current_sk = f"{sk_prefix}{doc_id}"
+                break
         
-        # Fallback genérico
-        try:
-            await db.update_item("RagDocuments", pk, f"RAG#{doc_id}", payload)
-        except:
-            await db.update_item("RagDocuments", pk, f"IMPORT#{doc_id}", payload)
-            
-        return {"status": "success"}
+        if not item:
+            raise HTTPException(404, "Documento no encontrado en AWS")
 
+        meta = item.get("metadata", {})
+        new_status = payload.get("status")
+        incoming_meta = payload.get("metadata", {})
+        
+        final_meta = {**meta, **incoming_meta}
+        if new_status:
+            final_meta["status"] = new_status
+            if new_status == "success":
+                final_meta["type"] = "trd_upload"
+                final_meta["integrated_at"] = datetime.now().isoformat()
+                final_meta["integrated_by"] = user.get("nombre", "Usuario")
+            elif new_status == "pending_verification":
+                final_meta["type"] = "trd_import_session"
+
+        # 2. Actualizar metadata en DynamoDB
+        await db.update_item("RagDocuments", pk, current_sk, {"metadata": final_meta})
+        
+        return {"status": "success", "new_status": final_meta.get("status")}
     except Exception as e:
-
+        print(f" Error actualizando documento RAG (AWS): {e}")
         raise HTTPException(500, str(e))
-
-
-
 @router.delete("/rag-documents/{doc_id}")
 
 async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user)):
@@ -2089,7 +2120,8 @@ async def agent_action(request: AgentActionRequest, user: dict = Depends(get_cur
     ents = [{"id": e.get("id"), "nombre": e.get("nombre") or e.get("razonSocial")} for e in request.context.entidades]
 
 
-    system_prompt = f"""Eres Orianna, la Arquitecta TRD de OSE IA, una inteligencia artificial experta en la gestion y automatizacion de Tablas de Retencion Documental (TRD) bajo los estandares del AGN (Archivo General de la Nacion) y la Ley 594 de 2000 de Colombia.
+
+    system_prompt = f"""Eres Orianna, la Arquitecta TRD de OSE IA, una inteligencia artificial experta en la gestion y automatizacion de Tablas de Retencion Documental (TRD) bajo los estandares del AGN (Archivo General de la Nacion) y la Ley 594 de 2000 de Colombia.
 
 TU MISION:
 Debes actuar como la autoridad maxima en la estructura documental de la entidad. Tu objetivo es interpretar la intencion del usuario para realizar:

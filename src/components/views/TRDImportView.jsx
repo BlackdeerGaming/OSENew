@@ -16,13 +16,15 @@ const MAX_FILE_SIZE_MB = 50;
 
 const STATUS_CONFIG = {
   uploading: { label: 'Subiendo...', color: 'bg-blue-50 text-blue-600', icon: Loader2, animate: true },
-  processing: { label: 'Iniciando OCR...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  analyzing: { label: 'Procesando Imágenes...', color: 'bg-primary/10 text-primary', icon: BrainCircuit, animate: true },
-  ocr_running: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
-  reviewing: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
+  uploaded: { label: 'Archivo Recibido', color: 'bg-blue-50 text-blue-600', icon: CheckCircle2, animate: false },
+  processing_ocr: { label: 'Extrayendo Texto...', color: 'bg-primary/10 text-primary', icon: Scan, animate: true },
+  ocr_completed: { label: 'OCR Finalizado', color: 'bg-primary/10 text-primary', icon: CheckCircle2, animate: false },
+  extraction_completed: { label: 'Estructurando...', color: 'bg-indigo-50 text-indigo-600', icon: BrainCircuit, animate: true },
+  pending_verification: { label: 'Pendiente de Verificación', color: 'bg-amber-50 text-amber-600', icon: ClipboardCheck, animate: false },
   integrating: { label: 'Integrando en la Nube...', color: 'bg-indigo-50 text-indigo-600', icon: Database, animate: true },
   success: { label: 'Integrado con Éxito', color: 'bg-emerald-500 text-white shadow-emerald-200/50', icon: CheckCircle2, animate: false },
-  error: { label: 'Error de Integración', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  failed: { label: 'Error de Importación', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
+  error: { label: 'Error Local', color: 'bg-rose-50 text-rose-600', icon: AlertCircle, animate: false },
   cancelled: { label: 'Cancelado', color: 'bg-slate-100 text-slate-500', icon: X, animate: false },
 };
 
@@ -63,7 +65,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
 
   // Polling for analyzing tasks
   useEffect(() => {
-    const hasActiveTasks = imports.some(imp => ['analyzing', 'uploading', 'processing', 'ocr_running', 'integrating'].includes(imp.status));
+    const hasActiveTasks = imports.some(imp => ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'integrating'].includes(imp.status));
     if (!hasActiveTasks) return;
     
     const interval = setInterval(() => {
@@ -91,30 +93,42 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       if (res.ok) {
         const data = await res.json();
         setImports(prev => {
-          // Filtrar temporales que ya tienen una versión real en 'data' (por nombre de archivo)
-          // Pero SOLO si el backend reporta un estado avanzado o si ya pasaron unos segundos
+          // 1. Identificar archivos que ya están en el backend para no duplicarlos con los temporales
+          const dataIds = new Set(data.map(d => d.id));
           const dataFiles = new Set(data.map(d => d.filename || d.metadata?.source));
           
-          // Mantener los que están subiendo Y NO están en la data del backend aún
-          // O los que son errores locales
-          const uploading = prev.filter(p => p.isUploading && !dataFiles.has(p.filename));
-          const localErrors = prev.filter(p => p.status === 'error' && !p.id.includes('temp')); // Errores ya procesados pero locales
-          const persistentTemps = prev.filter(p => p.id.startsWith('temp_') && p.status === 'error'); // Errores de subida
+          // 2. Filtrar el estado previo:
+          // - Mantener los que están 'uploading' pero aún no aparecen en el backend (por nombre)
+          // - Mantener errores locales que no son temporales (si los hubiera)
+          const localTasks = prev.filter(p => {
+            const isTemp = p.id.toString().startsWith('temp_') || p.id.toString().startsWith('err_');
+            if (isTemp) {
+              // Si es temporal, solo lo mantenemos si NO ha llegado al backend aún
+              return !dataFiles.has(p.filename);
+            }
+            // Si ya tiene un ID real, solo lo mantenemos si NO está en el nuevo batch de data
+            // (porque el batch de data es más fresco y lo incluiremos abajo)
+            return !dataIds.has(p.id);
+          });
           
-          const merged = [...uploading, ...persistentTemps];
-          
-          for (const d of data) {
+          // 3. Mapear la data del backend a nuestro formato de UI
+          const backendTasks = data.map(d => {
              const statusValue = d.status || d.metadata?.status;
              const mappedStatus = statusValue === 'success' ? 'success' : 
-                                  statusValue === 'reviewing' ? 'reviewing' :
+                                  (statusValue === 'reviewing' || statusValue === 'pending_verification') ? 'pending_verification' :
                                   statusValue === 'integrating' ? 'integrating' :
-                                  statusValue === 'ocr_running' ? 'ocr_running' :
-                                  statusValue === 'processing' ? 'processing' : 
+                                  statusValue === 'extraction_completed' ? 'extraction_completed' :
+                                  statusValue === 'ocr_completed' ? 'ocr_completed' :
+                                  statusValue === 'processing_ocr' ? 'processing_ocr' : 
+                                  statusValue === 'ocr_running' ? 'processing_ocr' : 
+                                  statusValue === 'processing' ? 'processing_ocr' : 
+                                  statusValue === 'uploaded' ? 'uploaded' :
                                   statusValue === 'uploading' ? 'uploading' :
-                                  statusValue === 'error' ? 'error' : 
-                                  statusValue === 'cancelled' ? 'cancelled' : 'analyzing';
+                                  statusValue === 'error' ? 'failed' : 
+                                  statusValue === 'failed' ? 'failed' :
+                                  statusValue === 'cancelled' ? 'cancelled' : 'processing_ocr';
 
-             const mappedImport = {
+             return {
                 id: d.id,
                 filename: d.filename || d.metadata?.source || 'Documento sin nombre',
                 status: mappedStatus,
@@ -132,15 +146,10 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                 isUploading: false,
                 rawFile: null
              };
+          });
 
-            const idx = merged.findIndex(m => m.id === d.id);
-            if (idx >= 0) {
-               merged[idx] = mappedImport;
-            } else {
-               merged.push(mappedImport);
-            }
-          }
-          return merged;
+          // 4. Combinar: Primero las tareas locales (nuevas subidas) y luego las del backend (ordenadas por fecha en backend)
+          return [...localTasks, ...backendTasks];
         });
       }
     } catch (error) {
@@ -173,6 +182,12 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     // Si el usuario decidió continuar con un repetido, lo marcamos en metadata
     if (force) formData.append('force_reprocess', 'true');
 
+    if (!currentEntity?.id || currentEntity?.id === 'e0') {
+      alert("No hay entidad activa seleccionada. Selecciona una entidad antes de importar una TRD.");
+      setImports(prev => prev.filter(imp => imp.id !== tempId));
+      return;
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-trd`, {
         method: 'POST',
@@ -189,7 +204,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       }
       await fetchImports();
     } catch (err) {
-      setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'error', error: err.message, isUploading: false } : imp));
+      setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'failed', error_summary: err.message, isUploading: false } : imp));
     }
   };
 
@@ -504,13 +519,13 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                      <History className="h-3 w-3 text-primary" />
-                     Tareas en Curso ({imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).length})
+                     Tareas en Curso ({imports.filter(i => ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'pending_verification', 'integrating'].includes(i.status)).length})
                   </div>
               </div>
 
               <div className="space-y-3 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                      {imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).length === 0 ? (
+                      {imports.filter(i => ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'pending_verification', 'integrating'].includes(i.status)).length === 0 ? (
                           !isLoading && (
                             <motion.div className="h-32 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-secondary/10">
                                 <Database className="h-6 w-6 opacity-20" />
@@ -518,7 +533,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                             </motion.div>
                           )
                       ) : (
-                          imports.filter(i => ['uploading', 'processing', 'analyzing', 'ocr_running', 'reviewing', 'integrating'].includes(i.status)).map((imp) => {
+                          imports.filter(i => ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'pending_verification', 'integrating'].includes(i.status)).map((imp) => {
                               const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.analyzing;
                               const progress = imp.ocr_progress || 0;
                               return (
@@ -527,7 +542,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                       layout
                                       className={cn(
                                         "bg-card border shadow-sm rounded-xl p-4 hover:shadow-md transition-all flex flex-col gap-3 relative group overflow-hidden",
-                                        imp.status === 'reviewing' ? "border-amber-200 bg-amber-50/20" : "border-border"
+                                        imp.status === 'pending_verification' ? "border-amber-200 bg-amber-50/20" : "border-border"
                                       )}
                                   >
                                       {/* Background progress indicator (subtle) */}
@@ -562,7 +577,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                           </div>
 
                                           <div className="flex items-center gap-1.5 shrink-0">
-                                              {imp.status === 'reviewing' && (
+                                              {imp.status === 'pending_verification' && (
                                                   <button 
                                                       onClick={() => openReview(imp)}
                                                       className="h-9 px-4 bg-amber-600 text-white hover:bg-amber-500 rounded-lg text-[10px] font-black tracking-widest transition-all uppercase flex items-center gap-2 shadow-lg shadow-amber-200/50 active:scale-95"
@@ -574,7 +589,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                               <button 
                                                   onClick={(e) => handleDeleteImport(imp.id, e)} 
                                                   className="p-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
-                                                  title={imp.status === 'reviewing' ? 'Eliminar' : 'Cancelar'}
+                                                  title={imp.status === 'pending_verification' ? 'Eliminar' : 'Cancelar'}
                                               >
                                                   <Trash2 className="h-4 w-4" />
                                               </button>
@@ -582,7 +597,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                                       </div>
 
                                       {/* Progress Bar & Percentage */}
-                                      {(imp.status === 'processing' || imp.status === 'analyzing' || imp.status === 'ocr_running') && (
+                                      {['processing_ocr', 'ocr_completed', 'extraction_completed'].includes(imp.status) && (
                                           <div className="space-y-1.5 px-0.5">
                                               <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-slate-400">
                                                   <span>Progreso del OCR</span>
