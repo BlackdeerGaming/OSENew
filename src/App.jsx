@@ -1340,11 +1340,13 @@ function App() {
     if (record['disp_Eliminación']) disposicionStr.push("E");
     if (record['disp_Selección']) disposicionStr.push("S");
 
+    const fullCodigo = [dep.codigo, serie.codigo, subserie?.codigo].filter(Boolean).join("-");
+
     return {
       id: record.id,
       dependencia: dep.nombre || "(Desconocida)",
-      codigo: subserie ? subserie.codigo : serie.codigo || "",
-      serie: serie.nombre || "",
+      codigo: fullCodigo,
+      serie: serie.nombre || "(Sin Serie)",
       subserie: subserie ? subserie.nombre : "",
       tipoDocumental: subserie ? subserie.tipoDocumental : serie.tipoDocumental || "",
       retencionGestion: record.retencionGestion || "0",
@@ -1352,7 +1354,9 @@ function App() {
       disposicion: disposicionStr.join(", ") || record.disposicion || "N/A",
       procedimiento: record.procedimiento || "",
       soporte: record.rep_digitalizacion || record.rep_microfilmacion ? 'ambos' : 'fisico',
-      reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna')
+      reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna'),
+      tiposDocumentales: record.tiposDocumentales || [],
+      funcionesIds: record.funcionesIds || []
     };
   });
 

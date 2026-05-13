@@ -47,7 +47,7 @@ export default function FuncionesMultiSelect({
   // Filtrar funciones por dependencia (si aplica) y por búsqueda
   const availableFunciones = funciones.filter((f) => {
     const matchesDep =
-      !filteredDependenciaId || f.dependencia_id === filteredDependenciaId;
+      !filteredDependenciaId || String(f.dependencia_id) === String(filteredDependenciaId);
     const term = search.toLowerCase();
     const matchesSearch =
       !term ||
