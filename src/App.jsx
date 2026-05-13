@@ -1274,12 +1274,16 @@ function App() {
     setFlowStep(0);
   };
 
-  // Cascade delete when a TRD record linked to deleted ID
   const handleDelete = async (moduleType, recordId) => {
-    setModalStatus({ isOpen: true, type: 'loading', message: 'Eliminando registro de la nube...' });
+    // Confirmación de seguridad para HARD DELETE
+    const confirmMsg = moduleType === 'dependencias' 
+      ? "¿Estás seguro? Se eliminarán también todas las SERIES, SUBSERIES y VALORACIONES vinculadas a esta dependencia. Esta acción NO se puede deshacer."
+      : "¿Estás seguro de eliminar este registro? Esta acción es permanente y afectará los reportes vinculados.";
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setModalStatus({ isOpen: true, type: 'loading', message: 'Ejecutando eliminación permanente en la base de datos...' });
     try {
-      // Logic for TRD/RAG synchronization
-      let syncRagDocName = null;
       if (moduleType === 'trdform') {
         const trdToDel = trdRecords.find(t => t.id === recordId);
         await deleteTrdRecord(recordId);
@@ -1287,15 +1291,15 @@ function App() {
       } else if (moduleType === 'dependencias') {
         const dep = dependencias.find(d => d.id === recordId);
         await deleteDependencia(recordId);
-        addActivityLog(`Borrado Dependencia - ${dep?.nombre || recordId}`);
+        addActivityLog(`BORRADO TOTAL Dependencia (Cascada) - ${dep?.nombre || recordId}`);
       } else if (moduleType === 'series') {
         const ser = series.find(s => s.id === recordId);
         await deleteSerie(recordId);
-        addActivityLog(`Borrado Serie - ${ser?.nombre || recordId}`);
+        addActivityLog(`BORRADO TOTAL Serie (Cascada) - ${ser?.nombre || recordId}`);
       } else if (moduleType === 'subseries') {
         const sub = subseries.find(s => s.id === recordId);
         await deleteSubserie(recordId);
-        addActivityLog(`Borrado Subserie - ${sub?.nombre || recordId}`);
+        addActivityLog(`BORRADO TOTAL Subserie (Cascada) - ${sub?.nombre || recordId}`);
       }
 
       // Sync with RAG if applicable
@@ -1818,7 +1822,17 @@ function App() {
                   currentUser={currentUser}
                   currentEntity={currentEntity}
                   logoBase64={entidadLogoBase64}
-                  onExportPDF={() => setIsPrinting(true)}
+                  onExportPDF={() => {
+                    if (filteredTrdRows.length === 0) {
+                      setModalStatus({
+                        isOpen: true,
+                        type: 'error',
+                        message: 'No hay datos de TRD disponibles para los criterios seleccionados. Por favor, asegúrate de que existan valoraciones aprobadas.'
+                      });
+                      return;
+                    }
+                    setIsPrinting(true);
+                  }}
                   availableDependencias={uniqueDependencias}
                   selectedPrintDependencias={selectedPrintDependencias}
                   onSelectDependencia={setSelectedPrintDependencias}

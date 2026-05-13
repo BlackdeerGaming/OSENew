@@ -98,6 +98,18 @@ export default function TRDGenerator({
   const TD  = { border: BD, verticalAlign: "top", fontSize: isLandscape ? "9px" : "7.5px" };
   const TDC = { ...TD, textAlign: "center", verticalAlign: "middle", padding: "2px" };
 
+  const groupedRows = React.useMemo(() => {
+    const groups = {};
+    exportRows.forEach(row => {
+      const depName = row.dependencia || "OFICINA PRODUCTORA";
+      if (!groups[depName]) groups[depName] = [];
+      groups[depName].push(row);
+    });
+    return groups;
+  }, [exportRows]);
+
+  const dependencyGroups = Object.keys(groupedRows);
+
   return (
     <div className="flex flex-col gap-6 bg-slate-50 min-h-full pb-20">
 
@@ -127,7 +139,7 @@ export default function TRDGenerator({
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Dependencias a imprimir</span>
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
               <select
-                value={selectedPrintDependencias.length === 1 ? selectedPrintDependencias[0] : ""}
+                value={selectedPrintDependencias.length === 1 && !selectedPrintDependencias.includes("TODAS") ? selectedPrintDependencias[0] : ""}
                 onChange={handleDepChange}
                 className="text-[11px] font-bold bg-transparent text-slate-700 outline-none w-48 truncate cursor-pointer"
               >
@@ -148,29 +160,46 @@ export default function TRDGenerator({
                 ? `${selectedIds.size} seleccionados`
                 : `Mostrando: ${selectedPrintDependencias.includes("TODAS") ? "Todo" : selectedPrintDependencias.length + " dependencias"}`}
             </div>
+            
             {onExportPDF && (
               <button
                 onClick={onExportPDF}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95"
+                disabled={exportRows.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-all shadow-lg shadow-rose-200 active:scale-95 disabled:opacity-50 disabled:grayscale"
               >
-                <Download className="h-3.5 w-3.5" />
-                Descargar TRD
+                <Download className="h-4 w-4" />
+                DESCARGAR PDF
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── Marco de captura ──────────────────────────────────────────────── */}
-      <div
-        id="trd-capture-frame"
-        className="flex justify-center bg-white print:block print:p-0 print:m-0 print:w-full print:flex-none"
-        style={{ padding: isLandscape ? "24px 20px" : "40px" }}
-      >
+      {exportRows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-20 bg-white border-2 border-dashed rounded-3xl gap-4 mx-8 mt-8 border-slate-200">
+           <AlertCircle className="h-16 w-16 text-rose-500 opacity-20" />
+           <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Tabla de Retención Vacía</h2>
+           <p className="text-slate-500 max-w-sm text-center text-xs font-bold uppercase tracking-widest leading-relaxed">
+             No se encontraron registros de valoración para los criterios seleccionados. <br/>
+             Asegúrate de haber aprobado la valoración en la sección de Clasificación.
+           </p>
+        </div>
+      ) : (
         <div
-          id="trd-final-report-area"
-          className={`bg-white flex flex-col font-sans shadow-2xl w-full ${maxWidthClass} p-[8mm] print:shadow-none print:border-0 print:m-0 print:p-[6mm] print:w-full print:max-w-none`}
+          id="trd-capture-frame"
+          className="flex flex-col gap-12 bg-white print:block print:p-0 print:m-0 print:w-full print:flex-none"
+          style={{ padding: isLandscape ? "24px 20px" : "40px" }}
         >
+          {dependencyGroups.map((depName, groupIdx) => {
+            const groupRows = groupedRows[depName];
+            const codOficina = groupRows[0]?.codigo?.split("-")[0] || "1.1";
+            
+            return (
+              <div
+                key={depName}
+                id={`trd-report-section-${groupIdx}`}
+                className={`bg-white flex flex-col font-sans shadow-2xl w-full ${maxWidthClass} p-[8mm] print:shadow-none print:border-0 print:m-0 print:p-[6mm] print:w-full print:max-w-none page-break-after-always`}
+              >
 
           {/* ════════════════════════════════════════════════════════════════
               TABLA OFICIAL — border-collapse: collapse
@@ -336,7 +365,7 @@ export default function TRDGenerator({
                       <span style={{ fontWeight: "900", width: "130px", flexShrink: 0 }}>
                         Oficina productora:
                       </span>
-                      <span style={{ fontWeight: "bold", color: "#0f172a" }}>{oficina}</span>
+                      <span style={{ fontWeight: "bold", color: "#0f172a" }}>{depName}</span>
                     </div>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <span style={{ fontWeight: "900", width: "130px", flexShrink: 0 }}>
@@ -354,7 +383,7 @@ export default function TRDGenerator({
                       marginTop: "4px",
                     }}
                   >
-                    Pág 1 de 1
+                    Pág {groupIdx + 1} de {dependencyGroups.length}
                   </div>
                 </td>
               </tr>
@@ -563,11 +592,15 @@ export default function TRDGenerator({
                     </td>
                     {/* Selección */}
                     <td style={TDC}>
-                      {row.disposicion === "Selección" ? <Check className="h-3 w-3 mx-auto" /> : ""}
+                      {row.disposicion === "Selección" || row.disposicion === "S" ? (
+                        <Check className="h-3 w-3 mx-auto" />
+                      ) : ""}
                     </td>
                     {/* Eliminación */}
                     <td style={TDC}>
-                      {row.disposicion === "Eliminación" ? <Check className="h-3 w-3 mx-auto" /> : ""}
+                      {row.disposicion === "Eliminación" || row.disposicion === "E" ? (
+                        <Check className="h-3 w-3 mx-auto" />
+                      ) : ""}
                     </td>
 
                     {/* Procedimiento */}
@@ -589,14 +622,14 @@ export default function TRDGenerator({
             </tbody>
           </table>
 
-          {/* ── Firmas ───────────────────────────────────────────────────── */}
-          <div style={{ marginTop: "56px", paddingLeft: "24px", paddingRight: "24px" }}>
+          {/* ── Firmas (Individuales por oficina) ───────────────────────── */}
+          <div style={{ marginTop: "40px", paddingLeft: "10px", paddingRight: "10px" }}>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr 1fr",
-                gap: "80px",
-                fontSize: "8px",
+                gap: "40px",
+                fontSize: "7px",
                 textTransform: "uppercase",
                 fontWeight: "900",
                 textAlign: "center",
@@ -605,9 +638,9 @@ export default function TRDGenerator({
               {[
                 "Firma Responsable Dependencia",
                 "Firma Secretaría General",
-                "Comité Institucional de Gestión y Desempeño",
+                "Comité Institucional de Gestión",
               ].map((label) => (
-                <div key={label} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div key={label} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div style={{ width: "100%", borderTop: BD }} />
                   <span>{label}</span>
                 </div>
@@ -615,30 +648,34 @@ export default function TRDGenerator({
             </div>
             <div
               style={{
-                marginTop: "32px",
+                marginTop: "20px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "6px",
+                gap: "4px",
               }}
             >
-              <div style={{ width: "100%", borderTop: "1px solid rgba(0,0,0,0.15)" }} />
+              <div style={{ width: "100%", borderTop: "1px solid rgba(0,0,0,0.1)" }} />
               <div
                 style={{
-                  fontSize: "7px",
+                  fontSize: "6px",
                   color: "#64748b",
                   fontWeight: "bold",
                   textTransform: "uppercase",
-                  letterSpacing: "0.3em",
+                  letterSpacing: "0.2em",
                 }}
               >
-                Documento Generado Electrónicamente con OSE IA — {new Date().getFullYear()}
+                Generado con OSE IA — {new Date().getFullYear()}
               </div>
             </div>
           </div>
-
         </div>
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default TRDGenerator;

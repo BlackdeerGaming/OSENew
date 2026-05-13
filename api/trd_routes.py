@@ -200,14 +200,38 @@ async def update_dependencia_entity(
 @router.delete("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
 async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    # Delete from cloud storage first (ignore errors)
+    
+    # HARD DELETE CASCADE: Manual cleanup of related records
     try:
-        delete_record(supabase_client, entity_id, "dependencias", dep_id)
-    except Exception:
-        pass
-    # Delete DB record
-    res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entidad_id", entity_id).execute()
-    return {"status": "deleted", "id": dep_id}
+        # 1. Delete TRD Records associated with this dependency
+        supabase_client.table("trd_records").delete().eq("dependenciaId", dep_id).eq("entidad_id", entity_id).execute()
+        
+        # 2. Delete Functions associated with this dependency
+        supabase_client.table("funciones").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
+        
+        # 3. Delete Interviews associated with this dependency
+        supabase_client.table("entrevistas").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
+        
+        # 4. Delete Cloud Storage representation
+        try:
+            delete_record(supabase_client, entity_id, "dependencias", dep_id)
+        except Exception:
+            pass
+            
+        # 5. Delete DB record
+        res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entidad_id", entity_id).execute()
+        
+        if not res.data:
+            # Check if it exists at all
+            check = supabase_client.table("dependencias").select("id").eq("id", dep_id).execute()
+            if not check.data:
+                 return {"status": "already_deleted", "id": dep_id}
+            raise HTTPException(status_code=400, detail="No se pudo eliminar la dependencia. Verifique que no tenga series vinculadas.")
+            
+        return {"status": "deleted", "id": dep_id}
+    except Exception as e:
+        print(f"Error deleting dependencia: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar dependencia: {str(e)}")
 
 # ---------- Series ----------
 @router.post("/entity/{entity_id}/series", response_model=dict)
@@ -282,10 +306,28 @@ async def update_serie_entity(
 @router.delete("/entity/{entity_id}/series/{serie_id}")
 async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try: delete_record(supabase_client, entity_id, "series", serie_id)
-    except: pass
-    supabase_client.table("series").delete().eq("id", serie_id).eq("entidad_id", entity_id).execute()
-    return {"status": "deleted", "id": serie_id}
+    
+    # HARD DELETE CASCADE
+    try:
+        # 1. Delete TRD Records associated with this serie
+        supabase_client.table("trd_records").delete().eq("serieId", serie_id).eq("entidad_id", entity_id).execute()
+        
+        # 2. Delete Subseries associated with this serie
+        supabase_client.table("subseries").delete().eq("serie_id", serie_id).eq("entidad_id", entity_id).execute()
+        
+        # 3. Delete Cloud Storage
+        try: delete_record(supabase_client, entity_id, "series", serie_id)
+        except: pass
+        
+        # 4. Final Delete
+        res = supabase_client.table("series").delete().eq("id", serie_id).eq("entidad_id", entity_id).execute()
+        
+        if not res.data:
+             return {"status": "not_found_or_not_deleted", "id": serie_id}
+             
+        return {"status": "deleted", "id": serie_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar serie: {str(e)}")
 
 # ---------- Subseries ----------
 @router.post("/entity/{entity_id}/subseries", response_model=dict)
@@ -360,10 +402,25 @@ async def update_subserie_entity(
 @router.delete("/entity/{entity_id}/subseries/{subserie_id}")
 async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
-    except: pass
-    supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entidad_id", entity_id).execute()
-    return {"status": "deleted", "id": subserie_id}
+    
+    # HARD DELETE CASCADE
+    try:
+        # 1. Delete TRD Records associated with this subserie
+        supabase_client.table("trd_records").delete().eq("subserieId", subserie_id).eq("entidad_id", entity_id).execute()
+        
+        # 2. Cloud Storage
+        try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
+        except: pass
+        
+        # 3. Final Delete
+        res = supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entidad_id", entity_id).execute()
+        
+        if not res.data:
+             return {"status": "not_found_or_not_deleted", "id": subserie_id}
+             
+        return {"status": "deleted", "id": subserie_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar subserie: {str(e)}")
 
 # ---------- TRD Records ----------
 @router.post("/entity/{entity_id}/trd_records", response_model=dict)
