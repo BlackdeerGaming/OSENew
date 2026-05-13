@@ -406,23 +406,35 @@ export default function TRDGenerator({
                         <>
                           <div
                             style={{
-                              fontWeight: "900",
+                              fontWeight: "700",
                               textTransform: "uppercase",
-                              fontSize: isLandscape ? "9px" : "7.5px",
-                              color: "#0f172a",
-                              lineHeight: "1.3",
+                              fontSize: isLandscape ? "7px" : "6px",
+                              color: "#64748b",
+                              marginBottom: "2px",
                             }}
                           >
-                            {row.subserie}
+                            SERIE: {row.serie}
+                          </div>
+                          <div
+                            style={{
+                              fontWeight: "900",
+                              textTransform: "uppercase",
+                              fontSize: isLandscape ? "9.5px" : "8px",
+                              color: "#0f172a",
+                              lineHeight: "1.2",
+                              marginBottom: "6px",
+                            }}
+                          >
+                            SUBSERIE: {row.subserie}
                           </div>
                           <div
                             style={{
                               marginTop: "4px",
-                              borderLeft: BD,
+                              borderLeft: "1.5px solid #000",
                               paddingLeft: "8px",
                               display: "flex",
                               flexDirection: "column",
-                              gap: "2px",
+                              gap: "3px",
                             }}
                           >
                             {row.tiposDocumentales && row.tiposDocumentales.length > 0 ? (
@@ -461,17 +473,63 @@ export default function TRDGenerator({
                           </div>
                         </>
                       ) : (
-                        <span
-                          style={{
-                            fontWeight: "900",
-                            textTransform: "uppercase",
-                            fontSize: isLandscape ? "10px" : "8.5px",
-                            color: "#0f172a",
-                            letterSpacing: "0.03em",
-                          }}
-                        >
-                          {row.serie}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span
+                            style={{
+                              fontWeight: "900",
+                              textTransform: "uppercase",
+                              fontSize: isLandscape ? "10px" : "8.5px",
+                              color: "#0f172a",
+                              letterSpacing: "0.03em",
+                            }}
+                          >
+                            {row.serie}
+                          </span>
+                          <div
+                            style={{
+                              marginTop: "2px",
+                              borderLeft: "1.5px solid #000",
+                              paddingLeft: "8px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "3px",
+                            }}
+                          >
+                            {row.tiposDocumentales && row.tiposDocumentales.length > 0 ? (
+                              row.tiposDocumentales.map((t, i) => (
+                                <div
+                                  key={i}
+                                  style={{
+                                    fontSize: isLandscape ? "7.5px" : "6.5px",
+                                    fontWeight: "bold",
+                                    fontStyle: "italic",
+                                    textTransform: "uppercase",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  <span>• {t.titulo_documento}</span>
+                                  <span style={{ fontSize: "6px", opacity: 0.7 }}>
+                                    ({t.formato?.papel ? 'P' : ''}{t.formato?.electronico ? 'E' : ''})
+                                  </span>
+                                </div>
+                              ))
+                            ) : row.tipoDocumental && row.tipoDocumental.split(",").map((t, i) => (
+                                <span
+                                  key={i}
+                                  style={{
+                                    fontSize: isLandscape ? "7.5px" : "6.5px",
+                                    fontWeight: "bold",
+                                    fontStyle: "italic",
+                                    textTransform: "uppercase",
+                                  }}
+                                >
+                                  {t.trim()}
+                                </span>
+                              ))}
+                          </div>
+                        </div>
                       )}
                     </td>
 

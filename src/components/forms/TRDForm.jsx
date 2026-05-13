@@ -4,7 +4,7 @@ import { inputClass, textareaClass } from "./SerieForm";
 import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
 import FuncionesMultiSelect from "../ui/FuncionesMultiSelect";
-import { LayoutGrid, PlusCircle } from "lucide-react";
+import { LayoutGrid, PlusCircle, FileText, Edit2, Trash2 } from "lucide-react";
 
 export default function TRDForm({ 
   data, 
@@ -347,115 +347,165 @@ export default function TRDForm({
           <div className="space-y-4">
             {(data.tiposDocumentales || []).map((tipo, idx) => (
               <div key={idx} className="bg-slate-50/50 border border-slate-200 rounded-2xl p-5 relative group transition-all hover:border-primary/30">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                  <div className="lg:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Título Documento</label>
-                    <input
-                      type="text"
-                      value={tipo.titulo_documento}
-                      onChange={(e) => {
-                        const newList = [...data.tiposDocumentales];
-                        newList[idx].titulo_documento = e.target.value;
-                        onChange({ ...data, tiposDocumentales: newList });
-                      }}
-                      className={cn(inputClass, "bg-white shadow-sm")}
-                      placeholder="Ej. Acta de Inicio"
-                    />
-                  </div>
+                {tipo.isEditing ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                      <div className="lg:col-span-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Título Documento</label>
+                        <input
+                          type="text"
+                          value={tipo.titulo_documento}
+                          onChange={(e) => {
+                            const newList = [...data.tiposDocumentales];
+                            newList[idx].titulo_documento = e.target.value;
+                            onChange({ ...data, tiposDocumentales: newList });
+                          }}
+                          className={cn(inputClass, "bg-white shadow-sm")}
+                          placeholder="Ej. Acta de Inicio"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Formato</label>
-                    <div className="flex gap-4 h-10 items-center bg-white border border-input rounded-xl px-4 shadow-sm">
-                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={tipo.formato?.papel}
+                      <div>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Formato</label>
+                        <div className="flex gap-4 h-10 items-center bg-white border border-input rounded-xl px-4 shadow-sm">
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={tipo.formato?.papel}
+                              onChange={(e) => {
+                                const newList = [...data.tiposDocumentales];
+                                newList[idx].formato = { ...newList[idx].formato, papel: e.target.checked };
+                                onChange({ ...data, tiposDocumentales: newList });
+                              }}
+                              className={checkboxClass}
+                            />
+                            P
+                          </label>
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={tipo.formato?.electronico}
+                              onChange={(e) => {
+                                const newList = [...data.tiposDocumentales];
+                                newList[idx].formato = { ...newList[idx].formato, electronico: e.target.checked };
+                                onChange({ ...data, tiposDocumentales: newList });
+                              }}
+                              className={checkboxClass}
+                            />
+                            E
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Extensión</label>
+                        <select
+                          value={tipo.extension}
                           onChange={(e) => {
                             const newList = [...data.tiposDocumentales];
-                            newList[idx].formato = { ...newList[idx].formato, papel: e.target.checked };
+                            newList[idx].extension = e.target.value;
                             onChange({ ...data, tiposDocumentales: newList });
                           }}
-                          className={checkboxClass}
-                        />
-                        P
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                          className={cn(inputClass, "bg-white shadow-sm")}
+                        >
+                          <option value="">Seleccione</option>
+                          <option value="PDF">PDF</option>
+                          <option value="DOCX">DOCX</option>
+                          <option value="XLSX">XLSX</option>
+                          <option value="JPG/PNG">JPG/PNG</option>
+                          <option value="MP4">MP4</option>
+                          <option value="ZIP/RAR">ZIP/RAR</option>
+                          <option value="OTRO">OTRO</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">¿Cuál?</label>
                         <input
-                          type="checkbox"
-                          checked={tipo.formato?.electronico}
+                          type="text"
+                          value={tipo.cual}
                           onChange={(e) => {
                             const newList = [...data.tiposDocumentales];
-                            newList[idx].formato = { ...newList[idx].formato, electronico: e.target.checked };
+                            newList[idx].cual = e.target.value;
                             onChange({ ...data, tiposDocumentales: newList });
                           }}
-                          className={checkboxClass}
+                          className={cn(inputClass, "bg-white shadow-sm")}
+                          placeholder="..."
                         />
-                        E
-                      </label>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!tipo.titulo_documento?.trim()) {
+                            alert("El título del documento es obligatorio.");
+                            return;
+                          }
+                          const newList = [...data.tiposDocumentales];
+                          newList[idx].isEditing = false;
+                          onChange({ ...data, tiposDocumentales: newList });
+                        }}
+                        className="px-4 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newList = data.tiposDocumentales.filter((_, i) => i !== idx);
+                          onChange({ ...data, tiposDocumentales: newList });
+                        }}
+                        className="px-4 py-1.5 bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{tipo.titulo_documento}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                            {tipo.formato?.papel ? "Papel" : ""} {tipo.formato?.electronico ? "Electrónico" : ""}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10">
+                            {tipo.extension} {tipo.cual ? `(${tipo.cual})` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newList = [...data.tiposDocumentales];
+                          newList[idx].isEditing = true;
+                          onChange({ ...data, tiposDocumentales: newList });
+                        }}
+                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newList = data.tiposDocumentales.filter((_, i) => i !== idx);
+                          onChange({ ...data, tiposDocumentales: newList });
+                        }}
+                        className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Extensión</label>
-                    <select
-                      value={tipo.extension}
-                      onChange={(e) => {
-                        const newList = [...data.tiposDocumentales];
-                        newList[idx].extension = e.target.value;
-                        onChange({ ...data, tiposDocumentales: newList });
-                      }}
-                      className={cn(inputClass, "bg-white shadow-sm")}
-                    >
-                      <option value="">Seleccione</option>
-                      <option value="PDF">PDF</option>
-                      <option value="DOCX">DOCX</option>
-                      <option value="XLSX">XLSX</option>
-                      <option value="JPG/PNG">JPG/PNG</option>
-                      <option value="MP4">MP4</option>
-                      <option value="ZIP/RAR">ZIP/RAR</option>
-                      <option value="OTRO">OTRO</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">¿Cuál?</label>
-                    <input
-                      type="text"
-                      value={tipo.cual}
-                      onChange={(e) => {
-                        const newList = [...data.tiposDocumentales];
-                        newList[idx].cual = e.target.value;
-                        onChange({ ...data, tiposDocumentales: newList });
-                      }}
-                      className={cn(inputClass, "bg-white shadow-sm")}
-                      placeholder="..."
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newList = [...data.tiposDocumentales];
-                      newList[idx].isEditing = false;
-                      onChange({ ...data, tiposDocumentales: newList });
-                    }}
-                    className="px-4 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
-                  >
-                    Crear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newList = data.tiposDocumentales.filter((_, i) => i !== idx);
-                      onChange({ ...data, tiposDocumentales: newList });
-                    }}
-                    className="px-4 py-1.5 bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                </div>
+                )}
               </div>
             ))}
 
