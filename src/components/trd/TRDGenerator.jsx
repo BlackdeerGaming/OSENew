@@ -677,5 +677,3 @@ export default function TRDGenerator({
     </div>
   );
 };
-
-export default TRDGenerator;
