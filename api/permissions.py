@@ -12,7 +12,9 @@ from .aws.dynamo_db import db
 
 security = HTTPBearer()
 
-async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+from .db import supabase_client
+
+def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
         # 1. Decodificar el token (IdToken o AccessToken)
@@ -22,66 +24,67 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         verified_email = payload.get('email', '').lower().strip()
         user_id = payload.get('sub', payload.get('username'))
         
-        # 3. SIEMPRE buscamos al usuario en DynamoDB
-        user_record = None
-        if user_id:
-            user_record = await db.get_item("users", f"USER#{user_id}", "PROFILE")
-            if user_record and not verified_email:
-                verified_email = user_record.get('email', '').lower().strip()
-        
-        # 4. Determinar el Rol
-        current_whitelist = [e.strip().lower() for e in os.getenv('SUPERADMIN_EMAILS', '').split(',') if e.strip()]
-        is_owner = (verified_email == "ivandchaves@gmail.com" or user_id == "219bb560-f091-706f-76fb-22b8930344e6")
-        
-        role = 'usuario'
-        if is_owner or verified_email in current_whitelist:
-            role = 'superadmin'
-        elif user_record:
-            role = user_record.get('role', 'usuario')
+        if raw_role in ('admin', 'administrador', 'administración', 'administracion'):
+            payload['role'] = 'administrador'
+        elif raw_role == 'superadmin':
+            payload['role'] = 'superadmin'
         else:
-            role = payload.get('custom:role', payload.get('role', 'usuario'))
+            payload['role'] = 'usuario'
 
-        # Normalización final
-        payload['user_id'] = user_id
-        payload['email'] = verified_email
-        payload['role'] = role
-        
-        # Superadmin siempre tiene acceso a IA
-        if role == 'superadmin':
-            payload['iaDisponible'] = True
-        else:
-            payload['iaDisponible'] = user_record.get('iaDisponible', False) if user_record else False
-        
         # --- LÓGICA DE CONTEXTO MULTI-ENTIDAD ---
-        # 1. Obtener entidad desde el header (opcional)
         header_entity_id = request.headers.get("x-entity-context")
-        # 2. Obtener lista de entidades permitidas para el usuario
-        allowed_entities = user_record.get('entidadIds', []) if user_record else []
-        # Asegurar que el entidadId principal esté incluido
-        main_entity_id = user_record.get('entidadId') if user_record else payload.get('custom:entity_id')
-        if main_entity_id and main_entity_id not in allowed_entities:
-            allowed_entities.append(main_entity_id)
-
-        active_entity_id = main_entity_id
+        role = payload['role']
+        user_id = payload.get('user_id')
+        
+        active_entity_id = payload.get('entity_id') # Fallback
         
         if role == 'superadmin':
-            # El superadmin puede usar cualquier entidad que pase por el header
             if header_entity_id:
                 active_entity_id = header_entity_id
-        else:
-            # El admin/usuario solo puede usar entidades a las que está asignado
+            payload['allowed_entities'] = [] # Superadmin ve todo via query global
+        elif supabase_client:
+            # Obtener todas las entidades permitidas y roles para este usuario
+            # Agregamos reintento por error de socket en Windows (httpx.ReadError / WinError 10035)
+            all_perms = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    all_perms = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
+                    break
+                except Exception as e:
+                    if "10035" in str(e) or "ReadError" in str(type(e)):
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(0.1 * (attempt + 1))
+                            continue
+                    raise e
+
+            allowed_entities = [p['entity_id'] for p in (all_perms.data or [])]
+            entity_roles = {p['entity_id']: p['role'] for p in (all_perms.data or [])}
+            
+            # Asegurar que la entidad del JWT esté incluida
+            jwt_entity = payload.get('entity_id')
+            if jwt_entity and jwt_entity not in allowed_entities:
+                allowed_entities.append(jwt_entity)
+            
+            payload['allowed_entities'] = allowed_entities
+            
+            # Validar si el usuario quiere cambiar de contexto
             if header_entity_id and header_entity_id in allowed_entities:
                 active_entity_id = header_entity_id
-            # Si no hay header o no tiene permiso, usa su entidad principal
-            elif not active_entity_id and allowed_entities:
-                active_entity_id = allowed_entities[0]
+            else:
+                active_entity_id = jwt_entity
+                
+            # Reevaluar dinamicamente el rol segun la entidad activa
+            if active_entity_id in entity_roles:
+                context_role = str(entity_roles[active_entity_id]).lower()
+                if context_role in ('admin', 'administrador', 'administración', 'administracion'):
+                    payload['role'] = 'administrador'
+                else:
+                    if payload['role'] != 'administrador':
+                        payload['role'] = 'usuario'
 
         payload['entity_id'] = active_entity_id
-        payload['allowed_entities'] = allowed_entities
-        payload['role'] = role
-        payload['user_id'] = user_id
-        payload['email'] = verified_email
-            
         return payload
         
     except Exception as e:

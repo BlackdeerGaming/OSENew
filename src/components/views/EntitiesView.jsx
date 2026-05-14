@@ -11,7 +11,7 @@ const locationData = {
   "Argentina": ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"]
 };
 
-export default function EntitiesView({ entities, setEntities, currentUser }) {
+export default function EntitiesView({ entities, setEntities }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -151,11 +151,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
     const body = new FormData();
     body.append('file', file);
     try {
-      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { 
-        method: 'POST', 
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
-        body 
-      });
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { method: 'POST', body });
       if (res.ok) {
         const data = await res.json();
         setFormData({ ...formData, logoUrl: data.url });

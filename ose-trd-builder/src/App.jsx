@@ -166,10 +166,8 @@ function App() {
         
         if (data.user_exists) {
           setAuthView('login');
-          // El Login.jsx leerá este localStorage para mostrar el modal respectivo
         } else {
           setAuthView('signup');
-          // El SignUp.jsx leerá este localStorage para precargar el email
         }
       } else {
         console.warn("Invitación inválida o expirada.");

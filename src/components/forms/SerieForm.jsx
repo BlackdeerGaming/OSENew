@@ -104,6 +104,22 @@ export default function SerieForm({
         </div>
 
         <div className="md:col-span-2">
+          <FormGroup label="Dependencia Productora" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
+            <select
+              name="dependenciaId"
+              value={data.dependenciaId || ""}
+              onChange={handleChange}
+              className={cn(inputClass, errors.dependenciaId && "border-destructive focus-visible:ring-destructive")}
+            >
+              <option value="">Seleccione la dependencia...</option>
+              {dependencias.filter(d => String(d.entidadId) === String(data.entidadId)).map(dep => (
+                <option key={dep.id} value={dep.id}>{dep.codigo} - {dep.nombre}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
+        <div className="md:col-span-2">
           <FormGroup label="Nombre de la Serie" required isActive={activeField === 'nombre'} error={errors.nombre}>
             <input 
               name="nombre" 

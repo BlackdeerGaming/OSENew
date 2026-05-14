@@ -94,6 +94,7 @@ export default function DependenciaForm({
   // Determinar si mostrar dropdowns de Colombia
   const isColombia = data.pais === "Colombia";
   const departamentosOptions = COLOMBIA_DEPARTAMENTOS.map(d => ({ value: d, label: d }));
+  
   const currentDeptCities = (data.departamento && COLOMBIA_MUNICIPIOS[data.departamento]) || [];
   
   // Determinar si la ciudad actual es "especial" (no está en el listado oficial)
@@ -260,11 +261,11 @@ export default function DependenciaForm({
           <SearchableSelect 
             name="pais" 
             value={data.pais || "Colombia"} 
-              onChange={(e) => {
-                const newPais = e.target.value;
-                onChange({ ...data, pais: newPais, departamento: "", ciudad: "" });
-                setShowOtraCiudad(false);
-              }} 
+            onChange={(e) => {
+              const newPais = e.target.value;
+              onChange({ ...data, pais: newPais, departamento: "", ciudad: "" });
+              setShowOtraCiudad(false);
+            }} 
             className={cn(inputClass, errors.pais && "border-destructive")}
             placeholder="Seleccione un país..."
             options={[

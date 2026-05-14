@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, Phone, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
-
+import { supabase } from '../../lib/supabase';
 import API_BASE_URL from '../../config/api';
 import StatusModal from '../ui/StatusModal';
 
@@ -15,7 +15,7 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
     confirmPassword: ''
   });
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
-  const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
+  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 

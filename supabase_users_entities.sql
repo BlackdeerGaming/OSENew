@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS entities (
   max_usuarios INTEGER DEFAULT 10,
   max_dependencias INTEGER DEFAULT 20,
   estado TEXT DEFAULT 'Activo',
+  ciiu TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

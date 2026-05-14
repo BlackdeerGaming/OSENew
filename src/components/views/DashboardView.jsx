@@ -49,7 +49,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
   // Persistir historial de Documencio automáticamente (Escopeado por Entidad)
   React.useEffect(() => {
     const saveHistory = async () => {
-      if (!currentUser?.token || !currentEntity?.id || messages.length <= 1) return;
+      if (!currentUser?.token || messages.length <= 1) return;
       try {
         await fetch(`${API_BASE_URL}/chat-history/documencio?entidad_id=${currentEntity.id}`, {
           method: "POST",
@@ -66,7 +66,7 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
     const timer = setTimeout(saveHistory, 1500); 
     return () => clearTimeout(timer);
-  }, [messages, currentUser, currentEntity?.id]);
+  }, [messages, currentUser]);
 
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
