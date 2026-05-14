@@ -29,11 +29,14 @@ class SerieCreate(BaseModel):
     id: Optional[str] = None
     nombre: str
     codigo: str
+    dependencia_id: str
 
 class SubserieCreate(BaseModel):
     id: Optional[str] = None
     nombre: str
     codigo: str
+    serie_id: str
+    dependencia_id: Optional[str] = None
 
 class TRDRecordCreate(BaseModel):
     id: Optional[str] = None
@@ -204,7 +207,7 @@ async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = De
     # HARD DELETE CASCADE: Manual cleanup of related records
     try:
         # 1. Delete TRD Records associated with this dependency
-        supabase_client.table("trd_records").delete().eq("dependenciaId", dep_id).eq("entidad_id", entity_id).execute()
+        supabase_client.table("trd_records").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
         
         # 2. Delete Functions associated with this dependency
         supabase_client.table("funciones").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
@@ -242,17 +245,19 @@ async def create_serie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
-    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
+    # 1. Validación de duplicados (Código único por entidad y dependencia)
     clean_codigo = payload.codigo.strip()
     existing = supabase_client.table("series") \
         .select("id") \
         .eq("entidad_id", entity_id) \
+        .eq("dependencia_id", payload.dependencia_id) \
         .ilike("codigo", clean_codigo) \
         .execute()
     
     if existing.data:
+        # Si es creación (no hay payload.id) o si el ID encontrado es diferente al que estamos editando
         if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el cÃ³digo '{clean_codigo}' para esta entidad.")
+             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' en esta dependencia.")
 
     data = payload.dict()
     data["codigo"] = clean_codigo
@@ -310,7 +315,7 @@ async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depend
     # HARD DELETE CASCADE
     try:
         # 1. Delete TRD Records associated with this serie
-        supabase_client.table("trd_records").delete().eq("serieId", serie_id).eq("entidad_id", entity_id).execute()
+        supabase_client.table("trd_records").delete().eq("serie_id", serie_id).eq("entidad_id", entity_id).execute()
         
         # 2. Delete Subseries associated with this serie
         supabase_client.table("subseries").delete().eq("serie_id", serie_id).eq("entidad_id", entity_id).execute()
@@ -338,17 +343,19 @@ async def create_subserie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
-    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
+    # 1. Validación de duplicados (Código único por entidad y serie)
     clean_codigo = payload.codigo.strip()
     existing = supabase_client.table("subseries") \
         .select("id") \
         .eq("entidad_id", entity_id) \
+        .eq("serie_id", payload.serie_id) \
         .ilike("codigo", clean_codigo) \
         .execute()
     
     if existing.data:
+        # Si es creación (no hay payload.id) o si el ID encontrado es diferente al que estamos editando
         if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el cÃ³digo '{clean_codigo}' para esta entidad.")
+             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
 
     data = payload.dict()
     data["codigo"] = clean_codigo
@@ -406,7 +413,7 @@ async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = 
     # HARD DELETE CASCADE
     try:
         # 1. Delete TRD Records associated with this subserie
-        supabase_client.table("trd_records").delete().eq("subserieId", subserie_id).eq("entidad_id", entity_id).execute()
+        supabase_client.table("trd_records").delete().eq("subserie_id", subserie_id).eq("entidad_id", entity_id).execute()
         
         # 2. Cloud Storage
         try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
@@ -486,10 +493,18 @@ async def update_trd_record_entity(
 @router.delete("/entity/{entity_id}/trd_records/{record_id}")
 async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try: delete_record(supabase_client, entity_id, "trd_records", record_id)
-    except: pass
-    supabase_client.table("trd_records").delete().eq("id", record_id).eq("entidad_id", entity_id).execute()
-    return {"status": "deleted", "id": record_id}
+    try:
+        try: delete_record(supabase_client, entity_id, "trd_records", record_id)
+        except: pass
+        
+        res = supabase_client.table("trd_records").delete().eq("id", record_id).eq("entidad_id", entity_id).execute()
+        
+        if not res.data:
+            return {"status": "not_found", "id": record_id}
+            
+        return {"status": "deleted", "id": record_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar valoración: {str(e)}")
 
 # ---------- Funciones ----------
 @router.post("/entity/{entity_id}/funciones", response_model=dict)

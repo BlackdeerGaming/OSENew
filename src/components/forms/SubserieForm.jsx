@@ -103,6 +103,38 @@ export default function SubserieForm({
           </FormGroup>
         </div>
 
+        <div className="md:col-span-1">
+          <FormGroup label="Dependencia" required isActive={activeField === 'dependenciaId'} error={errors.dependenciaId}>
+            <select
+              name="dependenciaId"
+              value={data.dependenciaId || ""}
+              onChange={handleChange}
+              className={cn(inputClass, errors.dependenciaId && "border-destructive focus-visible:ring-destructive")}
+            >
+              <option value="">Seleccione...</option>
+              {dependencias.filter(d => String(d.entidadId) === String(data.entidadId)).map(dep => (
+                <option key={dep.id} value={dep.id}>{dep.codigo} - {dep.nombre}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
+        <div className="md:col-span-1">
+          <FormGroup label="Serie Vinculada" required isActive={activeField === 'serieId'} error={errors.serieId}>
+            <select
+              name="serieId"
+              value={data.serieId || ""}
+              onChange={handleChange}
+              className={cn(inputClass, errors.serieId && "border-destructive focus-visible:ring-destructive")}
+            >
+              <option value="">Seleccione la serie...</option>
+              {series.filter(s => String(s.dependenciaId) === String(data.dependenciaId)).map(ser => (
+                <option key={ser.id} value={ser.id}>{ser.codigo} - {ser.nombre}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </div>
+
         <div className="md:col-span-2">
           <FormGroup label="Nombre de la Subserie" required isActive={activeField === 'nombre'} error={errors.nombre}>
             <input 

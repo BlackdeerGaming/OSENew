@@ -81,7 +81,7 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Dependencias ──────────────────────────────────────────────────────
   const addDependencia = async (data) => {
-    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
     
@@ -151,7 +151,7 @@ export function useTRDData(currentUser = null, entityId = null) {
 
   // ─── CRUD Series ────────────────────────────────────────────────────────────
   const addSerie = async (data) => {
-    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
@@ -202,13 +202,25 @@ export function useTRDData(currentUser = null, entityId = null) {
   };
 
   const deleteSerie = async (id) => {
+    const previousState = [...series];
     setSeries(prev => prev.filter(x => x.id !== id));
-    // Implementation omitted for brevity in route, but we follow the pattern
+    try {
+      const response = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/series/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      if (!response.ok) throw new Error('Error al eliminar la serie en el servidor');
+      await refreshData();
+    } catch (err) {
+      console.error('❌ Error deleting serie:', err);
+      setSeries(previousState);
+      throw err;
+    }
   };
 
   // ─── CRUD Subseries ─────────────────────────────────────────────────────────
   const addSubserie = async (data) => {
-    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
@@ -259,12 +271,25 @@ export function useTRDData(currentUser = null, entityId = null) {
   };
 
   const deleteSubserie = async (id) => {
+    const previousState = [...subseries];
     setSubseries(prev => prev.filter(x => x.id !== id));
+    try {
+      const response = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/subseries/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      if (!response.ok) throw new Error('Error al eliminar la subserie en el servidor');
+      await refreshData();
+    } catch (err) {
+      console.error('❌ Error deleting subserie:', err);
+      setSubseries(previousState);
+      throw err;
+    }
   };
 
   // ─── CRUD TRD Records ───────────────────────────────────────────────────────
   const addTrdRecord = async (data) => {
-    const isUpdate = !!data.id && !String(data.id).startsWith('temp') && !String(data.id).includes('_');
+    const isUpdate = !!data.id && !String(data.id).startsWith('temp');
     const tempId = data.id || `temp-${Date.now()}`;
     const newRecord = { ...data, id: tempId };
 
@@ -366,6 +391,7 @@ function mapSerieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
+    dependenciaId: s.dependencia_id,
     entidadId: s.entidad_id || s.entity_id
   };
 }
@@ -375,6 +401,7 @@ function mapSerieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
+    dependencia_id: s.dependenciaId,
     entidad_id: s.entidadId || s.entityId || null
   };
 }
@@ -384,6 +411,8 @@ function mapSubserieFromDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
+    serieId: s.serie_id,
+    dependenciaId: s.dependencia_id,
     entidadId: s.entidad_id || s.entity_id
   };
 }
@@ -393,6 +422,8 @@ function mapSubserieToDB(s) {
     id: s.id,
     nombre: s.nombre,
     codigo: s.codigo,
+    serie_id: s.serieId,
+    dependencia_id: s.dependenciaId,
     entidad_id: s.entidadId || s.entityId || null
   };
 }

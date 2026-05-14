@@ -133,6 +133,14 @@ function App() {
   });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isPrinting, setIsPrinting] = useState(false); // 🔥 Portal de Impresión 🔥
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('ose_sidebar_collapsed') === 'true';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('ose_sidebar_collapsed', isSidebarCollapsed);
+  }, [isSidebarCollapsed]);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
 
@@ -1334,35 +1342,52 @@ function App() {
   };
 
   // Calculate TRD Rows globally
-  const trdRows = (trdRecords || []).map(record => {
-    const dep = (dependencias || []).find(d => String(d.id) === String(record.dependenciaId)) || {};
-    const serie = (series || []).find(s => String(s.id) === String(record.serieId)) || {};
-    const subserie = record.subserieId ? (subseries || []).find(s => String(s.id) === String(record.subserieId)) : null;
+  // Calculate TRD Rows globally with grouping to avoid duplicates
+  const trdRows = React.useMemo(() => {
+    const rawList = trdRecords || [];
+    // Grouping by unique combination of Dependency + Serie + Subserie
+    const grouped = rawList.reduce((acc, record) => {
+      const key = `${record.dependenciaId}-${record.serieId}-${record.subserieId || 'none'}`;
+      // Keep the most recent record if multiple exist for the same key
+      if (!acc[key] || new Date(record.createdAt || 0) > new Date(acc[key].createdAt || 0)) {
+        acc[key] = record;
+      }
+      return acc;
+    }, {});
 
-    let disposicionStr = [];
-    if (record['disp_Conservación total']) disposicionStr.push("CT");
-    if (record['disp_Eliminación']) disposicionStr.push("E");
-    if (record['disp_Selección']) disposicionStr.push("S");
+    return Object.values(grouped).map(record => {
+      const dep = (dependencias || []).find(d => String(d.id) === String(record.dependenciaId)) || {};
+      const serie = (series || []).find(s => String(s.id) === String(record.serieId)) || {};
+      const subserie = record.subserieId ? (subseries || []).find(s => String(s.id) === String(record.subserieId)) : null;
 
-    const fullCodigo = [dep.codigo, serie.codigo, subserie?.codigo].filter(Boolean).join("-");
+      let disposicionStr = [];
+      if (record['disp_Conservación total']) disposicionStr.push("CT");
+      if (record['disp_Eliminación']) disposicionStr.push("E");
+      if (record['disp_Selección']) disposicionStr.push("S");
 
-    return {
-      id: record.id,
-      dependencia: dep.nombre || "(Desconocida)",
-      codigo: fullCodigo,
-      serie: serie.nombre || "(Sin Serie)",
-      subserie: subserie ? subserie.nombre : "",
-      tipoDocumental: subserie ? subserie.tipoDocumental : serie.tipoDocumental || "",
-      retencionGestion: record.retencionGestion || "0",
-      retencionCentral: record.retencionCentral || "0",
-      disposicion: disposicionStr.join(", ") || record.disposicion || "N/A",
-      procedimiento: record.procedimiento || "",
-      soporte: record.rep_digitalizacion || record.rep_microfilmacion ? 'ambos' : 'fisico',
-      reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna'),
-      tiposDocumentales: record.tiposDocumentales || [],
-      funcionesIds: record.funcionesIds || []
-    };
-  });
+      const fullCodigo = [dep.codigo, serie.codigo, subserie?.codigo].filter(Boolean).join("-");
+
+      return {
+        id: record.id,
+        dependenciaId: record.dependenciaId,
+        serieId: record.serieId,
+        subserieId: record.subserieId,
+        dependencia: dep.nombre || "(Desconocida)",
+        codigo: fullCodigo,
+        serie: serie.nombre || "(Sin Serie)",
+        subserie: subserie ? subserie.nombre : "",
+        tipoDocumental: subserie ? subserie.tipoDocumental : serie.tipoDocumental || "",
+        retencionGestion: record.retencionGestion || "0",
+        retencionCentral: record.retencionCentral || "0",
+        disposicion: disposicionStr.join(", ") || record.disposicion || "N/A",
+        procedimiento: record.procedimiento || "",
+        soporte: record.rep_digitalizacion || record.rep_microfilmacion ? 'ambos' : 'fisico',
+        reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna'),
+        tiposDocumentales: record.tiposDocumentales || [],
+        funcionesIds: record.funcionesIds || []
+      };
+    });
+  }, [trdRecords, dependencias, series, subseries]);
 
   // Filtered rows for UI and PDF
   const filteredTrdRows = React.useMemo(() => {
@@ -1691,6 +1716,8 @@ function App() {
         onToggleAgent={() => setIsAgentOpen(v => !v)}
         currentUser={currentUser}
         hasTrdData={trdRecords.length > 0}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       {/* Dynamic Left Panel: Chat (only for forms, and when agent is open) */}
