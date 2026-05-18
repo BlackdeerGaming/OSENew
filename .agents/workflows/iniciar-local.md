@@ -9,7 +9,7 @@ Abre una terminal nueva y ejecuta el siguiente comando para activar el entorno v
 
 // turbo
 ```powershell
-.\.venv\Scripts\activate; uvicorn api.main:app --reload --port 8000
+.\.venv\Scripts\activate; uvicorn api.main:app --reload --port 8001
 ```
 
 ### 2. Iniciar el Frontend (Vite)
@@ -22,7 +22,7 @@ npm run dev
 
 ### 3. Verificación
 Una vez iniciados:
-- **Backend:** [http://localhost:8000/api/](http://localhost:8000/api/)
+- **Backend:** [http://localhost:8001/api/](http://localhost:8001/api/)
 - **Frontend:** [http://localhost:5173/](http://localhost:5173/) (o la URL que indique Vite)
 
 ---
