@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import SearchableSelect from "../ui/SearchableSelect";
 import FuncionesMultiSelect from "../ui/FuncionesMultiSelect";
 import ConfirmDeleteModal from "../ui/ConfirmDeleteModal";
-import { LayoutGrid, PlusCircle, FileText, Edit2, Trash2, Eye } from "lucide-react";
+import { LayoutGrid, PlusCircle, FileText, Edit2, Trash2, Eye, Search, X } from "lucide-react";
 
 export default function TRDForm({ 
   data, 
@@ -27,6 +27,15 @@ export default function TRDForm({
   const [deleteStatus, setDeleteStatus] = React.useState('idle');
   const [deleteErrorMsg, setDeleteErrorMsg] = React.useState('');
   const [expandedDetails, setExpandedDetails] = React.useState({});
+
+  // Local state for search & filtering
+  const [filterSearch, setFilterSearch] = React.useState('');
+  const [filterDep, setFilterDep] = React.useState('');
+  const [filterSer, setFilterSer] = React.useState('');
+  const [filterSub, setFilterSub] = React.useState('');
+  const [filterDisp, setFilterDisp] = React.useState('');
+  const [filterSop, setFilterSop] = React.useState('');
+  const [filterEst, setFilterEst] = React.useState('');
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -79,6 +88,90 @@ export default function TRDForm({
   const toggleDetails = (id) => {
     setExpandedDetails(prev => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Real-time client-side filter computation using AND logic (combinable)
+  const filteredTRDRecords = React.useMemo(() => {
+    return trdRecords.filter(t => {
+      // 1. Text Search matching
+      if (filterSearch.trim() !== '') {
+        const query = filterSearch.toLowerCase();
+        
+        const dep = dependencias.find(d => String(d.id) === String(t.dependenciaId));
+        const ser = series.find(s => String(s.id) === String(t.serieId));
+        const sub = t.subserieId ? subseries.find(s => String(s.id) === String(t.subserieId)) : null;
+        
+        const codeStr = `${dep?.codigo || ''}-${ser?.codigo || ''}${sub ? `-${sub.codigo}` : ''}`.toLowerCase();
+        const codePartStr = `${dep?.sigla || ''} | ${ser?.codigo || ''}${sub ? `-${sub.codigo}` : ''}`.toLowerCase();
+        
+        const depName = (dep?.nombre || '').toLowerCase();
+        const serName = (ser?.nombre || '').toLowerCase();
+        const subName = (sub?.nombre || '').toLowerCase();
+        
+        const procedure = (t.procedimiento || '').toLowerCase();
+        
+        // formats/supports
+        const supportStr = (t.rep_digitalizacion && t.rep_microfilmacion ? "híbrido" : t.rep_digitalizacion ? "electrónico" : t.rep_microfilmacion ? "microfilm" : "físico").toLowerCase();
+        
+        // disposition final
+        const dispList = [];
+        if (t['disp_Conservación total']) dispList.push('ct', 'conservación total');
+        if (t['disp_Eliminación']) dispList.push('e', 'eliminación');
+        if (t['disp_Selección']) dispList.push('s', 'selección');
+        const dispStr = dispList.join(' ');
+        
+        // document types search
+        const docTypesStr = (t.tiposDocumentales || [])
+          .map(td => `${td.titulo_documento || ''} ${td.extension || ''} ${td.cual || ''}`)
+          .join(' ')
+          .toLowerCase();
+        
+        const matchesSearch = 
+          codeStr.includes(query) ||
+          codePartStr.includes(query) ||
+          depName.includes(query) ||
+          serName.includes(query) ||
+          subName.includes(query) ||
+          procedure.includes(query) ||
+          supportStr.includes(query) ||
+          dispStr.includes(query) ||
+          docTypesStr.includes(query) ||
+          (t.nombre || '').toLowerCase().includes(query) ||
+          (t.estadoConservacion || '').toLowerCase().includes(query);
+          
+        if (!matchesSearch) return false;
+      }
+      
+      // 2. Dropdown Filters
+      if (filterDep !== '' && String(t.dependenciaId) !== String(filterDep)) return false;
+      if (filterSer !== '' && String(t.serieId) !== String(filterSer)) return false;
+      if (filterSub !== '' && String(t.subserieId) !== String(filterSub)) return false;
+      
+      if (filterDisp !== '') {
+        const hasCT = t['disp_Conservación total'];
+        const hasE = t['disp_Eliminación'];
+        const hasS = t['disp_Selección'];
+        if (filterDisp === 'CT' && !hasCT) return false;
+        if (filterDisp === 'E' && !hasE) return false;
+        if (filterDisp === 'S' && !hasS) return false;
+      }
+      
+      if (filterSop !== '') {
+        const isHybrid = t.rep_digitalizacion && t.rep_microfilmacion;
+        const isElec = t.rep_digitalizacion && !t.rep_microfilmacion;
+        const isMicro = !t.rep_digitalizacion && t.rep_microfilmacion;
+        const isPhys = !t.rep_digitalizacion && !t.rep_microfilmacion;
+        
+        if (filterSop === 'Hibrido' && !isHybrid) return false;
+        if (filterSop === 'Electronico' && !isElec) return false;
+        if (filterSop === 'Microfilm' && !isMicro) return false;
+        if (filterSop === 'Fisico' && !isPhys) return false;
+      }
+      
+      if (filterEst !== '' && String(t.estadoConservacion) !== String(filterEst)) return false;
+      
+      return true;
+    });
+  }, [trdRecords, filterSearch, filterDep, filterSer, filterSub, filterDisp, filterSop, filterEst, dependencias, series, subseries]);
 
   // Extract selected entities for code population
   const activeDependencia = dependencias.find(d => d.id === data.dependenciaId);
@@ -565,7 +658,7 @@ export default function TRDForm({
         </div>
 
         {/* Columna Derecha: Valoraciones Creadas (60% de ancho en Desktop y Sticky) */}
-        <div className="w-full lg:flex-1 bg-card rounded-xl border border-border shadow-sm p-5 md:p-6 flex flex-col gap-6 bg-white lg:sticky lg:top-6">
+        <div className="w-full lg:flex-1 bg-card rounded-xl border border-border shadow-sm p-5 md:p-6 flex flex-col gap-5 bg-white lg:sticky lg:top-6">
           <div className="flex items-center gap-3 border-b border-border pb-4">
             <div className="p-2 bg-primary/10 rounded-xl">
               <LayoutGrid className="w-5 h-5 text-primary" />
@@ -576,10 +669,149 @@ export default function TRDForm({
             </div>
           </div>
 
+          {/* Panel de Búsqueda y Filtros Combinables */}
+          {trdRecords.length > 0 && (
+            <div className="flex flex-col gap-4 bg-slate-50/60 p-4 rounded-2xl border border-slate-200/60">
+              {/* Barra de Búsqueda Principal (Text Search) */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código, dependencia, serie, tipo documental, procedimiento..."
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  className="w-full bg-white border border-slate-250 rounded-xl py-2.5 pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all shadow-sm"
+                />
+                {filterSearch && (
+                  <button
+                    onClick={() => setFilterSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-650 rounded cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Grid de Filtros Compactos */}
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+                {/* Dependencia */}
+                <div>
+                  <select
+                    value={filterDep}
+                    onChange={(e) => setFilterDep(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Dependencia...</option>
+                    {dependencias.map(d => (
+                      <option key={d.id} value={d.id}>{d.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Serie */}
+                <div>
+                  <select
+                    value={filterSer}
+                    onChange={(e) => setFilterSer(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Serie...</option>
+                    {series.map(s => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subserie */}
+                <div>
+                  <select
+                    value={filterSub}
+                    onChange={(e) => setFilterSub(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Subserie...</option>
+                    {subseries.map(s => (
+                      <option key={s.id} value={s.id}>{s.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Disposición */}
+                <div>
+                  <select
+                    value={filterDisp}
+                    onChange={(e) => setFilterDisp(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Disposición...</option>
+                    <option value="CT">CT (Cons. Total)</option>
+                    <option value="E">E (Eliminación)</option>
+                    <option value="S">S (Selección)</option>
+                  </select>
+                </div>
+
+                {/* Soporte */}
+                <div>
+                  <select
+                    value={filterSop}
+                    onChange={(e) => setFilterSop(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Soporte...</option>
+                    <option value="Fisico">Físico</option>
+                    <option value="Electronico">Electrónico</option>
+                    <option value="Microfilm">Microfilm</option>
+                    <option value="Hibrido">Híbrido</option>
+                  </select>
+                </div>
+
+                {/* Estado */}
+                <div>
+                  <select
+                    value={filterEst}
+                    onChange={(e) => setFilterEst(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-750 shadow-sm focus:outline-none focus:border-primary/30"
+                  >
+                    <option value="">Estado...</option>
+                    <option value="Bueno">Bueno</option>
+                    <option value="Regular">Regular</option>
+                    <option value="Malo">Malo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Botón de Limpieza (Visible solo cuando hay filtros activos) */}
+              {(filterSearch || filterDep || filterSer || filterSub || filterDisp || filterSop || filterEst) && (
+                <div className="flex justify-end pt-1.5 border-t border-slate-200/40">
+                  <button
+                    onClick={() => {
+                      setFilterSearch('');
+                      setFilterDep('');
+                      setFilterSer('');
+                      setFilterSub('');
+                      setFilterDisp('');
+                      setFilterSop('');
+                      setFilterEst('');
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase tracking-widest transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Limpiar Filtros
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {trdRecords.length === 0 ? (
             <div className="text-center py-12 bg-slate-50/50 border border-slate-200 rounded-2xl w-full">
               <p className="text-slate-400 text-sm font-medium">No se han registrado valoraciones todavía para esta entidad.</p>
               <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest mt-1">Completa el formulario izquierdo para crear la primera</p>
+            </div>
+          ) : filteredTRDRecords.length === 0 ? (
+            <div className="text-center py-12 bg-slate-50/50 border border-slate-200 rounded-2xl w-full">
+              <p className="text-slate-400 text-sm font-medium">No se encontraron valoraciones con esos criterios.</p>
+              <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest mt-1">Intenta restablecer o modificar los términos de búsqueda</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm w-full">
@@ -596,7 +828,7 @@ export default function TRDForm({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {trdRecords.map((t) => {
+                    {filteredTRDRecords.map((t) => {
                       const dep = dependencias.find(d => String(d.id) === String(t.dependenciaId));
                       const ser = series.find(s => String(s.id) === String(t.serieId));
                       const sub = t.subserieId ? subseries.find(s => String(s.id) === String(t.subserieId)) : null;
