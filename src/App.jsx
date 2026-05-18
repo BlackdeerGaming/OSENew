@@ -429,7 +429,7 @@ function App() {
     addDependencia, deleteDependencia,
     addSerie, deleteSerie,
     addSubserie, deleteSubserie,
-    addTrdRecord,
+    addTrdRecord, deleteTrdRecord,
     isLoading: trdLoading, isSynced,
     refreshData,
     imports, setImports
@@ -1804,6 +1804,15 @@ function App() {
                 funciones={funciones} 
                 currentUser={currentUser} 
                 errors={formErrors}
+                onDeleteTrd={async (id) => {
+                  try {
+                    await deleteTrdRecord(id);
+                    addActivityLog(`Borrado TRD - ID ${id}`);
+                  } catch (err) {
+                    await refreshData();
+                    throw err;
+                  }
+                }}
               />
             )}
             {activeModule === 'datos' && (
@@ -2059,6 +2068,8 @@ function App() {
             isOpen={isMobileMenuOpen}
             onClose={() => setIsMobileMenuOpen(false)}
             pendingInvitationsCount={pendingInvitationsCount}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           />
          
          <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
