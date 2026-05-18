@@ -1956,15 +1956,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
             chunks = await db.query_by_entity("RagDocuments", "GLOBAL")
 
-        # 3. Respuesta LLM
-        print(" Generando respuesta...")
-        try:
-            rag_chain = ( RAG_PROMPT | llm | StrOutputParser() )
-            answer = await rag_chain.ainvoke({
-                "context": format_docs(source_docs),
-                "question": request.query
-            })
-            
+
 
         context_texts = [c.get("content", "") for c in chunks]
 
