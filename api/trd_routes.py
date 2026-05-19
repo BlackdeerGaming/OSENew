@@ -170,7 +170,7 @@ async def create_dependencia_entity(
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
 async def list_dependencias_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("dependencias").select("*").eq("entidad_id", entity_id).execute()
+    res = supabase_client.table("dependencias").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
@@ -286,7 +286,7 @@ async def create_serie_entity(
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
 async def list_series_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("series").select("*").eq("entidad_id", entity_id).order("codigo").execute()
+    res = supabase_client.table("series").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").order("codigo").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/series/{serie_id}", response_model=dict)
@@ -343,19 +343,33 @@ async def create_subserie_entity(
     background: BackgroundTasks = None,
 ):
     require_entity_admin(user, entity_id)
-    # 1. Validación de duplicados (Código único por entidad y serie)
+    # 1. Validación de duplicados (Código o Nombre único por serie en la entidad)
     clean_codigo = payload.codigo.strip()
-    existing = supabase_client.table("subseries") \
+    clean_nombre = payload.nombre.strip()
+    
+    # Check code duplicate within the same series
+    existing_codigo = supabase_client.table("subseries") \
         .select("id") \
         .eq("entidad_id", entity_id) \
         .eq("serie_id", payload.serie_id) \
         .ilike("codigo", clean_codigo) \
         .execute()
-    
-    if existing.data:
-        # Si es creación (no hay payload.id) o si el ID encontrado es diferente al que estamos editando
-        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
+        
+    if existing_codigo.data:
+        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing_codigo.data):
              raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
+
+    # Check name duplicate within the same series
+    existing_nombre = supabase_client.table("subseries") \
+        .select("id") \
+        .eq("entidad_id", entity_id) \
+        .eq("serie_id", payload.serie_id) \
+        .ilike("nombre", clean_nombre) \
+        .execute()
+        
+    if existing_nombre.data:
+        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing_nombre.data):
+             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el nombre '{clean_nombre}' en esta serie.")
 
     data = payload.dict()
     data["codigo"] = clean_codigo
@@ -384,7 +398,7 @@ async def create_subserie_entity(
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
 async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("subseries").select("*").eq("entidad_id", entity_id).order("codigo").execute()
+    res = supabase_client.table("subseries").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").order("codigo").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/subseries/{subserie_id}", response_model=dict)
@@ -466,7 +480,7 @@ async def create_trd_record_entity(
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
 async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("trd_records").select("*").eq("entidad_id", entity_id).execute()
+    res = supabase_client.table("trd_records").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").execute()
     return res.data or []
 
 @router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)

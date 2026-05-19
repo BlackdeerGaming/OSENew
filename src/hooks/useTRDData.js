@@ -227,14 +227,26 @@ export function useTRDData(currentUser = null, entityId = null) {
     const previousState = [...subseries];
 
     // 1. Local Validation
-    if (newRecord.codigo) {
-       const normalizedInput = newRecord.codigo.trim().toLowerCase();
+    if (newRecord.codigo && newRecord.serieId) {
+       const normalizedCode = newRecord.codigo.trim().toLowerCase();
+       const normalizedName = (newRecord.nombre || "").trim().toLowerCase();
        const isDuplicate = subseries.some(x => 
-         String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id)
+         String(x.serieId) === String(newRecord.serieId) &&
+         String(x.id) !== String(newRecord.id) &&
+         (String(x.codigo).trim().toLowerCase() === normalizedCode || 
+          String(x.nombre).trim().toLowerCase() === normalizedName)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
+         const hasCodeMatch = subseries.some(x => 
+           String(x.serieId) === String(newRecord.serieId) &&
+           String(x.id) !== String(newRecord.id) &&
+           String(x.codigo).trim().toLowerCase() === normalizedCode
+         );
+         if (hasCodeMatch) {
+           throw new Error(`El código "${newRecord.codigo}" ya existe para otra subserie en esta misma serie.`);
+         } else {
+           throw new Error(`El nombre "${newRecord.nombre}" ya existe para otra subserie en esta misma serie.`);
+         }
        }
     }
 
