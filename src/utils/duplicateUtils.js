@@ -23,15 +23,14 @@ export const isDuplicateSerie = (newSerie, existingSerie) => {
   return normalizeText(newSerie.codigo) === normalizeText(existingSerie.codigo);
 };
 
-/**
- * Compara dos subseries para detectar colisión.
- * Regla: El código de subserie es único DENTRO de la misma serie y dependencia.
- */
 export const isDuplicateSubserie = (newSub, existingSub) => {
   if (String(newSub.entidadId) !== String(existingSub.entidadId)) return false;
   if (String(newSub.dependenciaId) !== String(existingSub.dependenciaId)) return false;
   if (String(newSub.serieId) !== String(existingSub.serieId)) return false;
-  return normalizeText(newSub.codigo) === normalizeText(existingSub.codigo);
+  
+  const sameCodigo = normalizeText(newSub.codigo) === normalizeText(existingSub.codigo);
+  const sameNombre = normalizeText(newSub.nombre) === normalizeText(existingSub.nombre);
+  return sameCodigo || sameNombre;
 };
 
 /**

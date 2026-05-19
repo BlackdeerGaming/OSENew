@@ -8,7 +8,7 @@ import SubserieForm from './components/forms/SubserieForm';
 import TRDForm from './components/forms/TRDForm';
 import StructuredDataView from './components/data/StructuredDataView';
 import TRDGenerator from './components/trd/TRDGenerator';
-import { Save, Bot, ArrowLeft, Printer, Download, BrainCircuit, Activity } from 'lucide-react';
+import { Save, Bot, ArrowLeft, Printer, Download, BrainCircuit, Activity, AlertTriangle, RefreshCw } from 'lucide-react';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
 import ActivateAccount from './components/auth/ActivateAccount';
@@ -237,6 +237,23 @@ function App() {
   const [entities, setEntities] = useState([]);
   const [users, setUsers] = useState([]);
 
+  const [isInitializing, setIsInitializing] = useState(() => {
+    const saved = localStorage.getItem('ose_user');
+    if (saved) {
+      try {
+        const user = JSON.parse(saved);
+        return !!(user && user.token);
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  });
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [initializationError, setInitializationError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [takingLonger, setTakingLonger] = useState(false);
+
   const [funciones, setFunciones] = useState([]);
   
   // Memoize common headers with context
@@ -247,12 +264,12 @@ function App() {
     return h;
   }, [currentUser?.token, selectedEntityId]);
   useEffect(() => {
-    if (!currentUser?.token || !selectedEntityId) return;
+    if (!currentUser?.token || !selectedEntityId || !hasInitialized) return;
     const loadFunciones = async () => {
       try {
         const resp = await fetch(
           `${API_BASE_URL}/trd/entity/${selectedEntityId}/funciones`,
-          { headers: authHeaders }
+          { headers: { 'Authorization': `Bearer ${currentUser.token}` } }
         );
         if (resp.ok) setFunciones(await resp.json());
       } catch (err) {
@@ -260,7 +277,7 @@ function App() {
       }
     };
     loadFunciones();
-  }, [currentUser?.token, selectedEntityId, authHeaders]);
+  }, [currentUser?.token, selectedEntityId, hasInitialized]);
 
 
 
@@ -339,58 +356,168 @@ function App() {
     }
   }, []);
 
-  // 2. Cargar datos iniciales (Usuarios, Entidades, Invitaciones)
-  useEffect(() => {
+  // 2. Cargar datos iniciales (Usuarios, Entidades, Invitaciones) de manera secuencial y robusta
+  const performInitialLoad = useCallback(async (isRetryCall = false) => {
     if (!currentUser?.token) {
-      console.log(" [FETCH] Esperando token para cargar datos...");
+      setIsInitializing(false);
       return;
     }
 
-    const fetchData = async () => {
-      try {
-        const headers = { 'Authorization': `Bearer ${currentUser.token}` };
-        console.log(" [FETCH] Cargando datos iniciales...");
+    if (isRetryCall) {
+      setIsRetrying(true);
+    } else {
+      setIsInitializing(true);
+    }
+    setInitializationError(null);
 
-        const [usersRes, entitiesRes, invRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/users`, { headers: authHeaders }),
-          fetch(`${API_BASE_URL}/entities`, { headers: authHeaders }),
-          fetch(`${API_BASE_URL}/invitations/my`, { headers: authHeaders })
-        ]);
+    try {
+      const headers = { 
+        'Authorization': `Bearer ${currentUser.token}`,
+        'Content-Type': 'application/json'
+      };
 
-        if (usersRes.ok) {
-          const uData = await usersRes.json();
-          setUsers(uData);
-        }
-        
-        if (entitiesRes.ok) {
-          const eData = await entitiesRes.json();
-          setEntities(eData.map(e => ({
-            ...e,
-            id: e.id || e.PK || e.entity_id || "",
-            razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
-            nombre: e.nombre || e.razonSocial || e.razon_social || "",
-            numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
-            nit: e.nit || e.numeroDocumento || e.NIT || ""
-          })));
-        }
-        
-        if (invRes.ok) {
-          const iData = await invRes.json();
-          setPendingInvitationsCount(iData.length || 0);
-        }
-      } catch (err) {
-        console.error("Error fetching data:", err);
+      console.log("🚀 [App] [FETCH] Iniciando carga de datos globales...");
+
+      const [usersRes, entitiesRes, invRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/users`, { headers }),
+        fetch(`${API_BASE_URL}/entities`, { headers }),
+        fetch(`${API_BASE_URL}/invitations/my`, { headers })
+      ]);
+
+      if (!usersRes.ok || !entitiesRes.ok || !invRes.ok) {
+        throw new Error(`Servicios de backend retornaron estado de error: ${usersRes.status}/${entitiesRes.status}/${invRes.status}`);
       }
-    };
 
-    if (currentUser) fetchData();
+      const uData = await usersRes.json();
+      const eData = await entitiesRes.json();
+      const iData = await invRes.json();
+
+      // A. Cargar usuarios
+      setUsers(uData);
+
+      // B. Cargar entidades mapeadas
+      const mappedEntities = eData.map(e => ({
+        ...e,
+        id: e.id || e.PK || e.entity_id || "",
+        razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+        nombre: e.nombre || e.razonSocial || e.razon_social || "",
+        numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+        nit: e.nit || e.numeroDocumento || e.NIT || ""
+      }));
+      setEntities(mappedEntities);
+
+      // C. Cargar contador de invitaciones
+      setPendingInvitationsCount(iData.length || 0);
+
+      // D. Determinar Contexto Activo (Entidad Seleccionada)
+      const userAvailableEntities = [...mappedEntities].sort((a, b) => {
+        if (a.id === 'e0') return -1;
+        if (b.id === 'e0') return 1;
+        return (a.razonSocial || "").localeCompare(b.razonSocial || "");
+      });
+
+      let finalUserEntities = userAvailableEntities;
+      if (currentUser.role !== 'superadmin') {
+        const rawIds = currentUser.entidadIds?.length > 0
+          ? currentUser.entidadIds
+          : currentUser.entidadId ? [currentUser.entidadId] : [];
+        
+        const ids = rawIds.map(id => typeof id === 'string' && id.startsWith("ENTITY#") ? id.replace("ENTITY#", "") : id);
+        finalUserEntities = ids.length > 0 ? userAvailableEntities.filter(e => ids.includes(e.id)) : userAvailableEntities;
+      }
+
+      console.log("📍 [Context] Entidades disponibles calculadas:", finalUserEntities.length);
+
+      let activeEntityId = null;
+
+      if (finalUserEntities.length > 0) {
+        // A. Intentar recuperar del parámetro de la URL
+        const params = new URLSearchParams(window.location.search);
+        let urlEntity = params.get('entity');
+        if (urlEntity && typeof urlEntity === 'string') {
+          urlEntity = urlEntity.replace("ENTITY#", "");
+        }
+
+        if (urlEntity && finalUserEntities.some(e => e.id === urlEntity)) {
+          activeEntityId = urlEntity;
+          console.log("📍 [Context] Contexto desde URL válido:", activeEntityId);
+        } else {
+          // B. Intentar recuperar la última seleccionada de localStorage
+          let lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
+          if (lastSelected && typeof lastSelected === 'string') {
+            lastSelected = lastSelected.replace("ENTITY#", "");
+          }
+          if (lastSelected && finalUserEntities.some(e => e.id === lastSelected)) {
+            activeEntityId = lastSelected;
+            console.log("📍 [Context] Recuperando última entidad activa:", activeEntityId);
+          } else {
+            // C. Seleccionar la primera disponible
+            activeEntityId = finalUserEntities[0].id;
+            console.log("📍 [Context] Auto-seleccionando primera entidad disponible:", activeEntityId);
+          }
+        }
+      }
+
+      if (activeEntityId) {
+        setSelectedEntityId(activeEntityId);
+      } else {
+        console.warn("⚠️ [Context] Usuario sin entidades asociadas!");
+      }
+
+      setHasInitialized(true);
+      setInitializationError(null);
+    } catch (err) {
+      console.error("❌ Error en carga inicial:", err);
+      setInitializationError(
+        err.message?.includes("Failed to fetch") || err.message?.includes("connection")
+          ? "No se pudo conectar con el servidor. Verifica que el backend esté activo y responda en la dirección correcta."
+          : `Error cargando configuración inicial del sistema: ${err.message || err}`
+      );
+    } finally {
+      setIsInitializing(false);
+      setIsRetrying(false);
+    }
+  }, [currentUser]);
+
+  // Disparar carga inicial
+  useEffect(() => {
+    if (currentUser?.token) {
+      performInitialLoad();
+    } else {
+      setHasInitialized(false);
+      setIsInitializing(false);
+      setInitializationError(null);
+      setEntities([]);
+      setUsers([]);
+    }
+  }, [currentUser, performInitialLoad]);
+
+  // Timer para avisar si el servidor tarda demasiado (más de 4 segundos)
+  useEffect(() => {
+    let timer;
+    if (isInitializing) {
+      setTakingLonger(false);
+      timer = setTimeout(() => {
+        setTakingLonger(true);
+      }, 4000);
+    } else {
+      setTakingLonger(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isInitializing]);
+
+  // Intervalo de actualización en segundo plano
+  useEffect(() => {
+    if (!currentUser?.token || !hasInitialized) return;
+
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchData();
+      if (document.visibilityState === 'visible' && !isInitializing) {
+        performInitialLoad();
       }
-    }, 300000); // Cada 5 minutos y solo si la pestaña está activa
+    }, 300000); // Cada 5 minutos
+
     return () => clearInterval(interval);
-  }, [currentUser, selectedEntityId, authHeaders]);
+  }, [currentUser, hasInitialized, isInitializing, performInitialLoad]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {
@@ -585,9 +712,11 @@ function App() {
   const refreshActivityLogs = useCallback(async () => {
     if (!currentUser?.token) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/activity-logs`, {
-        headers: { "Authorization": `Bearer ${currentUser.token}` }
-      });
+      const headers = { "Authorization": `Bearer ${currentUser.token}` };
+      if (selectedEntityId) {
+        headers["x-entity-context"] = selectedEntityId;
+      }
+      const response = await fetch(`${API_BASE_URL}/activity-logs`, { headers });
       if (response.ok) {
         const data = await response.json();
         const mappedLogs = (data || []).map(log => {
@@ -610,7 +739,7 @@ function App() {
     } catch (e) {
       console.error("Error fetching logs:", e);
     }
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId]);
 
   // 🔥 PURGA ÚNICA DE CACHÉ / DATOS ANTIGUOS 🔥
   useEffect(() => {
@@ -625,10 +754,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && selectedEntityId && hasInitialized) {
       refreshActivityLogs();
     }
-  }, [currentUser, refreshActivityLogs]);
+  }, [currentUser, selectedEntityId, hasInitialized, refreshActivityLogs]);
 
   useEffect(() => {
     localStorage.setItem('ose_tokens_used', tokensUsed);
@@ -666,10 +795,10 @@ function App() {
   };
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && selectedEntityId && hasInitialized) {
       fetchLibraryStats();
     }
-  }, [currentUser, fetchLibraryStats]);
+  }, [currentUser, selectedEntityId, hasInitialized, fetchLibraryStats]);
 
   // Track tokens on chat messages
   useEffect(() => {
@@ -702,10 +831,10 @@ function App() {
     }
   }, [messages.length]);
 
-  // Recuperar historial de Orianna al cargar
+  // Recuperar historial de Orianna al cargar (solo si está inicializado)
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!currentUser?.token) return;
+      if (!currentUser?.token || !selectedEntityId || !hasInitialized) return;
       try {
         const res = await fetch(`${API_BASE_URL}/chat-history/orianna`, {
           headers: { "Authorization": `Bearer ${currentUser.token}` }
@@ -721,7 +850,7 @@ function App() {
       }
     };
     fetchHistory();
-  }, [currentUser]);
+  }, [currentUser, selectedEntityId, hasInitialized]);
 
   // Persistir historial de Orianna automáticamente
   useEffect(() => {
@@ -1355,7 +1484,23 @@ function App() {
       return acc;
     }, {});
 
-    return Object.values(grouped).map(record => {
+    const compareCodes = (a, b) => {
+      const codeA = String(a || "").replace(/\s+/g, "");
+      const codeB = String(b || "").replace(/\s+/g, "");
+      const numA = parseFloat(codeA);
+      const numB = parseFloat(codeB);
+      const isNumA = !isNaN(numA) && isFinite(numA);
+      const isNumB = !isNaN(numB) && isFinite(numB);
+      if (isNumA && isNumB) {
+        if (numA !== numB) return numA - numB;
+        return codeA.localeCompare(codeB, undefined, { numeric: true });
+      }
+      if (isNumA) return -1;
+      if (isNumB) return 1;
+      return codeA.localeCompare(codeB, undefined, { numeric: true });
+    };
+
+    const mapped = Object.values(grouped).map(record => {
       const dep = (dependencias || []).find(d => String(d.id) === String(record.dependenciaId)) || {};
       const serie = (series || []).find(s => String(s.id) === String(record.serieId)) || {};
       const subserie = record.subserieId ? (subseries || []).find(s => String(s.id) === String(record.subserieId)) : null;
@@ -1386,6 +1531,30 @@ function App() {
         tiposDocumentales: record.tiposDocumentales || [],
         funcionesIds: record.funcionesIds || []
       };
+    });
+
+    // Sort hierarchically: Dependencia -> Serie -> Subserie
+    return [...mapped].sort((a, b) => {
+      const depA = (dependencias || []).find(d => String(d.id) === String(a.dependenciaId));
+      const depB = (dependencias || []).find(d => String(d.id) === String(b.dependenciaId));
+      if (depA && depB && depA.id !== depB.id) {
+        return compareCodes(depA.codigo, depB.codigo);
+      }
+
+      const serA = (series || []).find(s => String(s.id) === String(a.serieId));
+      const serB = (series || []).find(s => String(s.id) === String(b.serieId));
+      if (serA && serB && serA.id !== serB.id) {
+        return compareCodes(serA.codigo, serB.codigo);
+      }
+
+      const subA = a.subserieId ? (subseries || []).find(s => String(s.id) === String(a.subserieId)) : null;
+      const subB = b.subserieId ? (subseries || []).find(s => String(s.id) === String(b.subserieId)) : null;
+
+      if (!subA && subB) return -1;
+      if (subA && !subB) return 1;
+      if (!subA && !subB) return 0;
+
+      return compareCodes(subA.codigo, subB.codigo);
     });
   }, [trdRecords, dependencias, series, subseries]);
 
@@ -1545,7 +1714,7 @@ function App() {
 
   // --- AUTO-SELECCIÓN DE ENTIDAD AL INICIAR SESIÓN / CARGAR ---
   useEffect(() => {
-    if (currentUser && !selectedEntityId && userEntities.length > 0) {
+    if (hasInitialized && currentUser && !selectedEntityId && userEntities.length > 0) {
       // 1. Intentar recuperar la última seleccionada de localStorage
       let lastSelected = localStorage.getItem(`ose_last_entity_${currentUser.id}`);
       if (lastSelected && typeof lastSelected === 'string') {
@@ -1560,7 +1729,7 @@ function App() {
         setSelectedEntityId(userEntities[0].id);
       }
     }
-  }, [currentUser, selectedEntityId, userEntities]);
+  }, [hasInitialized, currentUser, selectedEntityId, userEntities]);
 
   // Persistir la selección de entidad
   useEffect(() => {
@@ -1622,10 +1791,10 @@ function App() {
       console.log(`♻️ Recuperando formulario persistido para ${moduleId}`);
       setActiveFormData(persisted);
     } else {
-      const autoData = {};
-      if (userEntities.length > 0) {
-        console.log("📍 Auto-seleccionando entidad:", userEntities?.[0]?.nombre || userEntities?.[0]?.razonSocial);
-        autoData.entidadId = userEntities?.[0]?.id;
+      const activeEntity = selectedEntityId || userEntities?.[0]?.id;
+      if (activeEntity) {
+        console.log("📍 Auto-seleccionando entidad para formulario:", activeEntity);
+        autoData.entidadId = activeEntity;
       }
       if (moduleId === 'dependencias') {
         autoData.pais = "Colombia";
@@ -1675,6 +1844,96 @@ function App() {
             onNavigateToLogin={() => setAuthView('login')} 
           />
         )}
+      </div>
+    );
+  }
+
+  // Loading Overlay - Premium Startup Screen
+  if (currentUser && isInitializing) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Decorative ambient blobs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#09C8A2]/10 rounded-full blur-[100px] animate-pulse pointer-events-none" />
+        
+        {/* Premium Glassmorphic container */}
+        <div className="relative bg-white/[0.03] border border-white/10 backdrop-blur-xl p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-500">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full border border-primary/20 animate-ping" />
+            <div className="h-16 w-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center border border-primary/20 shadow-inner">
+              <BrainCircuit className="h-8 w-8 animate-pulse text-[#09C8A2]" />
+            </div>
+          </div>
+          
+          <div className="text-center space-y-2">
+            <h3 className="text-lg font-black text-white uppercase tracking-wider animate-pulse">OSE Inteligencia Artificial</h3>
+            <p className="text-[12px] text-slate-400 font-medium tracking-wide">
+              {takingLonger ? "Seguimos intentando conectar con el servidor..." : "Cargando datos del sistema..."}
+            </p>
+          </div>
+
+          {/* Elegant progress indicator */}
+          <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5 relative">
+            <div className="bg-gradient-to-r from-primary to-[#09C8A2] h-full rounded-full animate-infinite-loading absolute inset-y-0 w-2/3" />
+          </div>
+          
+          <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-2">
+            <RefreshCw className="h-3 w-3 animate-spin text-[#09C8A2]" /> Conectando API
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Robust Error Screen - Premium Connection Failure Modal
+  if (currentUser && initializationError) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Decorative ambient blobs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-rose-500/5 rounded-full blur-[100px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[100px] animate-pulse pointer-events-none" />
+        
+        {/* Premium Glassmorphic container */}
+        <div className="relative bg-white/[0.03] border border-white/10 backdrop-blur-xl p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-500">
+          <div className="h-16 w-16 bg-rose-500/10 text-rose-500 rounded-2xl flex items-center justify-center border border-rose-500/20 shadow-inner">
+            <AlertTriangle className="h-8 w-8 text-rose-500" />
+          </div>
+          
+          <div className="text-center space-y-2">
+            <h3 className="text-lg font-black text-white uppercase tracking-wider">Error de Conexión</h3>
+            <p className="text-sm text-slate-300 font-medium leading-relaxed">
+              {initializationError}
+            </p>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 w-full">
+            <p className="text-[11px] text-slate-400 font-semibold leading-relaxed">
+              💡 Asegúrate de que el servidor backend esté corriendo en la dirección configurada en el archivo de variables de entorno (<code className="text-primary font-mono bg-white/5 px-1.5 py-0.5 rounded">.env</code>).
+            </p>
+          </div>
+
+          <div className="flex gap-4 w-full mt-2">
+            <button
+              onClick={handleLogout}
+              className="flex-1 py-3.5 bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-[11px] font-black uppercase tracking-wider rounded-2xl transition-all active:scale-95"
+            >
+              Cerrar Sesión
+            </button>
+            <button
+              onClick={() => performInitialLoad(true)}
+              disabled={isRetrying}
+              className="flex-1 py-3.5 bg-gradient-to-r from-[#09C8A2] to-primary hover:opacity-95 text-white text-[11px] font-black uppercase tracking-wider rounded-2xl shadow-xl shadow-[#09C8A2]/10 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isRetrying ? (
+                <>
+                  <RefreshCw className="h-3 w-3 animate-spin" /> Intentando...
+                </>
+              ) : (
+                "Reintentar"
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1761,6 +2020,15 @@ function App() {
                 currentUser={currentUser} 
                 selectedEntityId={selectedEntityId} 
                 errors={formErrors}
+                onDeleteDependencia={async (id) => {
+                  try {
+                    await deleteDependencia(id);
+                    addActivityLog(`Borrado dependencia - ID ${id}`);
+                  } catch (err) {
+                    await refreshData();
+                    throw err;
+                  }
+                }}
               />
             )}
             {activeModule === 'orgchart' && (
@@ -1775,7 +2043,17 @@ function App() {
                 series={series}
                 entities={userEntities} 
                 currentUser={currentUser}
+                selectedEntityId={selectedEntityId}
                 errors={formErrors}
+                onDeleteSerie={async (id) => {
+                  try {
+                    await deleteSerie(id);
+                    addActivityLog(`Borrado serie - ID ${id}`);
+                  } catch (err) {
+                    await refreshData();
+                    throw err;
+                  }
+                }}
               />
             )}
             {activeModule === 'subseries' && (
@@ -1788,7 +2066,17 @@ function App() {
                 subseries={subseries}
                 entities={userEntities} 
                 currentUser={currentUser}
+                selectedEntityId={selectedEntityId}
                 errors={formErrors}
+                onDeleteSubserie={async (id) => {
+                  try {
+                    await deleteSubserie(id);
+                    addActivityLog(`Borrado subserie - ID ${id}`);
+                  } catch (err) {
+                    await refreshData();
+                    throw err;
+                  }
+                }}
               />
             )}
             {activeModule === 'trdform' && (
@@ -1930,7 +2218,7 @@ function App() {
 
           {['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule) && 
            !['Consulta', 'consulta', 'viewer'].includes(currentUser?.role || currentUser?.perfil || '') && (
-           <div className="mt-6 flex justify-end max-w-4xl w-full mx-auto pb-12">
+           <div className="mt-6 flex justify-end max-w-7xl w-full mx-auto pb-12 px-6">
              <button 
                onClick={handleSave}
                disabled={isSaving}

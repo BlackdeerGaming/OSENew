@@ -92,3 +92,15 @@
 
   tr { page-break-inside: avoid !important; }
 }
+
+/* Custom premium loading slider animation */
+@keyframes infinite-loading {
+  0% { transform: translateX(-150%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(150%); }
+}
+
+.animate-infinite-loading {
+  animation: infinite-loading 1.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
