@@ -105,7 +105,8 @@ OCR_MAX_VISION_IMAGES  = 5      # Max page images sent to LLM
 
 
 #  Inicializar Servicios compartidos (AWS DynamoDB, LLM, Embeddings)
-from .db import db, llm, embeddings
+from boto3.dynamodb.conditions import Attr
+from .db import db, llm, embeddings, supabase_client
 
 # --- CONFIGURACIÓN DE DISEÑO DE EMAILS ---
 BRAND_COLOR = "#09C8A2"
@@ -190,7 +191,11 @@ router = APIRouter(prefix="/api")
 app.add_middleware(
 
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:5174", "http://127.0.0.1:5174",
+        "http://localhost:5175", "http://127.0.0.1:5175"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
 

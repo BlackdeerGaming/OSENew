@@ -19,7 +19,7 @@ print(" [DB] DynamoDB configurado para arquitectura serverless.")
 # Initialize Supabase Client (if credentials are present for hybrid operation)
 supabase_client = None
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
 if SUPABASE_URL and SUPABASE_KEY:
     try:
