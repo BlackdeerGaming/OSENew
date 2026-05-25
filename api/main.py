@@ -3926,14 +3926,10 @@ async def health_check():
 
 app.include_router(router)
 
-handler = Mangum(app)
-
 @app.get("/")
 async def root_main():
     return {"message": "OSE IA API Gateway is running"}
 
-if __name__ == '__main__':
-    uvicorn.run(app, host='0.0.0.0', port=8000)
 @app.get("/api/debug-auth")
 async def debug_auth(user: dict = Depends(get_current_user)):
     whitelist_raw = os.getenv("SUPERADMIN_EMAILS", "superadmin@ose.com,ivandchaves@gmail.com")
