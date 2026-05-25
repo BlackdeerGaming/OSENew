@@ -48,7 +48,7 @@ import jwt
 
 from pydantic import BaseModel
 
-import uvicorn
+
 
 import fitz  # PyMuPDF
 
