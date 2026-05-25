@@ -12,3 +12,5 @@ supabase
 httpx
 PyJWT
 pillow
+boto3
+mangum
