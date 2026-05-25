@@ -657,7 +657,8 @@ class PasswordResetRequest(BaseModel):
 
 class PerformResetRequest(BaseModel):
     email: str
-    code: str
+    code: Optional[str] = None
+    token: Optional[str] = None
     new_password: str
 
 
@@ -2610,7 +2611,8 @@ async def perform_reset(request: PerformResetRequest):
     
     # 1. Buscar usuario por token
     now = int(datetime.now(timezone.utc).timestamp())
-    res = supabase_client.table("profiles").select("*").eq("reset_token", request.token).execute()
+    token_to_use = request.token or request.code
+    res = supabase_client.table("profiles").select("*").eq("reset_token", token_to_use).execute()
     
     if not res.data:
         raise HTTPException(400, "El enlace de recuperación no es válido.")
@@ -3877,48 +3879,6 @@ async def signup(req: UserSignUp):
     await db.put_item("users", new_user)
     return {"status": "ok", "message": "Usuario registrado exitosamente en AWS"}
 
-@router.post("/request-reset")
-async def request_reset(req: PasswordResetRequest):
-    await cognito.forgot_password(req.email.strip().lower())
-    
-    # Enviar email personalizado vía Resend (opcional pero solicitado por diseño)
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    if resend_api_key:
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-        html_content = get_email_html(
-            title="Restablece tu contraseña",
-            greeting="Hola,",
-            message="Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en OSE IA.",
-            button_text="Cambiar contraseña",
-            button_link=f"{frontend_url}/?view=reset-password&email={req.email}",
-            extra_info="Recibirás un segundo correo oficial con el código de verificación necesario para completar este proceso.",
-            security_note="Si no solicitaste este cambio, puedes ignorar este correo de forma segura."
-        )
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
-                    json={
-                        "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>"),
-                        "to": req.email,
-                        "subject": "Restablece tu contraseña - OSE IA",
-                        "html": html_content
-                    }
-                )
-        except Exception as e:
-            print(f"Error enviando correo de recuperación: {e}")
-
-    return {"message": "Si el correo existe, se ha enviado un código de recuperación."}
-
-@router.post("/perform-reset")
-async def perform_reset(req: PerformResetRequest):
-    await cognito.confirm_forgot_password(
-        req.email.strip().lower(),
-        req.code.strip(),
-        req.new_password
-    )
-    return {"message": "Contraseña actualizada exitosamente."}
 
 @router.get("/health-check")
 async def health_check():

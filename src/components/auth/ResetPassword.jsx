@@ -3,9 +3,9 @@ import { Lock, Mail, Hash, CheckCircle2, LayoutDashboard, AlertCircle, Eye, EyeO
 import API_BASE_URL from '../../config/api';
 import StatusModal from '../ui/StatusModal';
 
-export default function ResetPassword({ initialEmail = '', onReset, onNavigateToLogin }) {
+export default function ResetPassword({ initialEmail = '', token = null, onReset, onNavigateToLogin }) {
   const [email, setEmail] = useState(initialEmail);
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(token || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -50,6 +50,7 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
         body: JSON.stringify({ 
           email: email.trim().toLowerCase(), 
           code: code.trim(),
+          token: token ? token.trim() : undefined,
           new_password: password 
         })
       });
@@ -126,23 +127,25 @@ export default function ResetPassword({ initialEmail = '', onReset, onNavigateTo
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-700">Código de Confirmación</label>
-            <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                <Hash className="h-5 w-5 text-slate-400" />
+          {!token && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-semibold text-slate-700">Código de Confirmación</label>
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                  <Hash className="h-5 w-5 text-slate-400" />
+                </div>
+                <input 
+                  type="text" 
+                  required
+                  maxLength={6}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                />
               </div>
-              <input 
-                type="text" 
-                required
-                maxLength={6}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary"
-                placeholder="123456"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-              />
             </div>
-          </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-slate-700">Nueva Contraseña</label>
