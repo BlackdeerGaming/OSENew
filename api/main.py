@@ -19,7 +19,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, Backgro
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from mangum import Mangum
+
 import httpx
 
 from .permissions import get_current_user, require_super_admin, require_entity_admin
