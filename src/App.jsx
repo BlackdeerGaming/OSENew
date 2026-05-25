@@ -289,12 +289,18 @@ function App() {
     if (actToken) {
       setActivationToken(actToken);
       setAuthView('activate');
+      setCurrentUser(null);
+      localStorage.removeItem('ose_user');
+      if (supabase) supabase.auth.signOut().catch(() => {});
     }
 
     const rstToken = params.get('reset_token');
     if (rstToken) {
       setResetToken(rstToken);
       setAuthView('reset-password');
+      setCurrentUser(null);
+      localStorage.removeItem('ose_user');
+      if (supabase) supabase.auth.signOut().catch(() => {});
     }
 
     const invId = params.get('invitation_id');
