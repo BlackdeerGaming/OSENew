@@ -765,14 +765,19 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
                 "created_at": datetime.now().isoformat()
             }
             
-        vector_store = SupabaseVectorStore(
-            embedding=embeddings,
-            client=supabase_client,
-            table_name="rag_documents",
-            query_name="match_rag_documents"
-        )
+        # Generar embeddings e insertar directamente a través del cliente de Supabase
+        texts = [doc.page_content for doc in docs]
+        embeds = await asyncio.to_thread(embeddings.embed_documents, texts)
         
-        await asyncio.to_thread(vector_store.add_documents, docs)
+        records = []
+        for doc, emb in zip(docs, embeds):
+            records.append({
+                "content": doc.page_content,
+                "metadata": doc.metadata,
+                "embedding": emb
+            })
+            
+        await asyncio.to_thread(supabase_client.table("rag_documents").insert(records).execute)
         print(f"RAG BACKGROUND: ✨ Éxito indexando {filename} ({len(docs)} chunks).")
     except Exception as e:
         print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")

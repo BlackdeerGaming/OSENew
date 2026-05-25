@@ -1,16 +1,13 @@
 fastapi
-uvicorn[standard]
 python-multipart
 pymupdf
 python-dotenv
 langchain-core
 langchain-text-splitters
-langchain-community
 langchain-openai
 pydantic
 supabase
 httpx
 PyJWT
 pillow
-boto3
 mangum
