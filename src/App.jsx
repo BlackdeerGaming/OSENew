@@ -96,8 +96,15 @@ function App() {
     try {
       if (!saved) return null;
       const user = JSON.parse(saved);
-      // 🔥 Solo restauramos si tiene un TOKEN válido. Si no, es una sesión fantasma.
       if (user && user.token) {
+        // Reject expired tokens so stale sessions never auto-restore
+        try {
+          const payload = JSON.parse(atob(user.token.split('.')[1]));
+          if (payload.exp && Date.now() / 1000 > payload.exp) {
+            localStorage.removeItem('ose_user');
+            return null;
+          }
+        } catch (_) { /* non-JWT token — allow it through */ }
         return user;
       }
       return null;
@@ -611,9 +618,11 @@ function App() {
       if (response.ok) {
         const freshUser = await response.json();
         const updatedUser = { ...currentUser, ...freshUser };
-        setCurrentUser(updatedUser);
-        localStorage.setItem('ose_user', JSON.stringify(updatedUser));
-        console.log(" [App] Perfil actualizado exitosamente.");
+        // Guard: only save if the session is still active (not logged out mid-flight)
+        if (localStorage.getItem('ose_user')) {
+          setCurrentUser(updatedUser);
+          localStorage.setItem('ose_user', JSON.stringify(updatedUser));
+        }
       }
     } catch (err) {
       console.error("Error refreshing profile:", err);
@@ -1672,7 +1681,15 @@ function App() {
   };
   
   const handleLogout = async () => {
-    // Limpiar tokens locales
+    // 1. Clear localStorage immediately so any in-flight async tasks can't re-save the session
+    localStorage.removeItem('ose_user');
+    localStorage.removeItem('invitation_context');
+
+    // 2. Sign out of Supabase BEFORE updating React state to prevent
+    //    onAuthStateChange INITIAL_SESSION from re-logging in during the re-subscribe
+    if (supabase) { try { await supabase.auth.signOut(); } catch(e) {} }
+
+    // 3. Clear React state
     setCurrentUser(null);
     setAuthView('login');
     setMainView('dashboard');
@@ -1681,11 +1698,7 @@ function App() {
     setResetToken(null);
     setSelectedDependencia("TODAS");
     setSelectedTrdIds(new Set());
-    localStorage.removeItem('ose_user');
-    localStorage.removeItem('invitation_context');
-    if (supabase) await supabase.auth.signOut();
-    
-    // Limpiar URL
+
     window.history.replaceState(null, '', window.location.pathname);
   };
 
