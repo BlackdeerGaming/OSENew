@@ -166,7 +166,7 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
        filename: file.name,
        status: 'uploading',
        ocr_progress: 0,
-       ocr_stage: 'Iniciando subida...',
+       ocr_stage: 'Procesando documento... (puede tardar 1-2 minutos)',
        file_size_bytes: file.size,
        actions: [],
        isUploading: true,
@@ -202,7 +202,26 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.detail || 'Error de lectura/procesamiento');
       }
-      await fetchImports();
+
+      // Backend now processes synchronously — use the response directly
+      const result = await response.json();
+      setImports(prev => prev.map(imp =>
+        imp.id === tempId ? {
+          ...imp,
+          id: result.import_id,
+          filename: result.filename || file.name,
+          status: result.status || 'pending_verification',
+          actions: result.actions || [],
+          ai_message: result.message || null,
+          ocr_progress: result.ocr_progress ?? 100,
+          ocr_stage: result.ocr_stage || 'Listo para verificación',
+          ocr_total_pages: result.total_pages || 0,
+          file_size_bytes: result.file_size_bytes || file.size,
+          entidad_id: result.entidad_id,
+          isUploading: false,
+          ocr_engaged: true,
+        } : imp
+      ));
     } catch (err) {
       setImports(prev => prev.map(imp => imp.id === tempId ? { ...imp, status: 'failed', error_summary: err.message, isUploading: false } : imp));
     }

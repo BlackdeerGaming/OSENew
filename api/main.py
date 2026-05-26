@@ -866,43 +866,13 @@ async def _update_ocr_progress(
     error_pages: list,
     extra: dict = None
 ):
-    """Actualiza el progreso del OCR en Supabase sin bloquear el event loop."""
-    def _sync_update():
-        try:
-            row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-            if not row.data:
-                return
-            meta = row.data[0]["metadata"] or {}
-            meta.update({
-                "status": "processing",
-                "ocr_stage": stage,
-                "ocr_progress": progress,
-                "ocr_current_page": current_page,
-                "ocr_total_pages": total_pages,
-                "ocr_pages_ok": pages_ok,
-                "ocr_pages_error": pages_error,
-                "ocr_error_pages": error_pages,
-            })
-            if extra:
-                meta.update(extra)
-            supabase_client.table("rag_documents").update({"metadata": meta}).eq("id", doc_id).execute()
-        except Exception as e:
-            print(f"[OCR PROGRESS] Error actualizando progreso sync: {e}")
-
-    try:
-        await asyncio.to_thread(_sync_update)
-    except Exception as e:
-        print(f"[OCR PROGRESS] Error en thread de progreso: {e}")
+    """Log-only progress tracker — pipeline is synchronous, no polling needed."""
+    status = (extra or {}).get("status", "processing_ocr")
+    print(f"[OCR] {filename}: {stage} ({progress}%) page {current_page}/{total_pages} [{status}]")
 
 
 def _is_cancelled(doc_id: str) -> bool:
-    """Verifica si el documento fue marcado como cancelado en la DB."""
-    try:
-        row = supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-        if row.data:
-            return row.data[0]["metadata"].get("status") == "cancelled"
-    except:
-        pass
+    """Cancellation not supported in synchronous mode."""
     return False
 
 
@@ -958,19 +928,8 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
     print(f"--- Iniciando OCR Avanzado para: {filename} ---")
     
     file_url = None
-    entidad_id = None
+    entidad_id = log_eid  # passed directly — no Supabase lookup needed
     file_size_bytes = len(content)
-    try:
-        def _get_init_meta():
-            return supabase_client.table("rag_documents").select("metadata").eq("id", doc_id).execute()
-            
-        res_init = await asyncio.to_thread(_get_init_meta)
-        if res_init.data:
-            meta_init = res_init.data[0]["metadata"]
-            file_url = meta_init.get("file_url")
-            entidad_id = meta_init.get("entidad_id")
-    except Exception as e:
-        print(f"[OCR] Error obteniendo metadata inicial: {e}")
 
     full_text = ""
     pages_results = {}
@@ -1116,21 +1075,18 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
                 "user_id": user_id
             }
             
-            def _final_save():
-                supabase_client.table("rag_documents").update({
-                    "content": full_text,
-                    "metadata": final_meta
-                }).eq("id", doc_id).execute()
-                
-                # Log de actividad final con usuario real (Aislado si es superadmin)
-                add_activity_log(
-                    f"OCR Finalizado - Pendiente de Verificación: {filename}",
-                    entidad_id=log_eid or entidad_id,
-                    user_name=user_name,
-                    user_id=user_id
-                )
-
-            await asyncio.to_thread(_final_save)
+            pk_val = f"ENTITY#{log_eid or entidad_id or 'GLOBAL'}"
+            sk_val = f"IMPORT#{doc_id}"
+            await db.update_item("RagDocuments", pk_val, sk_val, {
+                "content": full_text,
+                "metadata": final_meta
+            })
+            add_activity_log(
+                f"OCR Finalizado - Pendiente de Verificación: {filename}",
+                entidad_id=log_eid or entidad_id,
+                user_name=user_name,
+                user_id=user_id
+            )
         else:
             raise Exception("No se pudo extraer texto de ninguna página.")
 
@@ -1138,19 +1094,28 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
 
     except Exception as e:
         print(f"[OCR FATAL] {str(e)}")
-        await _update_ocr_progress(
-            doc_id, filename, stage=f"Error: {str(e)[:100]}",
-            progress=100, current_page=total_pages, total_pages=total_pages,
-            pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
-            extra={"status": "failed", "error_summary": str(e)}
-        )
+        try:
+            pk_val = f"ENTITY#{log_eid or entidad_id or 'GLOBAL'}"
+            sk_val = f"IMPORT#{doc_id}"
+            await db.update_item("RagDocuments", pk_val, sk_val, {
+                "metadata": {
+                    "status": "failed",
+                    "ocr_stage": f"Error: {str(e)[:100]}",
+                    "ocr_progress": 100,
+                    "error_summary": str(e),
+                    "entidad_id": log_eid or entidad_id,
+                    "source": filename,
+                }
+            })
+        except Exception as save_err:
+            print(f"[OCR FATAL] No se pudo guardar error en DynamoDB: {save_err}")
         add_activity_log(
             f"Fallo en Importación TRD: {filename} - {str(e)[:50]}",
             entidad_id=log_eid or entidad_id,
             user_name=user_name,
             user_id=user_id
         )
-#  Endpoints 
+#  Endpoints
 
 
 
@@ -1916,59 +1881,89 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
 
 
 @router.post("/analyze-trd")
-async def analyze_trd(background_tasks: BackgroundTasks, file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
-    """Sube un documento TRD y arranca el proceso de análisis neural en segundo plano."""
+async def analyze_trd(file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
+    """Sube un documento TRD, procesa OCR + análisis IA sincrónicamente y retorna el resultado completo."""
     print(f" POST /analyze-trd - File: {file.filename}")
-    
+
     content = await file.read()
     file_size_bytes = len(content)
     file_hash = hashlib.sha256(content).hexdigest()
-    
+
     doc_id = str(uuid.uuid4())
     entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
-    pk_val = f"ENTITY#{entidad_actual}" if entidad_actual else "ENTITY#GLOBAL"
+    user_id = user.get("user_id")
+    user_name = user.get("nombre", "Sistema")
+    pk_val = f"ENTITY#{entidad_actual}"
 
-    # --- Deduplication check por hash y entidad (AWS/DynamoDB) ---
-
+    # Deduplication: reuse an active DynamoDB session for the same file+entity
     try:
-        items = await db.query_by_entity("RagDocuments", pk_val)
-        active_session = None
-        for item in (items or []):
+        existing = await db.query_by_entity("RagDocuments", pk_val, sk_prefix="IMPORT#")
+        for item in (existing or []):
             meta = item.get("metadata", {})
-            if meta.get("file_hash") == file_hash and meta.get("status") in ("analyzing", "processing_ocr", "pending_verification"):
-                active_session = item
-                break
-        
-        if active_session:
-            print(f" [INFO] Reusando sesión activa DynamoDB: {active_session['id']} para hash {file_hash}")
-            return {"import_id": active_session["id"], "status": active_session.get("metadata", {}).get("status", "analyzing")}
+            if meta.get("file_hash") == file_hash and meta.get("status") in ("processing_ocr", "pending_verification"):
+                print(f" [INFO] Reusando sesión activa DynamoDB: {item['id']}")
+                return {
+                    "import_id": item["id"],
+                    "status": meta.get("status"),
+                    "filename": file.filename,
+                    "file_size_bytes": file_size_bytes,
+                    "actions": meta.get("actions", []),
+                    "message": meta.get("message", ""),
+                    "ocr_progress": meta.get("ocr_progress", 0),
+                    "ocr_stage": meta.get("ocr_stage", ""),
+                    "entidad_id": entidad_actual,
+                }
     except Exception as dup_err:
         print(f" Error en chequeo de duplicados DynamoDB: {dup_err}")
 
-    # 1. Crear registro inicial en RagDocuments
-    item = {
+    # Create initial record in DynamoDB
+    await db.put_item("RagDocuments", {
         "PK": pk_val,
         "SK": f"IMPORT#{doc_id}",
         "id": doc_id,
         "filename": file.filename,
+        "content": "",
+        "created_at": datetime.now().isoformat(),
         "metadata": {
             "source": file.filename,
-            "status": "analyzing",
+            "status": "processing_ocr",
             "type": "trd_import_session",
             "entidad_id": entidad_actual,
-            "user_id": user.get("user_id"),
+            "user_id": user_id,
             "file_size_bytes": file_size_bytes,
             "file_hash": file_hash,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            "ocr_stage": "Iniciando procesamiento...",
+            "ocr_progress": 0,
         }
-    }
-    
-    await db.put_item("RagDocuments", item)
-    
-    # 2. Arrancar tarea de fondo
-    background_tasks.add_task(process_ocr_task, doc_id, content, file.filename, entidad_actual, user.get("user_id"))
-    
-    return {"import_id": doc_id, "status": "analyzing"}
+    })
+
+    # Run the full OCR + AI pipeline synchronously (Vercel kills background tasks)
+    await process_ocr_task(doc_id, content, file.filename, user_name, user_id, entidad_actual)
+
+    # Fetch the completed result from DynamoDB and return it directly
+    try:
+        result_item = await db.get_item("RagDocuments", pk_val, f"IMPORT#{doc_id}")
+        if result_item:
+            meta = result_item.get("metadata", {})
+            return {
+                "import_id": doc_id,
+                "status": meta.get("status", "pending_verification"),
+                "filename": file.filename,
+                "file_size_bytes": file_size_bytes,
+                "actions": meta.get("actions", []),
+                "message": meta.get("message", ""),
+                "ocr_progress": meta.get("ocr_progress", 100),
+                "ocr_stage": meta.get("ocr_stage", "Listo para verificación"),
+                "entidad_id": entidad_actual,
+                "pages_ok": meta.get("ocr_pages_ok", 0),
+                "total_pages": meta.get("ocr_total_pages", 0),
+            }
+    except Exception as e:
+        print(f"[ANALYZE] Error obteniendo resultado final: {e}")
+
+    return {"import_id": doc_id, "status": "pending_verification", "filename": file.filename,
+            "file_size_bytes": file_size_bytes, "actions": [], "message": "", "entidad_id": entidad_actual}
 
 
 @router.post("/upload")
@@ -2131,75 +2126,53 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
 @router.get("/rag-documents")
 async def get_rag_documents(entidad_id: str | None = None, type: str | None = None, user: dict = Depends(get_current_user)):
-    """
-    Lista los documentos en el RAG. 
-    Soporta filtrado por entidad y por tipo (ej: 'temp_trd_session').
-    """
-    if not supabase_client: raise HTTPException(503)
-    
+    """Lista los documentos de importación almacenados en DynamoDB."""
     try:
-        query = supabase_client.table("rag_documents").select("id, metadata, created_at, content")
-        
-        # 1. Filtro de Seguridad por Entidad
         allowed_entities = user.get("allowed_entities", [])
         if user.get("role") == "superadmin":
             entidad_final = entidad_id if entidad_id and entidad_id != "null" else user.get("entity_id")
         else:
-            # Admin/Usuario: si pide una específica, verificar permiso. Si no pide, usar la del contexto.
             if entidad_id:
                 entidad_final = entidad_id if entidad_id in allowed_entities else user.get("entity_id")
             else:
                 entidad_final = user.get("entity_id")
-        
-        if entidad_final:
-            query = query.filter("metadata->>entidad_id", "eq", entidad_final)
 
-        # 2. Filtro por Tipo (Opcional)
+        pk_val = f"ENTITY#{entidad_final}" if entidad_final else None
+        if not pk_val:
+            return []
+
+        items = await db.query_by_entity("RagDocuments", pk_val, sk_prefix="IMPORT#")
+
         if type:
-            query = query.filter("metadata->>type", "eq", type)
-        else:
-            # Si no hay tipo específico, excluimos los chunks de RAG internos si queremos una lista de 'archivos'
-            # Pero para TRD Import View, a veces queremos sesiones específicas.
-            # Por ahora, dejamos que el frontend decida o devolvemos todo lo de la entidad.
-            pass
+            items = [i for i in items if (i.get("metadata") or {}).get("type") == type]
 
-        res = query.execute()
-        if not res.data: return []
+        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
-        # 3. Ordenar por creación descendente para ver lo más reciente primero
-        res.data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-
-        # Agrupar por source para evitar duplicados masivos. 
-        # Prioridad absoluta a las sesiones de importación (TRD) sobre los chunks RAG.
         processed_data = []
         sources_handled = set()
-        
-        # 1. Primero recolectamos todas las sesiones activas/pendientes (Solo la más reciente por fuente)
-        for item in res.data:
-            meta = item.get("metadata", {})
-            doc_type = meta.get("type")
-            source = meta.get("source") or meta.get("filename")
-            
-            if doc_type in ('temp_trd_session', 'trd_upload'):
-                if source and source in sources_handled:
-                    continue # Ya incluimos la versión más reciente (gracias al sort previo)
-                
-                processed_data.append(item)
-                if source: sources_handled.add(source)
 
-        # 2. Luego recolectamos los archivos RAG generales que no tengan una sesión activa
-        for item in res.data:
-            meta = item.get("metadata", {})
+        for item in items:
+            meta = item.get("metadata") or {}
             doc_type = meta.get("type")
             source = meta.get("source") or meta.get("filename")
-            
-            if doc_type not in ('temp_trd_session', 'trd_upload'):
+            if doc_type in ("temp_trd_session", "trd_upload"):
+                if source and source in sources_handled:
+                    continue
+                processed_data.append(item)
+                if source:
+                    sources_handled.add(source)
+
+        for item in items:
+            meta = item.get("metadata") or {}
+            doc_type = meta.get("type")
+            source = meta.get("source") or meta.get("filename")
+            if doc_type not in ("temp_trd_session", "trd_upload"):
                 if not source or source not in sources_handled:
                     processed_data.append(item)
-                    if source: sources_handled.add(source)
+                    if source:
+                        sources_handled.add(source)
 
         return processed_data
-
 
     except Exception as e:
         print(f" Error listando documentos RAG: {str(e)}")
@@ -2209,89 +2182,30 @@ async def get_rag_documents(entidad_id: str | None = None, type: str | None = No
 
 @router.put("/rag-documents/{doc_id}")
 async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(get_current_user)):
-    """
-    Actualiza el estado o metadata de un documento RAG o sesión de importación.
-    Si se marca como 'success', se realiza una verificación de integridad.
-    """
-    if not supabase_client: raise HTTPException(503)
-    
-    # 1. Buscar documento/sesión
-    res = supabase_client.table("rag_documents").select("id, metadata").eq("id", doc_id).execute()
-    if not res.data:
-        raise HTTPException(404, "Documento no encontrado")
-        
-    doc = res.data[0]
-    meta = doc.get("metadata") or {}
-    source = meta.get("source")
-    entidad_id = meta.get("entidad_id")
-    
-    # 2. Validar permisos: Superadmin puede todo. Admin solo su entidad.
-    user_role = user.get("role", "user")
-    user_entity = user.get("entity_id")
-    
-    if user_role != SUPERADMIN_ROLE:
-        if entidad_id and str(entidad_id) != str(user_entity):
-            raise HTTPException(403, "No tienes permiso para modificar documentos de otra entidad")
-
-    # 3. Aplicar cambios de estado y metadata
-    new_status = payload.get("status")
-    incoming_meta = payload.get("metadata", {})
-    
-    # Combinar metadata existente con la nueva (si viene)
-    final_meta = {**meta, **incoming_meta}
-    
-    if new_status:
-        final_meta["status"] = new_status
-        if new_status == "success":
-            final_meta["type"] = "trd_upload"
-            final_meta["integrated_at"] = datetime.now().isoformat()
-            final_meta["integrated_by"] = user.get("nombre", "Usuario")
-            
-            # --- VERIFICACIÓN DE INTEGRIDAD ---
-            # Verificamos si realmente hay datos en las tablas TRD para esta entidad
-            try:
-                # Comprobamos si hay registros en trd_records o dependencias (mínimo indicio de éxito)
-                trd_check = supabase_client.table("trd_records").select("id", count="exact").eq("entidad_id", entidad_id).limit(1).execute()
-                if not trd_check.data:
-                    # Si no hay registros en trd_records, comprobamos dependencias
-                    dep_check = supabase_client.table("dependencias").select("id").eq("entidad_id", entidad_id).limit(1).execute()
-                    if not dep_check.data:
-                        print(f" [WARN] Verificación fallida para {doc_id}: No se encontraron datos integrados.")
-                        # No bloqueamos el éxito, pero guardamos la advertencia
-                        final_meta["verification_warning"] = "No se detectaron registros nuevos en la DB."
-
-            except Exception as v_err:
-                print(f" [ERR] Fallo en verificación de integración: {v_err}")
-        elif new_status == "pending_verification":
-            final_meta["type"] = "temp_trd_session"
-
-    # Asegurar que no perdemos la entidad original
-    if entidad_id and not final_meta.get("entidad_id"):
-        final_meta["entidad_id"] = entidad_id
-
-    # 4. Actualizar metadata (y opcionalmente otros campos si vienen en el payload)
-    update_data = {"metadata": final_meta}
-    if "content" in payload: update_data["content"] = payload["content"]
-
+    """Actualiza el estado o metadata de un documento de importación en DynamoDB."""
     try:
-        # Actualización principal
-        supabase_client.table("rag_documents").update(update_data).eq("id", doc_id).execute()
-        
-        # Si tiene 'source', actualizamos todos los chunks relacionados para mantener consistencia
-        if source:
-            # Buscamos todos los chunks por source
-            supabase_client.table("rag_documents").update({"metadata": final_meta}).eq("metadata->>source", source).execute()
-            
-        return {"status": "success", "new_status": final_meta.get("status")}
-    except Exception as e:
-        print(f" [ERR] update_rag_document: {e}")
-        raise HTTPException(500, f"Error actualizando documento: {str(e)}")
+        table = db.get_table("RagDocuments")
+        scan_resp = table.scan(FilterExpression=Attr("id").eq(doc_id))
+        items_found = scan_resp.get("Items", [])
+        if not items_found:
+            raise HTTPException(404, "Documento no encontrado")
 
-        meta = item.get("metadata", {})
+        item = items_found[0]
+        pk = item["PK"]
+        sk = item["SK"]
+        meta = item.get("metadata") or {}
+        entidad_id = meta.get("entidad_id")
+
+        user_role = user.get("role", "user")
+        user_entity = user.get("entity_id")
+        if user_role != SUPERADMIN_ROLE:
+            if entidad_id and str(entidad_id) != str(user_entity):
+                raise HTTPException(403, "No tienes permiso para modificar documentos de otra entidad")
+
         new_status = payload.get("status")
-        incoming_meta = payload.get("metadata", {})
-        
+        incoming_meta = payload.get("metadata") or {}
         final_meta = {**meta, **incoming_meta}
+
         if new_status:
             final_meta["status"] = new_status
             if new_status == "success":
@@ -2299,62 +2213,59 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
                 final_meta["integrated_at"] = datetime.now().isoformat()
                 final_meta["integrated_by"] = user.get("nombre", "Usuario")
             elif new_status == "pending_verification":
-                final_meta["type"] = "trd_import_session"
+                final_meta["type"] = "temp_trd_session"
 
-        # 2. Actualizar metadata en DynamoDB
-        await db.update_item("RagDocuments", pk, current_sk, {"metadata": final_meta})
-        
+        if entidad_id and not final_meta.get("entidad_id"):
+            final_meta["entidad_id"] = entidad_id
+
+        update_fields = {"metadata": final_meta}
+        if "content" in payload:
+            update_fields["content"] = payload["content"]
+
+        await db.update_item("RagDocuments", pk, sk, update_fields)
         return {"status": "success", "new_status": final_meta.get("status")}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f" Error actualizando documento RAG (AWS): {e}")
+        print(f" Error actualizando documento RAG: {e}")
         raise HTTPException(500, str(e))
 @router.delete("/rag-documents/{doc_id}")
 async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user)):
-    """Elimina un documento, sus vectores asociados y el archivo físico en storage."""
-    if not supabase_client: raise HTTPException(503)
-    
-    # 1. Buscar el documento principal para obtener metadata
-    res = supabase_client.table("rag_documents").select("id, metadata").eq("id", doc_id).execute()
-    if not res.data:
-        # Quizás ya se borró
-        return {"status": "success", "message": "Documento ya eliminado."}
-        
-    meta = res.data[0].get("metadata", {})
-    entidad_id = meta.get("entidad_id")
-    source = meta.get("source")
-    file_url = meta.get("file_url")
-    
-    # 2. Validar permisos
-    user_role = user.get("role", "user")
-    user_entity = user.get("entity_id")
-    
-    if user_role != SUPERADMIN_ROLE:
-        if entidad_id and str(entidad_id) != str(user_entity):
-            raise HTTPException(403, "No tienes permiso para eliminar documentos de otra entidad")
-
+    """Elimina un documento de importación de DynamoDB (con borrado en cascada por source)."""
     try:
-        # 3. Eliminar archivo de Storage si existe
-        if file_url and "rag-uploads/" in file_url:
-            try:
-                filename_storage = file_url.split("rag-uploads/")[-1]
-                supabase_client.storage.from_("rag-uploads").remove([filename_storage])
-            except Exception as st_err:
-                print(f" [WARN] No se pudo borrar de storage: {st_err}")
+        table = db.get_table("RagDocuments")
+        scan_resp = table.scan(FilterExpression=Attr("id").eq(doc_id))
+        items_found = scan_resp.get("Items", [])
+        if not items_found:
+            return {"status": "success", "message": "Documento ya eliminado."}
 
-        # 4. Borrado en cascada en la DB
-        if source:
-            # Borrar todos los chunks relacionados por source y entidad
-            if entidad_id:
-                supabase_client.table("rag_documents").delete().eq("metadata->>source", source).eq("metadata->>entidad_id", entidad_id).execute()
-            else:
-                supabase_client.table("rag_documents").delete().eq("metadata->>source", source).execute()
+        item = items_found[0]
+        meta = item.get("metadata") or {}
+        entidad_id = meta.get("entidad_id")
+        source = meta.get("source")
+
+        user_role = user.get("role", "user")
+        user_entity = user.get("entity_id")
+        if user_role != SUPERADMIN_ROLE:
+            if entidad_id and str(entidad_id) != str(user_entity):
+                raise HTTPException(403, "No tienes permiso para eliminar documentos de otra entidad")
+
+        if source and entidad_id:
+            pk_val = f"ENTITY#{entidad_id}"
+            all_items = await db.query_by_entity("RagDocuments", pk_val, sk_prefix="IMPORT#")
+            related = [i for i in all_items if (i.get("metadata") or {}).get("source") == source]
+            for rel in related:
+                table.delete_item(Key={"PK": rel["PK"], "SK": rel["SK"]})
         else:
-            # Borrado simple por ID
-            supabase_client.table("rag_documents").delete().eq("id", doc_id).execute()
-            
+            table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+
         return {"status": "success", "message": f"Documento {source or doc_id} eliminado correctamente."}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f" [ERR] delete_rag_document: {e}")
+        print(f" Error eliminando documento RAG: {e}")
         raise HTTPException(500, f"Error al eliminar: {str(e)}")
 
 

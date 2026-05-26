@@ -1,6 +1,11 @@
 {
   "version": 2,
   "trailingSlash": false,
+  "functions": {
+    "api/main.py": {
+      "maxDuration": 300
+    }
+  },
   "headers": [
     {
       "source": "/api/(.*)",
