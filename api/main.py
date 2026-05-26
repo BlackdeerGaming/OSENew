@@ -578,6 +578,14 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Credenciales inválidas o error de sistema")
 
 
+class UserSignUp(BaseModel):
+    nombre: str
+    apellido: Optional[str] = None
+    username: str
+    email: str
+    password: str
+    phone: Optional[str] = None
+
 @router.post("/auth/signup")
 async def signup(req: UserSignUp):
     """Crea un nuevo usuario en Cognito y DynamoDB, luego retorna un token de sesión."""
@@ -676,15 +684,6 @@ class UserUpdate(BaseModel):
     username: str | None = None
     celular: str | None = None
 
-
-
-class UserSignUp(BaseModel):
-    nombre: str
-    apellido: Optional[str] = None
-    username: str
-    email: str
-    password: str
-    phone: Optional[str] = None
 
 class UserActivate(BaseModel):
     token: str
