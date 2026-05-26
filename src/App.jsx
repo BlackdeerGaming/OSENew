@@ -107,6 +107,7 @@ function App() {
   }); 
   const [activationToken, setActivationToken] = useState(null);
   const [resetToken, setResetToken] = useState(null);
+  const [resetEmail, setResetEmail] = useState('');
   const [modalStatus, setModalStatus] = useState({ isOpen: false, type: 'loading', message: '' });
   const [entidadLogoBase64, setEntidadLogoBase64] = useState(null);
   const [selectedEntityId, setSelectedEntityId] = useState(() => {
@@ -1838,17 +1839,17 @@ function App() {
           />
         )}
         {authView === 'forgot-password' && (
-          <ForgotPassword 
-            onNavigateToLogin={() => setAuthView('login')} 
-            onIssueToken={() => setAuthView('reset-password')}
+          <ForgotPassword
+            onNavigateToLogin={() => setAuthView('login')}
+            onIssueToken={(email) => { setResetEmail(email || ''); setAuthView('reset-password'); }}
           />
         )}
         {authView === 'reset-password' && (
-          <ResetPassword 
-            initialEmail={currentUser?.email || ""}
+          <ResetPassword
+            initialEmail={resetEmail || currentUser?.email || ""}
             token={resetToken}
-            onReset={handleResetPassword} 
-            onNavigateToLogin={() => setAuthView('login')} 
+            onReset={handleResetPassword}
+            onNavigateToLogin={() => setAuthView('login')}
           />
         )}
       </div>
