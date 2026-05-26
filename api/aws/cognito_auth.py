@@ -170,4 +170,27 @@ class CognitoManager:
             print(f" [COGNITO] Error en limpieza forzada para {username}: {e}")
             return False
 
+    async def admin_set_user_password(self, username: str, password: str):
+        """Admin establece una contraseña permanente para el usuario."""
+        try:
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                Password=password,
+                Permanent=True
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def admin_create_and_confirm(self, email: str, password: str, nombre: str, apellido: str = ""):
+        """Crea y confirma un usuario en Cognito para el flujo de activación.
+        Si ya existe, actualiza su contraseña."""
+        try:
+            await self.sign_up(email, password, email, nombre, apellido)
+        except HTTPException as e:
+            if "UsernameExistsException" in str(e.detail):
+                await self.admin_set_user_password(email, password)
+            else:
+                raise e
+
 cognito = CognitoManager()

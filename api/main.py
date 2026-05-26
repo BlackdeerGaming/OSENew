@@ -188,19 +188,21 @@ router = APIRouter(prefix="/api")
 
 
 
-app.add_middleware(
+_cors_origins = [
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:5174", "http://127.0.0.1:5174",
+    "http://localhost:5175", "http://127.0.0.1:5175",
+]
+_extra_origin = os.getenv("FRONTEND_URL", "")
+if _extra_origin and _extra_origin not in _cors_origins:
+    _cors_origins.append(_extra_origin)
 
+app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:5174", "http://127.0.0.1:5174",
-        "http://localhost:5175", "http://127.0.0.1:5175"
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
-
     allow_headers=["*"],
-
 )
 
 
@@ -487,6 +489,9 @@ async def login(req: LoginRequest):
     """
     identifier = req.identifier.strip().lower()
     
+    # DEBUG: verificar que las variables de Cognito estén cargadas
+    print(f"DEBUG COGNITO CONFIG: client_id={cognito.client_id!r}, pool_id={cognito.user_pool_id!r}, has_secret={bool(cognito.client_secret)}")
+    
     try:
         # 1. Autenticar en Cognito
         auth_result = await cognito.authenticate(identifier, req.password)
@@ -572,6 +577,73 @@ async def login(req: LoginRequest):
         print(f"ERROR LOGIN: {str(e)}")
         raise HTTPException(status_code=401, detail="Credenciales inválidas o error de sistema")
 
+
+@router.post("/auth/signup")
+async def signup(req: UserSignUp):
+    """Crea un nuevo usuario en Cognito y DynamoDB, luego retorna un token de sesión."""
+    email = req.email.strip().lower()
+    username = (req.username or "").strip() or email.split('@')[0]
+
+    # 1. Verificar si el correo ya existe en DynamoDB
+    all_users = await db.scan_table("users")
+    if any(u.get("email", "").lower().strip() == email for u in all_users):
+        raise HTTPException(status_code=409, detail="Ya existe una cuenta registrada con este correo. Por favor inicia sesión.")
+
+    # 2. Crear en Cognito
+    try:
+        await cognito.sign_up(
+            username=email,
+            password=req.password,
+            email=email,
+            name=req.nombre,
+            family_name=req.apellido or "",
+            phone=req.phone
+        )
+    except HTTPException as e:
+        detail = str(e.detail)
+        if "UsernameExistsException" in detail:
+            raise HTTPException(status_code=409, detail="Ya existe una cuenta registrada con este correo. Por favor inicia sesión.")
+        if "InvalidPasswordException" in detail or "PasswordPolicyViolationException" in detail:
+            raise HTTPException(status_code=400, detail="La contraseña no cumple los requisitos: mínimo 8 caracteres, incluyendo mayúsculas, minúsculas, números y caracteres especiales.")
+        raise HTTPException(status_code=400, detail=f"Error al crear la cuenta: {detail}")
+
+    # 3. Crear perfil en DynamoDB
+    user_id = str(uuid.uuid4())
+    item = {
+        "PK": f"USER#{user_id}",
+        "SK": "PROFILE",
+        "id": user_id,
+        "nombre": req.nombre,
+        "apellido": req.apellido or "",
+        "email": email,
+        "username": username,
+        "role": DEFAULT_ROLE,
+        "perfil": DEFAULT_ROLE,
+        "isActivated": True,
+        "created_at": datetime.now().isoformat(),
+        "iaDisponible": False
+    }
+    await db.put_item("users", item)
+
+    # 4. Auto-login para obtener el token de sesión
+    token = None
+    try:
+        auth_result = await cognito.authenticate(email, req.password)
+        token = auth_result.get("IdToken")
+    except Exception as auth_err:
+        print(f"[SIGNUP] Auto-login fallido tras registro: {auth_err}")
+
+    user_data = {
+        "id": user_id,
+        "nombre": req.nombre,
+        "apellido": req.apellido or "",
+        "email": email,
+        "role": DEFAULT_ROLE,
+        "entidadId": None,
+        "entidadIds": [],
+        "iaDisponible": False
+    }
+    return {"user": user_data, "token": token, "entities": []}
 
 
 class GoogleAuthRequest(BaseModel):
@@ -1584,6 +1656,38 @@ async def check_invitation_public(token: str):
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/invitations/{invite_id}/public")
+async def get_invitation_public_by_id(invite_id: str):
+    """Verifica una invitación por ID para el landing page (sin autenticación)."""
+    try:
+        invite = await db.get_item("invitations", f"INVITE#{invite_id}", "METADATA")
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invitación no encontrada")
+
+        email = invite.get("email", "").lower().strip()
+        all_users = await db.scan_table("users")
+        user_exists = any(u.get("email", "").lower().strip() == email for u in all_users)
+
+        entity_name = invite.get("entity_name")
+        if not entity_name:
+            entity = await db.get_item("entities", f"ENTITY#{invite.get('entity_id')}", "METADATA")
+            entity_name = (entity.get("razonSocial") or entity.get("nombre") if entity else None) or "Entidad OSE"
+
+        return {
+            "id": invite.get("id"),
+            "email": invite.get("email"),
+            "entity_id": invite.get("entity_id"),
+            "entity_name": entity_name,
+            "role": invite.get("role", "usuario"),
+            "status": invite.get("status"),
+            "user_exists": user_exists
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/invitations/{invite_id}/respond")
 async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = Depends(get_current_user)):
     try:
@@ -1696,34 +1800,59 @@ async def send_activation(req: EmailActivationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/activation-info/{token}")
+async def get_activation_info(token: str):
+    """Obtiene los datos del usuario para la página de activación (DynamoDB)."""
+    try:
+        all_users = await db.scan_table("users")
+        target_user = next((u for u in all_users if u.get("activationToken") == token), None)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="El código de activación no es válido o ya ha sido utilizado.")
+        return {
+            "email": target_user.get("email", ""),
+            "nombre": target_user.get("nombre", ""),
+            "apellido": target_user.get("apellido", "")
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/activate")
 async def activate_user(req: UserActivate):
-    """Activa un usuario mediante token."""
+    """Activa un usuario: crea su cuenta en Cognito y la marca como activada en DynamoDB."""
     try:
-        # En esta arquitectura simplificada, buscamos el usuario con ese token
         all_users = await db.scan_table("users")
-        target_user = None
-        for u in all_users:
-            if u.get("activationToken") == req.token:
-                target_user = u
-                break
-        
+        target_user = next((u for u in all_users if u.get("activationToken") == req.token), None)
+
         if not target_user:
-            raise HTTPException(status_code=404, detail="Token de activación inválido o expirado")
-            
-        # 1. Crear usuario en Cognito con la password dada
-        # (O si ya existe, habilitarlo)
-        
-        # 2. Actualizar en DynamoDB
-        pk = target_user["PK"]
-        sk = "PROFILE"
-        await db.update_item("users", pk, sk, {
+            raise HTTPException(status_code=404, detail="Token de activación inválido o expirado.")
+
+        email = target_user.get("email", "").strip().lower()
+        nombre = target_user.get("nombre", "Usuario")
+        apellido = target_user.get("apellido", "")
+
+        if not email:
+            raise HTTPException(status_code=400, detail="No se encontró un correo asociado a este token.")
+
+        # Crear / confirmar usuario en Cognito con la contraseña elegida
+        try:
+            await cognito.admin_create_and_confirm(email, req.password, nombre, apellido)
+        except HTTPException as ce:
+            detail = str(ce.detail)
+            if "InvalidPasswordException" in detail or "PasswordPolicyViolationException" in detail:
+                raise HTTPException(status_code=400, detail="La contraseña no cumple los requisitos de seguridad de Cognito.")
+            print(f"[ACTIVATE] Advertencia Cognito (no fatal): {detail}")
+
+        # Marcar como activado en DynamoDB
+        await db.update_item("users", target_user["PK"], "PROFILE", {
             "isActivated": True,
             "activationToken": None,
             "updated_at": datetime.now().isoformat()
         })
-        
-        return {"status": "ok", "message": "Cuenta activada exitosamente"}
+
+        return {"status": "ok", "message": "Cuenta activada exitosamente. Ya puedes iniciar sesión."}
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -2545,91 +2674,40 @@ async def send_activation(request: ActivationEmailRequest):
 
 @router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
-    """Genera un token de reseteo y envÃƒÂ­a el correo"""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    target_email = request.email.strip().lower()
-    
-    # 1. Verificar si el usuario existe
-    user_res = supabase_client.table("profiles").select("id, nombre").eq("email", target_email).execute()
-    if not user_res.data:
-        # Por seguridad no revelamos si existe o no, pero retornamos ÃƒÂ©xito simulado si no existe
-        return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
-    
-    user = user_res.data[0]
-    token = str(uuid.uuid4())
-    expiry = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
-    
-    # 2. Guardar token en DB
-    supabase_client.table("profiles").update({
-        "reset_token": token,
-        "reset_token_expiry": expiry
-    }).eq("id", user["id"]).execute()
-    
-    # 3. Enviar correo
-    if RESEND_API_KEY:
-        reset_link = f"https://ose-new.vercel.app/?reset_token={token}"
-        html_content = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #00bfa5;">Recuperación de Contraseña</h2>
-                <p>Hola {user['nombre']},</p>
-                <p>Has solicitado restablecer tu contraseña en OSE IA. Haz clic en el siguiente botón para continuar:</p>
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="{reset_link}" style="background-color: #00bfa5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer Contraseña</a>
-                </div>
-                <p style="font-size: 12px; color: #777;">Si no solicitaste este cambio, puedes ignorar este correo. El enlace caducará en 1 hora.</p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 10px; color: #aaa; text-align: center;">OSE IA • Gestión Documental Inteligente</p>
-            </div>
-        </body>
-        </html>
-        """
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "from": RESEND_FROM_EMAIL,
-                        "to": [target_email],
-                        "subject": "Recuperar contrasena - OSE IA",
-                        "html": html_content
-                    }
-                )
-                print(f"DEBUG Email Reset status: {res.status_code}")
-        except Exception as e:
-            print(f"Error enviando correo de reset: {e}")
-
-    return {"status": "ok", "message": "Si el correo está registrado, recibirás un enlace de recuperación."}
+    """Inicia el flujo de recuperación de contraseña vía Cognito (envía código al correo)."""
+    email = request.email.strip().lower()
+    try:
+        await cognito.forgot_password(email)
+    except Exception as e:
+        print(f"[RESET] Cognito forgot_password: {e}")
+    # Por seguridad, siempre respondemos con éxito independientemente de si el email existe
+    return {"status": "ok", "message": "Si el correo está registrado, recibirás un código de verificación para restablecer tu contraseña."}
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
-    """Valida el token y actualiza la contraseÃƒÂ±a"""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    # 1. Buscar usuario por token
-    now = int(datetime.now(timezone.utc).timestamp())
-    token_to_use = request.token or request.code
-    res = supabase_client.table("profiles").select("*").eq("reset_token", token_to_use).execute()
-    
-    if not res.data:
-        raise HTTPException(400, "El enlace de recuperación no es válido.")
-    
-    user = res.data[0]
-    
-    # 2. Verificar expiraciÃƒÂ³n
-    if user.get("reset_token_expiry") and user["reset_token_expiry"] < now:
-        raise HTTPException(400, "El enlace de recuperación ha expirado.")
-        
-    # 3. Actualizar contraseÃƒÂ±a y limpiar token
-    supabase_client.table("profiles").update({
-        "password": request.new_password,
-        "reset_token": None,
-        "reset_token_expiry": None
-    }).eq("id", user["id"]).execute()
-    
+    """Confirma el reseteo de contraseña usando el código enviado por Cognito."""
+    email = request.email.strip().lower()
+    code = (request.code or request.token or "").strip()
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Por favor ingresa el código de verificación recibido en tu correo.")
+
+    try:
+        await cognito.confirm_forgot_password(email, code, request.new_password)
+    except HTTPException as e:
+        detail = str(e.detail)
+        if "CodeMismatchException" in detail:
+            raise HTTPException(status_code=400, detail="El código de verificación no es válido. Revísalo e intenta de nuevo.")
+        if "ExpiredCodeException" in detail:
+            raise HTTPException(status_code=400, detail="El código ha expirado. Por favor solicita uno nuevo.")
+        if "UserNotFoundException" in detail:
+            raise HTTPException(status_code=400, detail="No se encontró ninguna cuenta con ese correo.")
+        if "InvalidPasswordException" in detail:
+            raise HTTPException(status_code=400, detail="La contraseña no cumple los requisitos: mínimo 8 caracteres, incluyendo mayúsculas, minúsculas, números y caracteres especiales.")
+        if "LimitExceededException" in detail:
+            raise HTTPException(status_code=429, detail="Demasiados intentos fallidos. Por favor espera unos minutos antes de intentar de nuevo.")
+        raise HTTPException(status_code=400, detail=f"Error al restablecer la contraseña: {detail}")
+
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
 @router.get("/activation-info/{token}")
