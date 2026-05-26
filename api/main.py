@@ -769,17 +769,23 @@ def clean_text(text):
     return text.strip()
 
 def add_activity_log(message: str, entidad_id: str = None, user_name: str = "Sistema", user_id: str = None):
-    """Helper sincrono para registrar actividad en la base de datos."""
-    if not supabase_client: return
+    """Helper síncrono para registrar actividad en DynamoDB."""
     try:
-        log_data = {
+        now = datetime.now().isoformat()
+        log_id = str(uuid.uuid4())[:8]
+        pk = f"ENTITY#{entidad_id}" if entidad_id else "GLOBAL"
+        sk = f"LOG#{now}#{log_id}"
+        table = db.get_table("activity_logs")
+        table.put_item(Item={
+            "PK": pk,
+            "SK": sk,
+            "id": log_id,
             "message": message,
-            "entidad_id": entidad_id,
             "user_name": user_name,
             "user_id": user_id,
-            "created_at": datetime.now().isoformat()
-        }
-        supabase_client.table("activity_logs").insert(log_data).execute()
+            "entidad_id": entidad_id,
+            "created_at": now,
+        })
     except Exception as e:
         print(f" [LOG ERROR] {e}")
 
@@ -3662,20 +3668,14 @@ async def send_rejection_notification(sender_email, recipient_email, entity_name
 
 @router.post("/activity-logs")
 async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    # Priorizar entidad del request, si no usar la del usuario activo
     eid = req.entidad_id or current_user.get("entity_id")
-    
-    log_data = {
-        "user_name": req.user_name, 
-        "message": req.message,
-        "entidad_id": eid,
-        "user_id": current_user.get("user_id")
-    }
-    
-    res = supabase_client.table("activity_logs").insert(log_data).execute()
-    return res.data
+    add_activity_log(
+        message=req.message,
+        entidad_id=eid,
+        user_name=req.user_name,
+        user_id=current_user.get("user_id"),
+    )
+    return {"status": "ok"}
 
 @router.patch("/invitations/{inv_id}/archive")
 async def archive_invitation(inv_id: str, req: InvitationArchive, current_user: dict = Depends(get_current_user)):
@@ -3722,56 +3722,63 @@ async def bulk_archive_invitations(req: InvitationBulkArchive, current_user: dic
 
 @router.get("/activity-logs")
 async def get_activity_logs(user: dict = Depends(get_current_user)):
-    """Lista los registros de actividad para la entidad del usuario o todos si es superadmin."""
+    """Lista los registros de actividad del mes actual desde DynamoDB."""
     try:
-        supabase_client.table("activity_logs").delete().lt("created_at", first_day_current_month).execute()
-    except Exception as e:
-        print(f"Error cleaning up old logs: {e}")
+        now = datetime.now()
+        first_day = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-    # 2. Fetch logs with filtering
-    query = supabase_client.table("activity_logs").select("*").gte("created_at", first_day_current_month)
-    
-    # Si no es superadmin, filtrar por entidad
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        eid = current_user.get("entity_id")
-        if eid:
-            query = query.eq("entidad_id", eid)
+        if user.get("role") == SUPERADMIN_ROLE:
+            all_items = await db.scan_table("activity_logs")
         else:
-            # Si no tiene entidad, no debería ver nada o solo sus propios logs
-            query = query.eq("user_id", current_user.get("user_id"))
-            
-    res = query.order("created_at", desc=True).execute()
-    return res.data or []
+            eid = user.get("entity_id")
+            if not eid:
+                return []
+            pk_val = f"ENTITY#{eid}"
+            all_items = await db.query_by_entity("activity_logs", pk_val, sk_prefix="LOG#")
+
+        logs = [i for i in all_items if i.get("created_at", "") >= first_day]
+        logs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return logs
+
+    except Exception as e:
+        print(f"Error listando activity logs: {e}")
+        return []
 
 @router.get("/activity-logs/export")
 async def export_activity_logs(
-    start_date: str, 
-    end_date: str, 
+    start_date: str,
+    end_date: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Returns activity logs within a specific date range for Excel export."""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    # Simple validation: ensure end_date is at the end of the day
-    # if dates are YYYY-MM-DD, we should query gte start and lte end + 'T23:59:59'
-    query_start = f"{start_date}T00:00:00"
-    query_end = f"{end_date}T23:59:59"
-    
-    query = supabase_client.table("activity_logs").select("*").gte("created_at", query_start).lte("created_at", query_end)
-    
-    # Filtro de entidad para no superadmins
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        eid = current_user.get("entity_id")
-        if eid:
-            query = query.eq("entidad_id", eid)
+    """Retorna logs de actividad en un rango de fechas para exportación."""
+    try:
+        query_start = f"{start_date}T00:00:00"
+        query_end = f"{end_date}T23:59:59"
+
+        if current_user.get("role") == SUPERADMIN_ROLE:
+            all_items = await db.scan_table("activity_logs")
         else:
-            query = query.eq("user_id", current_user.get("user_id"))
-            
-    res = query.order("created_at", desc=True).execute()
-        
-    if not res.data:
-        raise HTTPException(status_code=404, detail="No se encontraron registros en el rango seleccionado")
-    return filtered
+            eid = current_user.get("entity_id")
+            if not eid:
+                raise HTTPException(404, "No se encontraron registros en el rango seleccionado")
+            pk_val = f"ENTITY#{eid}"
+            all_items = await db.query_by_entity("activity_logs", pk_val, sk_prefix="LOG#")
+
+        filtered = [
+            i for i in all_items
+            if query_start <= i.get("created_at", "") <= query_end
+        ]
+        filtered.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        if not filtered:
+            raise HTTPException(404, "No se encontraron registros en el rango seleccionado")
+        return filtered
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error exportando activity logs: {e}")
+        raise HTTPException(500, str(e))
 
 @router.post("/auth/signup")
 async def signup(req: UserSignUp):
