@@ -488,13 +488,21 @@ async def login(req: LoginRequest):
     Autentica al usuario contra Cognito y recupera su perfil de DynamoDB.
     """
     identifier = req.identifier.strip().lower()
-    
-    # DEBUG: verificar que las variables de Cognito estén cargadas
-    print(f"DEBUG COGNITO CONFIG: client_id={cognito.client_id!r}, pool_id={cognito.user_pool_id!r}, has_secret={bool(cognito.client_secret)}")
-    
+
     try:
-        # 1. Autenticar en Cognito
-        auth_result = await cognito.authenticate(identifier, req.password)
+        # 1. Resolver el email real del usuario desde DynamoDB
+        # Cognito siempre usa el email como username; el identifier puede ser email o username de DynamoDB
+        cognito_username = identifier  # fallback: intentar con el identifier directamente
+        users_table = db.get_table("users")
+        lookup_resp = users_table.scan(
+            FilterExpression=Attr('email').eq(identifier) | Attr('username').eq(identifier)
+        )
+        lookup_items = lookup_resp.get('Items', [])
+        if lookup_items:
+            cognito_username = lookup_items[0].get('email', identifier).strip().lower()
+
+        # 2. Autenticar en Cognito usando el email como username
+        auth_result = await cognito.authenticate(cognito_username, req.password)
         id_token = auth_result.get("IdToken")
         
         # 2. Buscar perfil en DynamoDB
@@ -521,21 +529,13 @@ async def login(req: LoginRequest):
         
         print(f"DEBUG LOGIN: Identifier={identifier}, VerifiedEmail={verified_email}, FinalIsSuper={is_superadmin}")
         
-        user_profile = None
-        # Acceder a la tabla vía boto3 directamente
-        users_table = db.get_table("users")
-        
-        # Intentar buscar por identifier (username o email)
-        response = users_table.scan(FilterExpression=Attr('email').eq(identifier) | Attr('username').eq(identifier))
-        items = response.get('Items', [])
-        
-        # Si no se encuentra y tenemos un email verificado, intentar buscar por ese email
+        # Reuse the DynamoDB lookup from step 1; fall back to verified_email if needed
+        items = lookup_items
         if not items and verified_email:
-            response = users_table.scan(FilterExpression=Attr('email').eq(verified_email))
-            items = response.get('Items', [])
+            fb = users_table.scan(FilterExpression=Attr('email').eq(verified_email))
+            items = fb.get('Items', [])
 
-        if items:
-            user_profile = items[0]
+        user_profile = items[0] if items else None
         
         if not user_profile:
             if is_superadmin:
