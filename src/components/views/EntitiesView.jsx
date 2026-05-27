@@ -11,7 +11,7 @@ const locationData = {
   "Argentina": ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"]
 };
 
-export default function EntitiesView({ entities, setEntities }) {
+export default function EntitiesView({ entities, setEntities, currentUser }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -170,7 +170,7 @@ export default function EntitiesView({ entities, setEntities }) {
 
     fetch(url, {
       method,
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${currentUser?.token}`
       },
@@ -185,11 +185,16 @@ export default function EntitiesView({ entities, setEntities }) {
         }
         setView("list");
       } else {
-        alert("Error al guardar la entidad.");
+        let msg = "Error al guardar la entidad.";
+        try {
+          const errData = await res.json();
+          msg = errData.detail || errData.message || msg;
+        } catch (_) {}
+        alert(`Error (${res.status}): ${msg}`);
       }
     }).catch(err => {
       console.error(err);
-      alert("Error de conexión.");
+      alert("Error de conexión al servidor.");
     });
   };
 

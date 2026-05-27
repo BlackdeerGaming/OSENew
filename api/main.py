@@ -1,5 +1,5 @@
 import os
-
+import random
 import re
 from typing import List, Optional, Dict, Any
 
@@ -165,6 +165,134 @@ def get_email_html(title: str, greeting: str, message: str, button_text: str = N
     </body>
     </html>
     """
+
+
+def get_reset_code_email_html(nombre: str, code: str) -> str:
+    """Genera el HTML del email de recuperación de contraseña con el código de verificación."""
+    digits = list(code)
+    def digit_cell(d: str, is_last: bool) -> str:
+        spacer = "" if is_last else '<td style="width:10px;"></td>'
+        return f"""
+        <td style="vertical-align:middle;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="width:52px;height:64px;background-color:#0F1F3A;border:2px solid #09C8A2;border-radius:10px;text-align:center;vertical-align:middle;box-shadow:0 0 12px rgba(9,200,162,0.15);">
+              <span style="font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:800;color:#09C8A2;line-height:64px;">{d}</span>
+            </td>
+          </tr></table>
+        </td>{spacer}"""
+
+    digit_cells = "".join(digit_cell(d, i == len(digits) - 1) for i, d in enumerate(digits))
+    saludo = f"Hola{', ' + nombre if nombre else ''},"
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Código de Recuperación – OSE IA</title>
+</head>
+<body style="margin:0;padding:0;background-color:#EEF2F7;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#EEF2F7;padding:48px 20px;">
+  <tr><td align="center">
+
+    <!-- CARD -->
+    <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;width:100%;background-color:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(4,13,27,0.10);">
+
+      <!-- HEADER -->
+      <tr>
+        <td style="background-color:#040D1B;padding:44px 48px 36px;text-align:center;">
+          <table cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">
+            <table cellpadding="0" cellspacing="0"><tr>
+              <td style="width:52px;height:52px;background:linear-gradient(135deg,#09C8A2 0%,#06A889 100%);border-radius:14px;text-align:center;vertical-align:middle;">
+                <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:22px;font-weight:900;color:#040D1B;line-height:52px;letter-spacing:-1px;">O</span>
+              </td>
+              <td style="padding-left:14px;text-align:left;vertical-align:middle;">
+                <p style="margin:0;font-size:22px;font-weight:800;color:#FFFFFF;letter-spacing:-0.4px;line-height:1.1;">OSE IA</p>
+                <p style="margin:2px 0 0;font-size:11px;color:#09C8A2;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Inteligencia Archivística</p>
+              </td>
+            </tr></table>
+          </td></tr></table>
+        </td>
+      </tr>
+
+      <!-- ACCENT BAR -->
+      <tr>
+        <td style="height:3px;background:linear-gradient(90deg,#09C8A2 0%,#06E5BE 60%,#09C8A2 100%);"></td>
+      </tr>
+
+      <!-- BODY -->
+      <tr>
+        <td style="padding:44px 48px 32px;">
+
+          <!-- Badge -->
+          <table cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding-bottom:28px;">
+            <span style="display:inline-block;background-color:#F0FBF8;border:1px solid #B8EFE3;color:#0A8F72;font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;padding:6px 16px;border-radius:100px;">Recuperación de Contraseña</span>
+          </td></tr></table>
+
+          <!-- Title & greeting -->
+          <p style="margin:0 0 6px;font-size:24px;font-weight:800;color:#0C1A2E;text-align:center;letter-spacing:-0.4px;">{saludo}</p>
+          <p style="margin:0 0 32px;font-size:15px;color:#64748B;text-align:center;line-height:1.65;">
+            Recibiste este correo porque solicitaste restablecer la contraseña de tu cuenta en <strong style="color:#0C1A2E;">OSE IA</strong>. Usa el código a continuación.
+          </p>
+
+          <!-- CODE BOX -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:28px;">
+            <tr><td align="center">
+              <table cellpadding="0" cellspacing="0" style="background-color:#040D1B;border-radius:16px;width:100%;">
+                <tr><td align="center" style="padding:32px 32px 16px;">
+                  <p style="margin:0 0 20px;font-size:11px;color:#4A6580;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Tu código de verificación</p>
+                  <table cellpadding="0" cellspacing="0"><tr>{digit_cells}</tr></table>
+                </td></tr>
+                <tr><td align="center" style="padding:16px 32px 28px;">
+                  <table cellpadding="0" cellspacing="0"><tr>
+                    <td style="background-color:#1A2A3A;border-radius:8px;padding:8px 18px;">
+                      <p style="margin:0;font-size:12px;color:#F59E0B;font-weight:700;letter-spacing:0.3px;">&#9203; Expira en 15 minutos</p>
+                    </td>
+                  </tr></table>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+
+          <!-- Instructions box -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="background-color:#F8FAFC;border-radius:12px;border:1px solid #E2E8F0;margin-bottom:32px;">
+            <tr><td style="padding:20px 24px;">
+              <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#334155;">¿Cómo usar este código?</p>
+              <p style="margin:0;font-size:13px;color:#64748B;line-height:1.65;">Ingresa estos 6 dígitos en la pantalla de recuperación junto con tu nueva contraseña. Actúa antes de que expire para completar el proceso.</p>
+            </td></tr>
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- SECURITY NOTE -->
+      <tr>
+        <td style="padding:0 48px 40px;">
+          <table cellpadding="0" cellspacing="0" width="100%">
+            <tr><td style="border-top:1px solid #F1F5F9;padding-top:24px;">
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:1.2px;">Aviso de seguridad</p>
+              <p style="margin:0;font-size:13px;color:#94A3B8;line-height:1.7;">Si no solicitaste este cambio, ignora este mensaje. Tu contraseña no se modificará. <strong>Nunca compartas este código</strong> con nadie — OSE IA jamás te lo pedirá.</p>
+            </td></tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- FOOTER -->
+      <tr>
+        <td style="background-color:#040D1B;padding:28px 48px;text-align:center;border-radius:0 0 20px 20px;">
+          <p style="margin:0 0 4px;font-size:14px;font-weight:800;color:#FFFFFF;letter-spacing:-0.2px;">OSE IA</p>
+          <p style="margin:0 0 16px;font-size:11px;color:#4A6580;letter-spacing:1px;text-transform:uppercase;">Gestión Documental Inteligente</p>
+          <p style="margin:0;font-size:11px;color:#2A3D50;">© 2025 OSE IA. Todos los derechos reservados.</p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+
+</body>
+</html>"""
 
 
 from .aws.ai_processor import ai
@@ -1831,23 +1959,22 @@ async def activate_user(req: UserActivate):
 @router.post("/entities")
 async def create_entity(req: EntityCreate, user: dict = Depends(require_super_admin)):
     """Crea una nueva entidad en DynamoDB."""
+    entity_id = str(uuid.uuid4())
+    item = req.dict()
+
+    all_entities = await db.scan_table("entities")
+    if any(e.get("numeroDocumento") == item["numeroDocumento"] for e in all_entities):
+        raise HTTPException(status_code=400, detail="Ya existe una entidad registrada con este número de documento.")
+
+    item["PK"] = f"ENTITY#{entity_id}"
+    item["SK"] = "METADATA"
+    item["id"] = entity_id
+    item["created_at"] = datetime.now().isoformat()
     try:
-        entity_id = str(uuid.uuid4())
-        item = req.dict()
-
-        # Reparación: Check for duplicate NIT
-        all_entities = await db.scan_table("entities")
-        if any(e.get("numeroDocumento") == item["numeroDocumento"] for e in all_entities):
-            raise HTTPException(status_code=400, detail="Ya existe una entidad registrada con este número de documento.")
-
-        item["PK"] = f"ENTITY#{entity_id}"
-        item["SK"] = "METADATA"
-        item["id"] = entity_id
-        item["created_at"] = datetime.now().isoformat()
         await db.put_item("entities", item)
-        return {"status": "ok", "id": entity_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "ok", "id": entity_id}
 
 @router.put("/entities/{entity_id}")
 async def update_entity(entity_id: str, req: EntityCreate, user: dict = Depends(get_current_user)):
@@ -2590,39 +2717,96 @@ async def send_activation(request: ActivationEmailRequest):
 
 @router.post("/request-reset")
 async def request_reset(request: PasswordResetRequest):
-    """Inicia el flujo de recuperación de contraseña vía Cognito (envía código al correo)."""
+    """Genera un OTP de 6 dígitos, lo almacena en DynamoDB y lo envía vía Resend."""
     email = request.email.strip().lower()
-    try:
-        await cognito.forgot_password(email)
-    except Exception as e:
-        print(f"[RESET] Cognito forgot_password: {e}")
-    # Por seguridad, siempre respondemos con éxito independientemente de si el email existe
+
+    all_users = await db.scan_table("users")
+    user_data = next((u for u in all_users if u.get("email", "").lower() == email), None)
+
+    if user_data:
+        code = str(random.randint(100000, 999999))
+        expiry = (datetime.now() + timedelta(minutes=15)).isoformat()
+        try:
+            await db.update_item(
+                "users", f"USER#{user_data['id']}", "PROFILE",
+                {"resetCode": code, "resetCodeExpiry": expiry}
+            )
+        except Exception as e:
+            print(f"[RESET] Error guardando código: {e}")
+
+        nombre = user_data.get("nombre", "")
+        html_content = get_reset_code_email_html(nombre, code)
+
+        if RESEND_API_KEY:
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        "https://api.resend.com/emails",
+                        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                        json={
+                            "from": RESEND_FROM_EMAIL,
+                            "to": email,
+                            "subject": "Tu código de recuperación – OSE IA",
+                            "html": html_content,
+                        },
+                    )
+                    if resp.status_code >= 400:
+                        print(f"[RESET] Resend error {resp.status_code}: {resp.text}")
+                    else:
+                        print(f"[RESET] Código enviado a {email} vía Resend.")
+            except Exception as e:
+                print(f"[RESET] Error enviando email: {e}")
+        else:
+            print(f"[RESET] RESEND_API_KEY no configurada. Código para {email}: {code}")
+
+    # Siempre éxito por seguridad (no revelar si el email existe)
     return {"status": "ok", "message": "Si el correo está registrado, recibirás un código de verificación para restablecer tu contraseña."}
+
 
 @router.post("/perform-reset")
 async def perform_reset(request: PerformResetRequest):
-    """Confirma el reseteo de contraseña usando el código enviado por Cognito."""
+    """Valida el OTP almacenado en DynamoDB y restablece la contraseña vía Cognito admin."""
     email = request.email.strip().lower()
     code = (request.code or request.token or "").strip()
 
     if not code:
         raise HTTPException(status_code=400, detail="Por favor ingresa el código de verificación recibido en tu correo.")
 
+    all_users = await db.scan_table("users")
+    user_data = next((u for u in all_users if u.get("email", "").lower() == email), None)
+
+    if not user_data:
+        raise HTTPException(status_code=400, detail="No se encontró ninguna cuenta con ese correo.")
+
+    stored_code = user_data.get("resetCode", "")
+    expiry_str = user_data.get("resetCodeExpiry", "")
+
+    if not stored_code or stored_code != code:
+        raise HTTPException(status_code=400, detail="El código de verificación no es válido. Revísalo e intenta de nuevo.")
+
+    if expiry_str:
+        try:
+            if datetime.fromisoformat(expiry_str) < datetime.now():
+                raise HTTPException(status_code=400, detail="El código ha expirado. Por favor solicita uno nuevo.")
+        except ValueError:
+            pass
+
     try:
-        await cognito.confirm_forgot_password(email, code, request.new_password)
+        await cognito.admin_set_user_password(email, request.new_password)
     except HTTPException as e:
         detail = str(e.detail)
-        if "CodeMismatchException" in detail:
-            raise HTTPException(status_code=400, detail="El código de verificación no es válido. Revísalo e intenta de nuevo.")
-        if "ExpiredCodeException" in detail:
-            raise HTTPException(status_code=400, detail="El código ha expirado. Por favor solicita uno nuevo.")
-        if "UserNotFoundException" in detail:
-            raise HTTPException(status_code=400, detail="No se encontró ninguna cuenta con ese correo.")
         if "InvalidPasswordException" in detail:
             raise HTTPException(status_code=400, detail="La contraseña no cumple los requisitos: mínimo 8 caracteres, incluyendo mayúsculas, minúsculas, números y caracteres especiales.")
-        if "LimitExceededException" in detail:
-            raise HTTPException(status_code=429, detail="Demasiados intentos fallidos. Por favor espera unos minutos antes de intentar de nuevo.")
         raise HTTPException(status_code=400, detail=f"Error al restablecer la contraseña: {detail}")
+
+    # Invalidar el código usado
+    try:
+        await db.update_item(
+            "users", f"USER#{user_data['id']}", "PROFILE",
+            {"resetCode": "", "resetCodeExpiry": ""}
+        )
+    except Exception as e:
+        print(f"[RESET] Error limpiando código: {e}")
 
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
