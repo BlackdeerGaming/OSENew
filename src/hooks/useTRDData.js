@@ -136,15 +136,29 @@ export function useTRDData(currentUser = null, entityId = null) {
   };
 
   const deleteDependencia = async (id) => {
+    const prevDeps = [...dependencias];
+    const prevSeries = [...series];
+    const prevSubs = [...subseries];
+    const prevTrds = [...trdRecords];
+
+    // Optimistic: remove dep and all cascaded children from local state
+    const linkedSeriesIds = new Set(series.filter(s => s.dependenciaId === id).map(s => s.id));
     setDependencias(prev => prev.filter(x => x.id !== id));
+    setSeries(prev => prev.filter(s => s.dependenciaId !== id));
+    setSubseries(prev => prev.filter(ss => !linkedSeriesIds.has(ss.serieId)));
+    setTrdRecords(prev => prev.filter(t => t.dependenciaId !== id));
+
     try {
       const response = await fetch(`${API_BASE_URL}/trd/entity/${entityId}/dependencias/${id}`, {
         method: 'DELETE',
         headers: authHeaders()
       });
       if (!response.ok) throw new Error('Delete failed');
+      await refreshData();
     } catch (err) {
       console.error('❌ Error deleting dependencia:', err);
+      // Sync with server truth instead of blindly restoring — the backend may have deleted despite the error
+      try { await refreshData(); } catch (_) {}
       throw err;
     }
   };
@@ -157,15 +171,16 @@ export function useTRDData(currentUser = null, entityId = null) {
 
     const previousState = [...series];
     
-    // 1. Local Validation
+    // 1. Local Validation — scope by dependenciaId: same code is only a conflict within the same dependency
     if (newRecord.codigo) {
        const normalizedInput = newRecord.codigo.trim().toLowerCase();
-       const isDuplicate = series.some(x => 
-         String(x.codigo).trim().toLowerCase() === normalizedInput && 
-         String(x.id) !== String(newRecord.id)
+       const isDuplicate = series.some(x =>
+         String(x.codigo).trim().toLowerCase() === normalizedInput &&
+         String(x.id) !== String(newRecord.id) &&
+         String(x.dependenciaId) === String(newRecord.dependenciaId)
        );
        if (isDuplicate) {
-         throw new Error(`El código "${newRecord.codigo}" ya existe para esta entidad.`);
+         throw new Error(`El código "${newRecord.codigo}" ya existe en esta dependencia.`);
        }
     }
 
@@ -213,7 +228,7 @@ export function useTRDData(currentUser = null, entityId = null) {
       await refreshData();
     } catch (err) {
       console.error('❌ Error deleting serie:', err);
-      setSeries(previousState);
+      try { await refreshData(); } catch (_) {}
       throw err;
     }
   };
@@ -294,7 +309,7 @@ export function useTRDData(currentUser = null, entityId = null) {
       await refreshData();
     } catch (err) {
       console.error('❌ Error deleting subserie:', err);
-      setSubseries(previousState);
+      try { await refreshData(); } catch (_) {}
       throw err;
     }
   };

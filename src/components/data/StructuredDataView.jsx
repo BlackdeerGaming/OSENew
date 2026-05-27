@@ -270,90 +270,89 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
     setSubFilter("all");
   };
 
-  // Lógica de Filtrado Jerárquico Estricto
+  // Lógica de Filtrado Jerárquico con búsqueda ascendente
   const filteredData = useMemo(() => {
     const q = normalizeText(searchQuery);
-
-    const matchesSearch = (item, fields) => {
-      if (!q) return true;
-      return fields.some(f => normalizeText(item[f]).includes(q));
-    };
+    const matchQ = (item, fields) =>
+      !q || fields.some(f => normalizeText(String(item[f] || '')).includes(q));
 
     const targetDep = normalizeText(depFilter);
     const targetSerie = normalizeText(serieFilter);
     const targetSub = normalizeText(subFilter);
 
-    // 1. Filtrar Dependencias
-    let deps = (dependencias || []).filter(dep => {
-      if (!dep) return false;
-      const matchesFilter = targetDep === "ALL" || normalizeText(dep.nombre) === targetDep;
-      const matchesText = matchesSearch(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
-      return matchesFilter && matchesText;
-    });
+    const result = [];
 
-    // 2. Mapear y filtrar Series/Subseries
-    const results = deps.map(dep => {
-      // Encontrar las series asociadas a esta dependencia vía trdRecords
-      const associatedSeriesIds = new Set(
-        (trdRecords || [])
-          .filter(t => t.dependenciaId === dep.id && t.serieId)
-          .map(t => t.serieId)
-      );
+    for (const dep of (dependencias || [])) {
+      if (!dep) continue;
 
-      let matchedSeries = (series || [])
-        .filter(s => associatedSeriesIds.has(s.id))
-        .filter(serie => {
-          const matchesFilter = targetSerie === "ALL" || normalizeText(serie.nombre) === targetSerie;
-          const matchesText = matchesSearch(serie, ['nombre', 'codigo']);
-          return matchesFilter && matchesText;
-        })
-        .map(serie => {
-          // Subseries asociadas a la dependencia y serie vía trdRecords
-          const associatedSubseriesIds = new Set(
-            (trdRecords || [])
-              .filter(t => t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId)
-              .map(t => t.subserieId)
-          );
+      // Dropdown filter: exact match on dependency name
+      if (targetDep !== "ALL" && normalizeText(dep.nombre) !== targetDep) continue;
 
-          // Filtrar Subseries asociadas vía TRD
-          const matchedSubseries = (subseries || [])
-            .filter(sub => associatedSubseriesIds.has(sub.id))
-            .filter(sub => {
-              const matchesFilter = targetSub === "ALL" || normalizeText(sub.nombre) === targetSub;
-              const matchesText = matchesSearch(sub, ['nombre', 'codigo']);
-              return matchesFilter && matchesText;
-            });
+      const depMatchesText = matchQ(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
 
-          // Si hay filtro de subserie activo, y esta serie no tiene la subserie buscada, la ocultamos
-          if (targetSub !== "ALL" && matchedSubseries.length === 0) return null;
-          
-          const trdForSerie = (trdRecords || []).find(t => t.dependenciaId === dep.id && t.serieId === serie.id && !t.subserieId);
-          
-          return { 
-            ...serie, 
-            subseries: sortEntitiesByCode(matchedSubseries.map(sub => {
-              const trdForSub = (trdRecords || []).find(t => t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId === sub.id);
-              return { ...sub, tiposDocumentales: trdForSub?.tiposDocumentales || [] };
-            })),
-            tiposDocumentales: trdForSerie?.tiposDocumentales || []
-          };
-        })
-        .filter(Boolean);
-
-      // Si hay filtros de serie o subserie activos y no hay coincidencias, ocultamos la dependencia
-      if ((targetSerie !== "ALL" || targetSub !== "ALL") && matchedSeries.length === 0) {
-        return null;
+      // All series directly linked to this dependency (no TRD record required)
+      let seriesForDep = (series || []).filter(s => s.dependenciaId === dep.id);
+      if (targetSerie !== "ALL") {
+        seriesForDep = seriesForDep.filter(s => normalizeText(s.nombre) === targetSerie);
       }
 
-      return { 
-        ...dep, 
-        matchedSeries: sortEntitiesByCode(matchedSeries) 
-      };
-    }).filter(Boolean);
+      const matchedSeries = [];
 
-    // 3. Ordenar dependencias finales por código
-    return sortEntitiesByCode(results);
-  }, [dependencias, series, subseries, searchQuery, depFilter, serieFilter, subFilter]);
+      for (const serie of seriesForDep) {
+        const serieMatchesText = matchQ(serie, ['nombre', 'codigo']);
+
+        // All subseries directly linked to this serie
+        let subsForSerie = (subseries || []).filter(ss => ss.serieId === serie.id);
+        if (targetSub !== "ALL") {
+          subsForSerie = subsForSerie.filter(ss => normalizeText(ss.nombre) === targetSub);
+          if (subsForSerie.length === 0) continue;
+        }
+
+        // Text-level subserie matching
+        const textMatchedSubs = subsForSerie.filter(ss => matchQ(ss, ['nombre', 'codigo']));
+
+        // Determine which subs to render:
+        // • dep or serie matched → show all subs (parent context)
+        // • only sub matched    → show only matching subs
+        let finalSubs;
+        if (!q || depMatchesText || serieMatchesText) {
+          finalSubs = subsForSerie;
+        } else if (textMatchedSubs.length > 0) {
+          finalSubs = textMatchedSubs;
+        } else {
+          continue; // nothing at or below serie level matches
+        }
+
+        // Enrich subs with tiposDocumentales from TRD records when available
+        const enrichedSubs = finalSubs.map(ss => {
+          const trd = (trdRecords || []).find(t =>
+            t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId === ss.id
+          );
+          return { ...ss, tiposDocumentales: trd?.tiposDocumentales || [] };
+        });
+
+        const trdForSerie = (trdRecords || []).find(t =>
+          t.dependenciaId === dep.id && t.serieId === serie.id && !t.subserieId
+        );
+
+        matchedSeries.push({
+          ...serie,
+          subseries: sortEntitiesByCode(enrichedSubs),
+          tiposDocumentales: trdForSerie?.tiposDocumentales || [],
+        });
+      }
+
+      // If a dropdown serie/sub filter is active but nothing matched, skip dep
+      if ((targetSerie !== "ALL" || targetSub !== "ALL") && matchedSeries.length === 0) continue;
+
+      // Text search: include dep if dep itself matches or has at least one matching child
+      if (q && !depMatchesText && matchedSeries.length === 0) continue;
+
+      result.push({ ...dep, matchedSeries: sortEntitiesByCode(matchedSeries) });
+    }
+
+    return sortEntitiesByCode(result);
+  }, [dependencias, series, subseries, trdRecords, searchQuery, depFilter, serieFilter, subFilter]);
 
   if (dependencias.length === 0) {
     return (

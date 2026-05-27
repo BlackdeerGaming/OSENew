@@ -1011,11 +1011,10 @@ function App() {
                    skippedCount++;
                  } else {
                    setModalStatus(prev => ({ ...prev, message: `Guardando dependencia en la nube: ${depIdInput}...` }));
-                   const strId = Date.now().toString() + "_dep_" + Math.floor(Math.random()*100);
-                   idMap[depIdInput] = strId;
-                   await addDependencia({ ...newDep, id: strId });
+                   const savedDep = await addDependencia({ ...newDep });
+                   finalDepId = savedDep?.id;
+                   idMap[depIdInput] = finalDepId;
                    addActivityLog(`[${importSessionId}] Auto-creación Dependencia: ${depIdInput}`);
-                   finalDepId = strId;
                    if (decision === 'continue') duplicateAcceptedCount++;
                  }
                }
@@ -1050,11 +1049,10 @@ function App() {
                      skippedCount++;
                    } else {
                      setModalStatus(prev => ({ ...prev, message: `Guardando serie en la nube: ${serIdInput}...` }));
-                     const strId = Date.now().toString() + "_ser_" + Math.floor(Math.random()*100);
-                     idMap[serIdInput] = strId;
-                     await addSerie({ ...newSerie, id: strId });
+                     const savedSerie = await addSerie({ ...newSerie });
+                     finalSerId = savedSerie?.id;
+                     idMap[serIdInput] = finalSerId;
                      addActivityLog(`[${importSessionId}] Auto-creación Serie: ${serIdInput}`);
-                     finalSerId = strId;
                      if (decision === 'continue') duplicateAcceptedCount++;
                    }
                  }
@@ -1090,11 +1088,10 @@ function App() {
                       skippedCount++;
                     } else {
                       setModalStatus(prev => ({ ...prev, message: `Guardando subserie en la nube: ${subIdInput}...` }));
-                      const strId = Date.now().toString() + "_sub_" + Math.floor(Math.random()*100);
-                      idMap[subIdInput] = strId;
-                      await addSubserie({ ...newSub, id: strId });
+                      const savedSub = await addSubserie({ ...newSub });
+                      rawPayload.subserieId = savedSub?.id;
+                      idMap[subIdInput] = rawPayload.subserieId;
                       addActivityLog(`[${importSessionId}] Auto-creación Subserie: ${subIdInput}`);
-                      rawPayload.subserieId = strId;
                       if (decision === 'continue') duplicateAcceptedCount++;
                     }
                   }
@@ -1106,9 +1103,8 @@ function App() {
           }
 
           // --- PERSISTENCIA FINAL DEL REGISTRO ---
-          const finalId = action.id && !action.id.startsWith('temp_') ? action.id : (Date.now().toString() + "_" + Math.floor(Math.random()*1000));
-          if (action.id) idMap[action.id] = finalId;
-
+          // Do NOT pass action.id here — OCR temp IDs (t1, t2…) would be treated
+          // as UPDATE targets and fail with 404. Let the backend generate real UUIDs.
           const payload = {
               entidadId: selectedEntityId,
               nombre: name,
@@ -1136,14 +1132,18 @@ function App() {
                continue;
              }
              setModalStatus(prev => ({ ...prev, message: `Guardando valoración TRD: ${name}...` }));
-             await addTrdRecord({ ...payload, id: finalId });
+             const savedTrd = await addTrdRecord({ ...payload });
+             if (action.id) idMap[action.id] = savedTrd?.id;
              if (decision === 'continue') duplicateAcceptedCount++;
           } else if (entity === 'dependencias') {
-             await addDependencia({ ...payload, id: finalId });
+             const savedDep = await addDependencia({ ...payload });
+             if (action.id) idMap[action.id] = savedDep?.id;
           } else if (entity === 'series') {
-             await addSerie({ ...payload, id: finalId });
+             const savedSer = await addSerie({ ...payload });
+             if (action.id) idMap[action.id] = savedSer?.id;
           } else if (entity === 'subseries') {
-             await addSubserie({ ...payload, id: finalId });
+             const savedSub = await addSubserie({ ...payload });
+             if (action.id) idMap[action.id] = savedSub?.id;
           }
           
           addActivityLog(`[${importSessionId}] Integrado ${entityLabel}: ${name}`);
@@ -1455,33 +1455,13 @@ function App() {
         addActivityLog(`BORRADO TOTAL Subserie (Cascada) - ${sub?.nombre || recordId}`);
       }
 
-      // Sync with RAG if applicable
-      if (syncRagDocName) {
-        try {
-          const ragRes = await fetch(`${API_BASE_URL}/rag-documents`);
-          if (ragRes.ok) {
-            const ragDocs = await ragRes.json();
-            const matchingDoc = ragDocs.find(d => 
-              d.filename?.toLowerCase().includes(syncRagDocName.toLowerCase()) || 
-              d.metadata?.label?.toLowerCase() === syncRagDocName.toLowerCase()
-            );
-            if (matchingDoc) {
-              console.log("🗑️ Sincronizando: Borrando documento RAG asociado:", matchingDoc.metadata?.label || matchingDoc.filename);
-              await fetch(`${API_BASE_URL}/rag-documents/${matchingDoc.id}`, { method: 'DELETE' });
-              // Refresh RAG count
-              setRagCount(prev => Math.max(0, prev - 1));
-            }
-          }
-        } catch (e) {
-          console.warn("⚠️ Error en sincronización RAG:", e);
-        }
-      }
-
       if (activeFormData.id === recordId) {
         setActiveFormData({});
       }
       setModalStatus({ isOpen: true, type: 'success', message: 'Registro eliminado correctamente de la nube.' });
     } catch (err) {
+      // Sync UI with server truth — the backend may have completed the delete despite the error response
+      try { await refreshData(); } catch (_) {}
       setModalStatus({ isOpen: true, type: 'error', message: `Error al eliminar: ${err.message}` });
     }
   };

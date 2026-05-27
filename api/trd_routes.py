@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
+from datetime import datetime
 
 from .permissions import get_current_user, require_entity_admin, require_super_admin
-from .cloud_storage import upload_record, delete_record
-from .db import supabase_client, llm
+from .aws.dynamo_db import db
+from .db import llm
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -49,18 +50,15 @@ class TRDRecordCreate(BaseModel):
     ddhh: Optional[str] = None
     procedimiento: Optional[str] = None
     acto_admo: Optional[str] = None
-    # Flags de DisposiciÃƒÂ³n
     disp_conservacion_total: bool = False
     disp_eliminacion: bool = False
     disp_seleccion: bool = False
-    # Flags de ValoraciÃƒÂ³n
     val_administrativo: bool = False
     val_tecnico: bool = False
     val_contable: bool = False
     val_fiscal: bool = False
     val_legal: bool = False
     val_historico: bool = False
-    # Medios y Otros
     rep_microfilmacion: bool = False
     rep_digitalizacion: bool = False
     ord_alfabetica: bool = False
@@ -69,7 +67,6 @@ class TRDRecordCreate(BaseModel):
     ord_otra: bool = False
     tipos_documentales: Optional[List[dict]] = []
     funciones_ids: Optional[List[str]] = []
-
 
 class FuncionCreate(BaseModel):
     titulo: str
@@ -91,633 +88,573 @@ class EntrevistaCreate(BaseModel):
     entrevistado: EntrevistadoSchema
 
 class GenerateManualRequest(BaseModel):
-    cargos: List[str]  # Cargo names from entrevistados list
-    dependencia_id: str # To grab context
+    cargos: List[str]
+    dependencia_id: str
 
 class DocumentoOficialCreate(BaseModel):
-    tipo: str # 'manual_funciones' | 'ccd'
-    contenido: str # HTML
+    tipo: str
+    contenido: str
 
 
-# ---------- Helper functions ----------
-def _record_to_dict(record) -> dict:
-    """Convert a Pydantic model (or dict) to a plain dict suitable for JSON storage."""
-    if isinstance(record, BaseModel):
-        return record.dict(exclude_unset=True)
-    return dict(record)
+# ---------- Helper ----------
+def _strip_keys(item: dict) -> dict:
+    """Remove DynamoDB PK/SK from items before returning to frontend."""
+    return {k: v for k, v in item.items() if k not in ("PK", "SK")}
+
 
 # ---------- Dependencias ----------
 @router.post("/entity/{entity_id}/dependencias", response_model=dict)
-async def create_dependencia_entity(
-    entity_id: str,
-    payload: DependenciaCreate,
-    user: dict = Depends(get_current_user),
-    background: BackgroundTasks = None,
-):
-    # Permission check: entity admin only for their entity
+async def create_dependencia_entity(entity_id: str, payload: DependenciaCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    # 1. ValidaciÃ³n de duplicados (CÃ³digo Ãºnico por entidad)
     clean_codigo = payload.codigo.strip()
-    # Buscamos coincidencias (case-insensitive)
-    existing = supabase_client.table("dependencias") \
-        .select("id") \
-        .eq("entidad_id", entity_id) \
-        .ilike("codigo", clean_codigo) \
-        .execute()
-    
-    if existing.data:
-        # Si es una actualizaciÃ³n, permitimos que sea el mismo ID
-        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el cÃ³digo '{clean_codigo}' en esta entidad. Usa un cÃ³digo diferente.")
 
-    # 2. Insert into Supabase DB
-    data = payload.dict()
-    data["codigo"] = clean_codigo # Guardar normalizado
-    data["entidad_id"] = entity_id
-    try:
-        res = supabase_client.table("dependencias").upsert(data).execute()
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Failed to create dependencia")
-        record = res.data[0]
-    except Exception as e:
-        error_msg = str(e)
-        if "duplicate key value violates unique constraint" in error_msg:
-             raise HTTPException(status_code=400, detail="El código de dependencia ya existe para esta entidad.")
-        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
-    # Cloud upload (asynchronous/non-blocking)
-    try:
-        if background:
-            background.add_task(
-                upload_record,
-                supabase_client,
-                entity_id,
-                "dependencias",
-                record["id"],
-                _record_to_dict(record)
-            )
-        else:
-            upload_record(
-                supabase_client,
-                entity_id,
-                "dependencias",
-                record["id"],
-                _record_to_dict(record)
-            )
-    except Exception as e:
-        print(f"[CloudSync] Warning: Failed to sync dependency {record['id']}: {e}")
-    return record
+    # Unique code per entity, excluding self on upsert
+    all_deps = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+    for dep in all_deps:
+        if dep.get("codigo", "").strip().lower() == clean_codigo.lower():
+            if not payload.id or str(dep.get("id")) != str(payload.id):
+                raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el código '{clean_codigo}' en esta entidad. Usa un código diferente.")
+
+    dep_id = payload.id if payload.id else str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    item = payload.dict()
+    item.update({
+        "id": dep_id,
+        "codigo": clean_codigo,
+        "entidad_id": entity_id,
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"DEP#{dep_id}",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.put_item("dependencias", item)
+    return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
 async def list_dependencias_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("dependencias").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").execute()
-    return res.data or []
+    items = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+    return [_strip_keys(i) for i in items]
 
 @router.put("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
-async def update_dependencia_entity(
-    entity_id: str,
-    dep_id: str,
-    payload: DependenciaCreate,
-    user: dict = Depends(get_current_user),
-):
+async def update_dependencia_entity(entity_id: str, dep_id: str, payload: DependenciaCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("dependencias").update(data).eq("id", dep_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
+
+    if payload.codigo:
+        clean_codigo = payload.codigo.strip()
+        all_deps = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+        for dep in all_deps:
+            if dep.get("codigo", "").strip().lower() == clean_codigo.lower() and str(dep.get("id")) != str(dep_id):
+                raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el código '{clean_codigo}' en esta entidad.")
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"DEP#{dep_id}"
+    existing = await db.get_item("dependencias", pk, sk)
+    if not existing:
         raise HTTPException(status_code=404, detail="Dependencia not found")
-    # Update cloud storage representation
-    record = res.data[0]
-    try:
-        path = upload_record(
-            supabase_client,
-            entity_id,
-            "dependencias",
-            dep_id,
-            _record_to_dict(record),
-        )
-        # supabase_client.table("dependencias").update({"cloud_key": path}).eq("id", dep_id).execute()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
-    return record
+
+    updates = payload.dict(exclude_unset=True)
+    if "codigo" in updates:
+        updates["codigo"] = updates["codigo"].strip()
+    updates["updated_at"] = datetime.now().isoformat()
+
+    await db.update_item("dependencias", pk, sk, updates)
+    return _strip_keys({**existing, **updates})
 
 @router.delete("/entity/{entity_id}/dependencias/{dep_id}", response_model=dict)
 async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
-    # HARD DELETE CASCADE: Manual cleanup of related records
     try:
-        # 1. Delete TRD Records associated with this dependency
-        supabase_client.table("trd_records").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
-        
-        # 2. Delete Functions associated with this dependency
-        supabase_client.table("funciones").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
-        
-        # 3. Delete Interviews associated with this dependency
-        supabase_client.table("entrevistas").delete().eq("dependencia_id", dep_id).eq("entidad_id", entity_id).execute()
-        
-        # 4. Delete Cloud Storage representation
+        # Cascade: series and their subseries
         try:
-            delete_record(supabase_client, entity_id, "dependencias", dep_id)
-        except Exception:
-            pass
-            
-        # 5. Delete DB record
-        res = supabase_client.table("dependencias").delete().eq("id", dep_id).eq("entidad_id", entity_id).execute()
-        
-        if not res.data:
-            # Check if it exists at all
-            check = supabase_client.table("dependencias").select("id").eq("id", dep_id).execute()
-            if not check.data:
-                 return {"status": "already_deleted", "id": dep_id}
-            raise HTTPException(status_code=400, detail="No se pudo eliminar la dependencia. Verifique que no tenga series vinculadas.")
-            
+            sers = await db.query_by_entity("series", entity_id, sk_prefix="SER#")
+            dep_serie_ids = {s["id"] for s in sers if s.get("dependencia_id") == dep_id}
+            try:
+                subs = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
+                for sub in subs:
+                    if sub.get("serie_id") in dep_serie_ids:
+                        await db.delete_item("subseries", sub["PK"], sub["SK"])
+            except Exception as e:
+                print(f"[CASCADE] subseries for dep {dep_id}: {e}")
+            for ser in sers:
+                if ser.get("dependencia_id") == dep_id:
+                    await db.delete_item("series", ser["PK"], ser["SK"])
+        except Exception as e:
+            print(f"[CASCADE] series for dep {dep_id}: {e}")
+
+        # Cascade: TRD records
+        try:
+            trds = await db.query_by_entity("trd_records", entity_id, sk_prefix="TRD#")
+            for trd in trds:
+                if trd.get("dependencia_id") == dep_id:
+                    await db.delete_item("trd_records", trd["PK"], trd["SK"])
+        except Exception as e:
+            print(f"[CASCADE] trd_records for dep {dep_id}: {e}")
+
+        # Cascade: funciones (table may not exist yet)
+        try:
+            funs = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
+            for fun in funs:
+                if fun.get("dependencia_id") == dep_id:
+                    await db.delete_item("funciones", fun["PK"], fun["SK"])
+        except Exception as e:
+            print(f"[CASCADE] funciones for dep {dep_id}: {e}")
+
+        # Cascade: entrevistas (table may not exist yet)
+        try:
+            ints = await db.query_by_entity("entrevistas", entity_id, sk_prefix="INT#")
+            for ent in ints:
+                if ent.get("dependencia_id") == dep_id:
+                    await db.delete_item("entrevistas", ent["PK"], ent["SK"])
+        except Exception as e:
+            print(f"[CASCADE] entrevistas for dep {dep_id}: {e}")
+
+        pk = f"ENTITY#{entity_id}"
+        sk = f"DEP#{dep_id}"
+        await db.delete_item("dependencias", pk, sk)
         return {"status": "deleted", "id": dep_id}
     except Exception as e:
         print(f"Error deleting dependencia: {e}")
         raise HTTPException(status_code=500, detail=f"Error al eliminar dependencia: {str(e)}")
 
+
 # ---------- Series ----------
 @router.post("/entity/{entity_id}/series", response_model=dict)
-async def create_serie_entity(
-    entity_id: str,
-    payload: SerieCreate,
-    user: dict = Depends(get_current_user),
-    background: BackgroundTasks = None,
-):
+async def create_serie_entity(entity_id: str, payload: SerieCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    # 1. Validación de duplicados (Código único por entidad y dependencia)
     clean_codigo = payload.codigo.strip()
-    existing = supabase_client.table("series") \
-        .select("id") \
-        .eq("entidad_id", entity_id) \
-        .eq("dependencia_id", payload.dependencia_id) \
-        .ilike("codigo", clean_codigo) \
-        .execute()
-    
-    if existing.data:
-        # Si es creación (no hay payload.id) o si el ID encontrado es diferente al que estamos editando
-        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' en esta dependencia.")
 
-    data = payload.dict()
-    data["codigo"] = clean_codigo
-    data["entidad_id"] = entity_id
-    try:
-        res = supabase_client.table("series").upsert(data).execute()
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Failed to create serie")
-        record = res.data[0]
-    except Exception as e:
-        error_msg = str(e)
-        if "duplicate key value violates unique constraint" in error_msg:
-             raise HTTPException(status_code=400, detail="El código de serie ya existe para esta entidad.")
-        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
-    
-    try:
-        if background:
-            background.add_task(upload_record, supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
-        else:
-            upload_record(supabase_client, entity_id, "series", record["id"], _record_to_dict(record))
-    except Exception as e:
-        print(f"[CloudSync] Warning: Failed to sync serie {record['id']}: {e}")
-        
-    return record
+    # Unique code per dependency, excluding self on upsert
+    all_series = await db.query_by_entity("series", entity_id, sk_prefix="SER#")
+    for ser in all_series:
+        if (ser.get("codigo", "").strip().lower() == clean_codigo.lower() and
+                str(ser.get("dependencia_id")) == str(payload.dependencia_id)):
+            if not payload.id or str(ser.get("id")) != str(payload.id):
+                raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' en esta dependencia.")
+
+    serie_id = payload.id if payload.id else str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    item = payload.dict()
+    item.update({
+        "id": serie_id,
+        "codigo": clean_codigo,
+        "entidad_id": entity_id,
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"SER#{serie_id}",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.put_item("series", item)
+    return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/series", response_model=List[dict])
 async def list_series_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("series").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").order("codigo").execute()
-    return res.data or []
+    items = await db.query_by_entity("series", entity_id, sk_prefix="SER#")
+    items.sort(key=lambda x: x.get("codigo", ""))
+    return [_strip_keys(i) for i in items]
 
 @router.put("/entity/{entity_id}/series/{serie_id}", response_model=dict)
-async def update_serie_entity(
-    entity_id: str,
-    serie_id: str,
-    payload: SerieCreate,
-    user: dict = Depends(get_current_user),
-):
+async def update_serie_entity(entity_id: str, serie_id: str, payload: SerieCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("series").update(data).eq("id", serie_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
+
+    if payload.codigo and payload.dependencia_id:
+        clean_codigo = payload.codigo.strip()
+        all_series = await db.query_by_entity("series", entity_id, sk_prefix="SER#")
+        for ser in all_series:
+            if (ser.get("codigo", "").strip().lower() == clean_codigo.lower() and
+                    str(ser.get("dependencia_id")) == str(payload.dependencia_id) and
+                    str(ser.get("id")) != str(serie_id)):
+                raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' en esta dependencia.")
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"SER#{serie_id}"
+    existing = await db.get_item("series", pk, sk)
+    if not existing:
         raise HTTPException(status_code=404, detail="Serie not found")
-    record = res.data[0]
-    try:
-        path = upload_record(supabase_client, entity_id, "series", serie_id, _record_to_dict(record))
-        # supabase_client.table("series").update({"cloud_key": path}).eq("id", serie_id).execute()
-    except Exception: pass
-    return record
+
+    updates = payload.dict(exclude_unset=True)
+    if "codigo" in updates:
+        updates["codigo"] = updates["codigo"].strip()
+    updates["updated_at"] = datetime.now().isoformat()
+
+    await db.update_item("series", pk, sk, updates)
+    return _strip_keys({**existing, **updates})
 
 @router.delete("/entity/{entity_id}/series/{serie_id}")
 async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
-    # HARD DELETE CASCADE
     try:
-        # 1. Delete TRD Records associated with this serie
-        supabase_client.table("trd_records").delete().eq("serie_id", serie_id).eq("entidad_id", entity_id).execute()
-        
-        # 2. Delete Subseries associated with this serie
-        supabase_client.table("subseries").delete().eq("serie_id", serie_id).eq("entidad_id", entity_id).execute()
-        
-        # 3. Delete Cloud Storage
-        try: delete_record(supabase_client, entity_id, "series", serie_id)
-        except: pass
-        
-        # 4. Final Delete
-        res = supabase_client.table("series").delete().eq("id", serie_id).eq("entidad_id", entity_id).execute()
-        
-        if not res.data:
-             return {"status": "not_found_or_not_deleted", "id": serie_id}
-             
+        # Cascade: TRD records
+        try:
+            trds = await db.query_by_entity("trd_records", entity_id, sk_prefix="TRD#")
+            for trd in trds:
+                if trd.get("serie_id") == serie_id:
+                    await db.delete_item("trd_records", trd["PK"], trd["SK"])
+        except Exception as e:
+            print(f"[CASCADE] trd_records for serie {serie_id}: {e}")
+
+        # Cascade: subseries
+        try:
+            subs = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
+            for sub in subs:
+                if sub.get("serie_id") == serie_id:
+                    await db.delete_item("subseries", sub["PK"], sub["SK"])
+        except Exception as e:
+            print(f"[CASCADE] subseries for serie {serie_id}: {e}")
+
+        pk = f"ENTITY#{entity_id}"
+        sk = f"SER#{serie_id}"
+        await db.delete_item("series", pk, sk)
         return {"status": "deleted", "id": serie_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar serie: {str(e)}")
 
+
 # ---------- Subseries ----------
 @router.post("/entity/{entity_id}/subseries", response_model=dict)
-async def create_subserie_entity(
-    entity_id: str,
-    payload: SubserieCreate,
-    user: dict = Depends(get_current_user),
-    background: BackgroundTasks = None,
-):
+async def create_subserie_entity(entity_id: str, payload: SubserieCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    # 1. Validación de duplicados (Código o Nombre único por serie en la entidad)
     clean_codigo = payload.codigo.strip()
     clean_nombre = payload.nombre.strip()
-    
-    # Check code duplicate within the same series
-    existing_codigo = supabase_client.table("subseries") \
-        .select("id") \
-        .eq("entidad_id", entity_id) \
-        .eq("serie_id", payload.serie_id) \
-        .ilike("codigo", clean_codigo) \
-        .execute()
-        
-    if existing_codigo.data:
-        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing_codigo.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
 
-    # Check name duplicate within the same series
-    existing_nombre = supabase_client.table("subseries") \
-        .select("id") \
-        .eq("entidad_id", entity_id) \
-        .eq("serie_id", payload.serie_id) \
-        .ilike("nombre", clean_nombre) \
-        .execute()
-        
-    if existing_nombre.data:
-        if not payload.id or any(str(r["id"]) != str(payload.id) for r in existing_nombre.data):
-             raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el nombre '{clean_nombre}' en esta serie.")
+    all_subs = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
 
-    data = payload.dict()
-    data["codigo"] = clean_codigo
-    data["entidad_id"] = entity_id
-    try:
-        res = supabase_client.table("subseries").upsert(data).execute()
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Failed to create subserie")
-        record = res.data[0]
-    except Exception as e:
-        error_msg = str(e)
-        if "duplicate key value violates unique constraint" in error_msg:
-             raise HTTPException(status_code=400, detail="El código de subserie ya existe para esta entidad.")
-        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
-    
-    try:
-        if background:
-            background.add_task(upload_record, supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
-        else:
-            upload_record(supabase_client, entity_id, "subseries", record["id"], _record_to_dict(record))
-    except Exception as e:
-        print(f"[CloudSync] Warning: Failed to sync subserie {record['id']}: {e}")
-        
-    return record
+    # Code uniqueness scoped to the same series, excluding self on upsert
+    for sub in all_subs:
+        if (sub.get("codigo", "").strip().lower() == clean_codigo.lower() and
+                str(sub.get("serie_id")) == str(payload.serie_id)):
+            if not payload.id or str(sub.get("id")) != str(payload.id):
+                raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
+
+    # Name uniqueness scoped to the same series, excluding self on upsert
+    for sub in all_subs:
+        if (sub.get("nombre", "").strip().lower() == clean_nombre.lower() and
+                str(sub.get("serie_id")) == str(payload.serie_id)):
+            if not payload.id or str(sub.get("id")) != str(payload.id):
+                raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el nombre '{clean_nombre}' en esta serie.")
+
+    sub_id = payload.id if payload.id else str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    item = payload.dict()
+    item.update({
+        "id": sub_id,
+        "codigo": clean_codigo,
+        "entidad_id": entity_id,
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"SUB#{sub_id}",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.put_item("subseries", item)
+    return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/subseries", response_model=List[dict])
 async def list_subseries_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("subseries").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").order("codigo").execute()
-    return res.data or []
+    items = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
+    items.sort(key=lambda x: x.get("codigo", ""))
+    return [_strip_keys(i) for i in items]
 
 @router.put("/entity/{entity_id}/subseries/{subserie_id}", response_model=dict)
-async def update_subserie_entity(
-    entity_id: str,
-    subserie_id: str,
-    payload: SubserieCreate,
-    user: dict = Depends(get_current_user),
-):
+async def update_subserie_entity(entity_id: str, subserie_id: str, payload: SubserieCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("subseries").update(data).eq("id", subserie_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
+
+    if payload.codigo and payload.serie_id:
+        clean_codigo = payload.codigo.strip()
+        all_subs = await db.query_by_entity("subseries", entity_id, sk_prefix="SUB#")
+        for sub in all_subs:
+            if (sub.get("codigo", "").strip().lower() == clean_codigo.lower() and
+                    str(sub.get("serie_id")) == str(payload.serie_id) and
+                    str(sub.get("id")) != str(subserie_id)):
+                raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"SUB#{subserie_id}"
+    existing = await db.get_item("subseries", pk, sk)
+    if not existing:
         raise HTTPException(status_code=404, detail="Subserie not found")
-    record = res.data[0]
-    try:
-        path = upload_record(supabase_client, entity_id, "subseries", subserie_id, _record_to_dict(record))
-        # supabase_client.table("subseries").update({"cloud_key": path}).eq("id", subserie_id).execute()
-    except Exception: pass
-    return record
+
+    updates = payload.dict(exclude_unset=True)
+    if "codigo" in updates:
+        updates["codigo"] = updates["codigo"].strip()
+    updates["updated_at"] = datetime.now().isoformat()
+
+    await db.update_item("subseries", pk, sk, updates)
+    return _strip_keys({**existing, **updates})
 
 @router.delete("/entity/{entity_id}/subseries/{subserie_id}")
 async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
-    # HARD DELETE CASCADE
     try:
-        # 1. Delete TRD Records associated with this subserie
-        supabase_client.table("trd_records").delete().eq("subserie_id", subserie_id).eq("entidad_id", entity_id).execute()
-        
-        # 2. Cloud Storage
-        try: delete_record(supabase_client, entity_id, "subseries", subserie_id)
-        except: pass
-        
-        # 3. Final Delete
-        res = supabase_client.table("subseries").delete().eq("id", subserie_id).eq("entidad_id", entity_id).execute()
-        
-        if not res.data:
-             return {"status": "not_found_or_not_deleted", "id": subserie_id}
-             
+        # Cascade: TRD records linked to this subserie
+        try:
+            trds = await db.query_by_entity("trd_records", entity_id, sk_prefix="TRD#")
+            for trd in trds:
+                if trd.get("subserie_id") == subserie_id:
+                    await db.delete_item("trd_records", trd["PK"], trd["SK"])
+        except Exception as e:
+            print(f"[CASCADE] trd_records for subserie {subserie_id}: {e}")
+
+        pk = f"ENTITY#{entity_id}"
+        sk = f"SUB#{subserie_id}"
+        await db.delete_item("subseries", pk, sk)
         return {"status": "deleted", "id": subserie_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar subserie: {str(e)}")
 
+
 # ---------- TRD Records ----------
 @router.post("/entity/{entity_id}/trd_records", response_model=dict)
-async def create_trd_record_entity(
-    entity_id: str,
-    payload: TRDRecordCreate,
-    user: dict = Depends(get_current_user),
-    background: BackgroundTasks = None,
-):
+async def create_trd_record_entity(entity_id: str, payload: TRDRecordCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict()
-    if not data.get("funciones_ids"):
-        data.pop("funciones_ids", None)
-    data["entidad_id"] = entity_id
-    try:
-        res = supabase_client.table("trd_records").upsert(data).execute()
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Failed to create TRD record")
-        record = res.data[0]
-    except Exception as e:
-        error_msg = str(e)
-        if "duplicate key value violates unique constraint" in error_msg:
-             raise HTTPException(status_code=400, detail="Ya existe una valoración para esta combinación de códigos.")
-        raise HTTPException(status_code=500, detail=f"Database error: {error_msg}")
-    
-    try:
-        if background:
-            background.add_task(upload_record, supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
-        else:
-            upload_record(supabase_client, entity_id, "trd_records", record["id"], _record_to_dict(record))
-    except Exception as e:
-        print(f"[CloudSync] Warning: Failed to sync TRD record {record['id']}: {e}")
-        
-    return record
+
+    record_id = payload.id if payload.id else str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    item = payload.dict()
+    item.update({
+        "id": record_id,
+        "entidad_id": entity_id,
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"TRD#{record_id}",
+        "created_at": now,
+        "updated_at": now,
+    })
+    if not item.get("funciones_ids"):
+        item.pop("funciones_ids", None)
+
+    await db.put_item("trd_records", item)
+    return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/trd_records", response_model=List[dict])
 async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("trd_records").select("*").or_(f"entidad_id.eq.{entity_id},entidad_id.is.null").execute()
-    return res.data or []
+    items = await db.query_by_entity("trd_records", entity_id, sk_prefix="TRD#")
+    return [_strip_keys(i) for i in items]
 
 @router.put("/entity/{entity_id}/trd_records/{record_id}", response_model=dict)
-async def update_trd_record_entity(
-    entity_id: str,
-    record_id: str,
-    payload: TRDRecordCreate,
-    user: dict = Depends(get_current_user),
-):
+async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDRecordCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict(exclude_unset=True)
-    if "funciones_ids" in data and not data.get("funciones_ids"):
-        data.pop("funciones_ids", None)
-    res = supabase_client.table("trd_records").update(data).eq("id", record_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"TRD#{record_id}"
+    existing = await db.get_item("trd_records", pk, sk)
+    if not existing:
         raise HTTPException(status_code=404, detail="TRD Record not found")
-    record = res.data[0]
-    try:
-        path = upload_record(supabase_client, entity_id, "trd_records", record_id, _record_to_dict(record))
-        # supabase_client.table("trd_records").update({"cloud_key": path}).eq("id", record_id).execute()
-    except Exception: pass
-    return record
+
+    updates = payload.dict(exclude_unset=True)
+    if "funciones_ids" in updates and not updates.get("funciones_ids"):
+        updates.pop("funciones_ids", None)
+    updates["updated_at"] = datetime.now().isoformat()
+
+    await db.update_item("trd_records", pk, sk, updates)
+    return _strip_keys({**existing, **updates})
 
 @router.delete("/entity/{entity_id}/trd_records/{record_id}")
 async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     try:
-        try: delete_record(supabase_client, entity_id, "trd_records", record_id)
-        except: pass
-        
-        res = supabase_client.table("trd_records").delete().eq("id", record_id).eq("entidad_id", entity_id).execute()
-        
-        if not res.data:
+        pk = f"ENTITY#{entity_id}"
+        sk = f"TRD#{record_id}"
+        existing = await db.get_item("trd_records", pk, sk)
+        if not existing:
             return {"status": "not_found", "id": record_id}
-            
+        await db.delete_item("trd_records", pk, sk)
         return {"status": "deleted", "id": record_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar valoración: {str(e)}")
 
+
 # ---------- Funciones ----------
 @router.post("/entity/{entity_id}/funciones", response_model=dict)
-async def create_funcion_entity(
-    entity_id: str,
-    payload: FuncionCreate,
-    user: dict = Depends(get_current_user),
-    background: BackgroundTasks = None,
-):
+async def create_funcion_entity(entity_id: str, payload: FuncionCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict()
-    data["entidad_id"] = entity_id
-    res = supabase_client.table("funciones").upsert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create funcion")
-    record = res.data[0]
-    
-    try:
-        if background:
-            background.add_task(upload_record, supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
-        else:
-            upload_record(supabase_client, entity_id, "funciones", record["id"], _record_to_dict(record))
-    except Exception as e:
-        print(f"[CloudSync] Warning: Failed to sync funcion {record['id']}: {e}")
-        
-    return record
+
+    func_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    item = payload.dict()
+    item.update({
+        "id": func_id,
+        "entidad_id": entity_id,
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"FUN#{func_id}",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.put_item("funciones", item)
+    return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/funciones", response_model=List[dict])
 async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     try:
-        res = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
-        return res.data or []
+        items = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
+        return [_strip_keys(i) for i in items]
     except Exception as e:
         print(f"Ignored error in list_funciones_entity: {e}")
         return []
 
 @router.put("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
-async def update_funcion_entity(
-    entity_id: str,
-    func_id: str,
-    payload: FuncionCreate,
-    user: dict = Depends(get_current_user),
-):
+async def update_funcion_entity(entity_id: str, func_id: str, payload: FuncionCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    data = payload.dict(exclude_unset=True)
-    res = supabase_client.table("funciones").update(data).eq("id", func_id).eq("entidad_id", entity_id).execute()
-    if not res.data:
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"FUN#{func_id}"
+    existing = await db.get_item("funciones", pk, sk)
+    if not existing:
         raise HTTPException(status_code=404, detail="Funcion not found")
-    record = res.data[0]
-    try:
-        path = upload_record(supabase_client, entity_id, "funciones", func_id, _record_to_dict(record))
-        # supabase_client.table("funciones").update({"cloud_key": path}).eq("id", func_id).execute()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloud sync failed: {e}")
-    return record
+
+    updates = payload.dict(exclude_unset=True)
+    updates["updated_at"] = datetime.now().isoformat()
+
+    await db.update_item("funciones", pk, sk, updates)
+    return _strip_keys({**existing, **updates})
 
 @router.delete("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
 async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    try:
-        delete_record(supabase_client, entity_id, "funciones", func_id)
-    except Exception:
-        pass
-    res = supabase_client.table("funciones").delete().eq("id", func_id).eq("entidad_id", entity_id).execute()
+    pk = f"ENTITY#{entity_id}"
+    sk = f"FUN#{func_id}"
+    await db.delete_item("funciones", pk, sk)
     return {"status": "deleted", "id": func_id}
 
-# ---------- Entrevistas y Entrevistados ----------
 
+# ---------- Entrevistas y Entrevistados ----------
 @router.get("/entity/{entity_id}/entrevistados", response_model=List[dict])
 async def list_entrevistados_entity(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     try:
-        res = supabase_client.table("entrevistados").select("*").eq("entidad_id", entity_id).execute()
-        return res.data or []
+        items = await db.query_by_entity("entrevistados", entity_id, sk_prefix="INTV#")
+        return [_strip_keys(i) for i in items]
     except Exception as e:
         print(f"Ignored error in list_entrevistados_entity: {e}")
         return []
 
 @router.post("/entity/{entity_id}/entrevistas", response_model=dict)
-async def create_entrevista_entity(
-    entity_id: str,
-    payload: EntrevistaCreate,
-    user: dict = Depends(get_current_user),
-):
+async def create_entrevista_entity(entity_id: str, payload: EntrevistaCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
-    # 1. Manage Entrevistado
+    now = datetime.now().isoformat()
+
+    # Manage entrevistado
     entrevistado_data = payload.entrevistado.dict(exclude_unset=True)
     entrevistado_id = entrevistado_data.get("id")
-    
-    if entrevistado_id:
-        # Update existing
-        supabase_client.table("entrevistados").update({
-            "nombres": entrevistado_data["nombres"],
-            "apellidos": entrevistado_data["apellidos"],
-            "cargo": entrevistado_data["cargo"]
-        }).eq("id", entrevistado_id).eq("entidad_id", entity_id).execute()
-    else:
-        # Create new
-        res_entrev_create = supabase_client.table("entrevistados").upsert({
-            "entidad_id": entity_id,
-            "nombres": entrevistado_data["nombres"],
-            "apellidos": entrevistado_data["apellidos"],
-            "cargo": entrevistado_data["cargo"]
-        }).execute()
-        if not res_entrev_create.data:
-            raise HTTPException(status_code=500, detail="Failed to create entrevistado")
-        entrevistado_id = res_entrev_create.data[0]["id"]
 
-    # 2. Manage Entrevista
-    entrevista_data = {
+    if entrevistado_id:
+        pk_intv = f"ENTITY#{entity_id}"
+        sk_intv = f"INTV#{entrevistado_id}"
+        await db.update_item("entrevistados", pk_intv, sk_intv, {
+            "nombres": entrevistado_data["nombres"],
+            "apellidos": entrevistado_data["apellidos"],
+            "cargo": entrevistado_data["cargo"],
+            "updated_at": now,
+        })
+    else:
+        entrevistado_id = str(uuid.uuid4())
+        pk_intv = f"ENTITY#{entity_id}"
+        sk_intv = f"INTV#{entrevistado_id}"
+        await db.put_item("entrevistados", {
+            "PK": pk_intv, "SK": sk_intv,
+            "id": entrevistado_id, "entidad_id": entity_id,
+            "nombres": entrevistado_data["nombres"],
+            "apellidos": entrevistado_data["apellidos"],
+            "cargo": entrevistado_data["cargo"],
+            "created_at": now, "updated_at": now,
+        })
+
+    # Create entrevista
+    entrevista_id = str(uuid.uuid4())
+    record = {
+        "PK": f"ENTITY#{entity_id}",
+        "SK": f"INT#{entrevista_id}",
+        "id": entrevista_id,
         "entidad_id": entity_id,
         "dependencia_id": payload.dependencia_id,
         "entrevistado_id": entrevistado_id,
-        "fecha_entrevista": payload.fecha_entrevista
+        "fecha_entrevista": payload.fecha_entrevista,
+        "created_at": now,
+        "updated_at": now,
     }
-    res = supabase_client.table("entrevistas").upsert(entrevista_data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to create entrevista")
-    
-    record = res.data[0]
-    try:
-        path = upload_record(supabase_client, entity_id, "entrevistas", record["id"], _record_to_dict(record))
-        # supabase_client.table("entrevistas").update({"cloud_key": path}).eq("id", record["id"]).execute()
-    except Exception as e:
-        pass # Ignore minor cloud sync upload error on create
-    return record
+    await db.put_item("entrevistas", record)
+    return _strip_keys(record)
 
 @router.get("/entity/{entity_id}/entrevistas", response_model=List[dict])
 async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_current_user)):
-    
     require_entity_admin(user, entity_id)
     try:
-        # Using foreign key joins for easiest frontend use
-        res = supabase_client.table("entrevistas").select("*, entrevistado:entrevistados(*)").eq("entidad_id", entity_id).execute()
-        return res.data or []
+        entrevistas = await db.query_by_entity("entrevistas", entity_id, sk_prefix="INT#")
+        entrevistados = await db.query_by_entity("entrevistados", entity_id, sk_prefix="INTV#")
+        intv_map = {i["id"]: _strip_keys(i) for i in entrevistados}
+        result = []
+        for ent in entrevistas:
+            ent_clean = _strip_keys(ent)
+            ent_clean["entrevistado"] = intv_map.get(ent.get("entrevistado_id"))
+            result.append(ent_clean)
+        return result
     except Exception as e:
         print(f"Ignored error in list_entrevistas_entity: {e}")
         return []
 
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
 async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):
-    
     require_entity_admin(user, entity_id)
-    try:
-        delete_record(supabase_client, entity_id, "entrevistas", ent_id)
-    except Exception:
-        pass
-    res = supabase_client.table("entrevistas").delete().eq("id", ent_id).eq("entidad_id", entity_id).execute()
+    pk = f"ENTITY#{entity_id}"
+    sk = f"INT#{ent_id}"
+    await db.delete_item("entrevistas", pk, sk)
     return {"status": "deleted", "id": ent_id}
 
-# ---------- Super‑Admin endpoints (no entity scoping) ----------
+
+# ---------- Super-Admin endpoints ----------
 @router.get("/admin/dependencias", response_model=List[dict])
 async def admin_list_dependencias(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     require_super_admin(user)
-    if entidad_id:
-        res = supabase_client.table("dependencias").select("*").eq("entidad_id", entidad_id).execute()
-        return res.data
-    return []
+    if not entidad_id:
+        return []
+    items = await db.query_by_entity("dependencias", entidad_id, sk_prefix="DEP#")
+    return [_strip_keys(i) for i in items]
 
 @router.get("/admin/series", response_model=List[dict])
 async def admin_list_series(entidad_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     require_super_admin(user)
-    if entidad_id:
-        res = supabase_client.table("series").select("*").eq("entidad_id", entidad_id).execute()
-        return res.data
-    return []
+    if not entidad_id:
+        return []
+    items = await db.query_by_entity("series", entidad_id, sk_prefix="SER#")
+    return [_strip_keys(i) for i in items]
+
+@router.get("/admin/subseries", response_model=List[dict])
+async def admin_list_subseries(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    items = await db.scan_table("subseries")
+    return [_strip_keys(i) for i in items]
+
+@router.get("/admin/trd_records", response_model=List[dict])
+async def admin_list_trd(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    items = await db.scan_table("trd_records")
+    return [_strip_keys(i) for i in items]
+
 
 # ---------- Generación Documental con LLM ----------
-
 @router.post("/entity/{entity_id}/generate/ccd")
 async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
-    
     require_entity_admin(user, entity_id)
-    
-    # 1. Gather all dependencias and funciones
-    res_dep = supabase_client.table("dependencias").select("*").eq("entidad_id", entity_id).execute()
-    res_fun = supabase_client.table("funciones").select("*").eq("entidad_id", entity_id).execute()
-    
-    deps = res_dep.data or []
-    funs = res_fun.data or []
-    
-    # Simple structured tree formatting
+
+    deps = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+    funs = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
+
     tree_text = "Estructura de la Entidad:\n"
     for d in deps:
         tree_text += f"- Dependencia: {d.get('codigo', '')} - {d.get('nombre', '')}\n"
-        deps_funs = [f for f in funs if f.get('dependencia_id') == d.get('id')]
-        for f in deps_funs:
-            tree_text += f"  * Función: {f.get('codigo_funcion', '')} - {f.get('titulo', '')}\n"
-            
+        for f in funs:
+            if f.get("dependencia_id") == d.get("id"):
+                tree_text += f"  * Función: {f.get('codigo_funcion', '')} - {f.get('titulo', '')}\n"
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Eres un experto archivista enfocado en la Ley 594 de 2000 (Colombia). Tu tarea es generar el 'Cuadro de Clasificación Documental' (CCD) exacto. " 
+        ("system", "Eres un experto archivista enfocado en la Ley 594 de 2000 (Colombia). Tu tarea es generar el 'Cuadro de Clasificación Documental' (CCD) exacto. "
          "Te proveeré el fondo documental (Estructura de la entidad, con sus Dependencias/Secciones y Funciones). "
          "Agrupa jerárquicamente en 'Fondo > Sección (Dependencia) > Serie (Función)'. Si ves agrupaciones lógicas para 'Subseries', proponlas. "
          "RESPONDE ÚNICAMENTE CON CÓDIGO HTML bien estructurado y formal (usa <h1>, <h2>, tablas o listas) sin bloques markdown (sin ```html). Evita saludos. Usa fuentes y colores formales si usas CSS inline."),
         ("user", "{data}")
     ])
-    
     chain = prompt | llm | StrOutputParser()
     try:
         html_output = await chain.ainvoke({"data": tree_text})
@@ -728,25 +665,21 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/entity/{entity_id}/generate/manual-funciones")
 async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: dict = Depends(get_current_user)):
-    
     require_entity_admin(user, entity_id)
-    
-    # Query dependency
-    dep_res = supabase_client.table("dependencias").select("*").eq("id", payload.dependencia_id).execute()
-    dep_data = dep_res.data[0] if dep_res.data else {}
-    
-    # Query functions of that dependency
-    func_res = supabase_client.table("funciones").select("*").eq("dependencia_id", payload.dependencia_id).execute()
-    funciones = func_res.data or []
-    
-    # Context format
+
+    dep_item = await db.get_item("dependencias", f"ENTITY#{entity_id}", f"DEP#{payload.dependencia_id}")
+    dep_data = _strip_keys(dep_item) if dep_item else {}
+
+    all_funs = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
+    funciones = [f for f in all_funs if f.get("dependencia_id") == payload.dependencia_id]
+
     cargos_str = ", ".join(payload.cargos) if payload.cargos else "Desconocido"
     ctx = f"Cargos a documentar: {cargos_str}\n"
     ctx += f"Dependencia (Sección): {dep_data.get('nombre')} (Cód {dep_data.get('codigo')})\n"
     ctx += "Funciones de la Dependencia:\n"
     for f in funciones:
         ctx += f"- {f.get('titulo')} (Detalle: {f.get('descripcion', '')})\n"
-        
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", "Eres un analista de talento humano experto en el sector público de Colombia y la ley 594. "
          "Tu objetivo es redactar el 'Manual de Funciones' para un conjunto de cargos dentro de una dependencia. "
@@ -759,7 +692,6 @@ async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: 
          "RESPONDE ÚNICAMENTE EN FORMATO HTML bien estructurado estilo documento formal (<h1>, <h2>, <ul>) y sin macros markdown (sin ```html), para ser embebido en una vista. El documento general debe empezar con <h1>Manual de Funciones</h1>. No expongas saludos informales."),
         ("user", "{data}")
     ])
-    
     chain = prompt | llm | StrOutputParser()
     try:
         html_output = await chain.ainvoke({"data": ctx})
@@ -768,99 +700,88 @@ async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: 
         print(f"LLM Error generating Manual: {e}")
         raise HTTPException(status_code=500, detail="Error de generación por IA.")
 
-@router.get("/admin/subseries", response_model=List[dict])
-async def admin_list_subseries(user: dict = Depends(get_current_user)):
-    require_super_admin(user)
-    res = supabase_client.table("subseries").select("*").execute()
-    return res.data
-
-@router.get("/admin/trd_records", response_model=List[dict])
-async def admin_list_trd(user: dict = Depends(get_current_user)):
-    require_super_admin(user)
-    res = supabase_client.table("trd_records").select("*").execute()
-    return res.data
 
 # ---------- Documentos Oficiales (Control de Versiones) ----------
-
 @router.get("/entity/{entity_id}/documentos-oficiales", response_model=List[dict])
 async def list_documentos_oficiales(entity_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    res = supabase_client.table("documentos_oficiales").select("*").eq("entidad_id", entity_id).order("created_at", desc=True).execute()
-    return res.data or []
+    items = await db.query_by_entity("documentos_oficiales", entity_id, sk_prefix="DOC#")
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return [_strip_keys(i) for i in items]
 
 @router.post("/entity/{entity_id}/documentos-oficiales", response_model=dict)
-async def create_documento_oficial(
-    entity_id: str,
-    payload: DocumentoOficialCreate,
-    user: dict = Depends(get_current_user),
-):
+async def create_documento_oficial(entity_id: str, payload: DocumentoOficialCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
     tipo = payload.tipo
-    contenido = payload.contenido
+    now = datetime.now().isoformat()
 
     try:
-        # 1. Eliminar backup anterior (si existe)
-        supabase_client.table("documentos_oficiales")\
-            .delete()\
-            .eq("entidad_id", entity_id)\
-            .eq("tipo", tipo)\
-            .eq("is_backup", True)\
-            .execute()
+        all_docs = await db.query_by_entity("documentos_oficiales", entity_id, sk_prefix="DOC#")
+        type_docs = [d for d in all_docs if d.get("tipo") == tipo]
 
-        # 2. Convertir el activo actual en backup
-        supabase_client.table("documentos_oficiales")\
-            .update({"is_active": False, "is_backup": True})\
-            .eq("entidad_id", entity_id)\
-            .eq("tipo", tipo)\
-            .eq("is_active", True)\
-            .execute()
+        # Delete existing backup
+        for doc in type_docs:
+            if doc.get("is_backup"):
+                await db.delete_item("documentos_oficiales", doc["PK"], doc["SK"])
 
-        # 3. Insertar el nuevo como activo
+        # Move active to backup
+        for doc in type_docs:
+            if doc.get("is_active"):
+                await db.update_item("documentos_oficiales", doc["PK"], doc["SK"], {
+                    "is_active": False, "is_backup": True, "updated_at": now,
+                })
+
+        # Insert new active
+        doc_id = str(uuid.uuid4())
         new_doc = {
+            "PK": f"ENTITY#{entity_id}",
+            "SK": f"DOC#{doc_id}",
+            "id": doc_id,
             "entidad_id": entity_id,
             "tipo": tipo,
-            "contenido": contenido,
+            "contenido": payload.contenido,
             "is_active": True,
-            "is_backup": False
+            "is_backup": False,
+            "created_at": now,
+            "updated_at": now,
         }
-        res = supabase_client.table("documentos_oficiales").insert(new_doc).execute()
-        
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Error al guardar el documento oficial")
-            
-        return res.data[0]
+        await db.put_item("documentos_oficiales", new_doc)
+        return _strip_keys(new_doc)
     except Exception as e:
         print(f"Error in versioning logic: {e}")
-        # Intentar crear la tabla si no existe (esto fallará en Supabase si no hay permisos, 
-        # pero es una forma de alertar indirectamente o manejar el primer error)
         raise HTTPException(status_code=500, detail=f"Error en la base de datos: {str(e)}")
 
 @router.post("/entity/{entity_id}/documentos-oficiales/restore/{doc_id}", response_model=dict)
-async def restore_documento_oficial(
-    entity_id: str,
-    doc_id: str,
-    user: dict = Depends(get_current_user),
-):
+async def restore_documento_oficial(entity_id: str, doc_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    
-    # 1. Obtener el documento a restaurar (debe ser backup)
-    res_target = supabase_client.table("documentos_oficiales").select("*").eq("id", doc_id).eq("entidad_id", entity_id).execute()
-    if not res_target.data:
+    now = datetime.now().isoformat()
+
+    pk = f"ENTITY#{entity_id}"
+    sk = f"DOC#{doc_id}"
+    doc_to_restore = await db.get_item("documentos_oficiales", pk, sk)
+    if not doc_to_restore:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
-    
-    doc_to_restore = res_target.data[0]
-    tipo = doc_to_restore["tipo"]
 
-    # 2. El activo actual pasa a ser backup (el backup anterior ya no importa o se borra)
-    # Primero borramos cualquier backup que exista
-    supabase_client.table("documentos_oficiales").delete().eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_backup", True).execute()
-    
-    # El activo actual pasa a backup
-    supabase_client.table("documentos_oficiales").update({"is_active": False, "is_backup": True}).eq("entidad_id", entity_id).eq("tipo", tipo).eq("is_active", True).execute()
-    
-    # El documento target pasa a ser activo
-    res = supabase_client.table("documentos_oficiales").update({"is_active": True, "is_backup": False}).eq("id", doc_id).execute()
-    
-    return res.data[0]
+    tipo = doc_to_restore.get("tipo")
+    all_docs = await db.query_by_entity("documentos_oficiales", entity_id, sk_prefix="DOC#")
+    type_docs = [d for d in all_docs if d.get("tipo") == tipo]
 
+    # Delete existing backups (other than target)
+    for doc in type_docs:
+        if doc.get("is_backup") and doc.get("id") != doc_id:
+            await db.delete_item("documentos_oficiales", doc["PK"], doc["SK"])
+
+    # Move active to backup
+    for doc in type_docs:
+        if doc.get("is_active"):
+            await db.update_item("documentos_oficiales", doc["PK"], doc["SK"], {
+                "is_active": False, "is_backup": True, "updated_at": now,
+            })
+
+    # Restore target to active
+    await db.update_item("documentos_oficiales", pk, sk, {
+        "is_active": True, "is_backup": False, "updated_at": now,
+    })
+
+    updated = {**doc_to_restore, "is_active": True, "is_backup": False, "updated_at": now}
+    return _strip_keys(updated)
