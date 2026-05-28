@@ -1353,18 +1353,22 @@ async def get_users(user: dict = Depends(get_current_user)):
     try:
         entity_context = user.get("entity_id")
         all_items = await db.scan_table("users")
-        
-        # Solo perfiles
+
+        # Only PROFILE items
         profiles = [u for u in all_items if u.get("SK") == "PROFILE" or "email" in u]
-        
+
+        # Guarantee every item has an 'id' field that matches the PK suffix so the
+        # frontend can use it as the update key without guessing at the PK format.
+        for item in profiles:
+            if not item.get("id"):
+                pk_raw = str(item.get("PK", ""))
+                item["id"] = pk_raw.replace("USER#", "") if pk_raw.startswith("USER#") else pk_raw
+
         if user.get("role") == SUPERADMIN_ROLE:
-            # Si está en el contexto Global (e0), ve todos
             if not entity_context or entity_context == "e0":
                 return profiles
-            # Si seleccionó una entidad específica, filtramos por ella
             return [u for u in profiles if u.get("entidadId") == entity_context or entity_context in (u.get("entidadIds") or [])]
         else:
-            # Administrador de entidad: solo ve los de su entidad
             if not entity_context: return []
             return [u for u in profiles if u.get("entidadId") == entity_context or entity_context in (u.get("entidadIds") or [])]
     except Exception as e:
@@ -1401,54 +1405,76 @@ async def create_user_endpoint(req: UserCreate, user: dict = Depends(require_sup
 @router.put("/users/{user_id}")
 async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depends(get_current_user)):
     """Actualiza un usuario existente."""
-    # Check permissions
     if user.get("role") != SUPERADMIN_ROLE and user.get("user_id") != user_id:
-        # Check if they are admin of the same entity
         target_user = await db.get_item("users", f"USER#{user_id}", "PROFILE")
         if not target_user or target_user.get("entidadId") != user.get("entity_id"):
-             raise HTTPException(status_code=403, detail="No autorizado")
-             
+            raise HTTPException(status_code=403, detail="No autorizado")
+
     try:
-        pk, sk = f"USER#{user_id}", "PROFILE"
-        updates = req.dict(exclude_unset=True)
-        # Whenever 'perfil' is changed, write 'role' with the canonical value so that
-        # every downstream permission check (login, /users/profile, get_current_user)
-        # reads the correct role without needing to know about the 'perfil' alias.
+        sk = "PROFILE"
+
+        # --- Resolve the actual DynamoDB primary key ---
+        # The frontend passes `user.id` which should equal the PK suffix, but legacy
+        # records (or records without an explicit `id` field) may have a different
+        # format. We try the canonical key first; if nothing is found we scan by id/PK
+        # to locate the real record and use its stored PK.
+        pk = f"USER#{user_id}"
+        existing = await db.get_item("users", pk, sk)
+        if not existing:
+            print(f" [UPDATE_USER] Direct key {pk} not found — scanning for id={user_id}")
+            all_users = await db.scan_table("users")
+            found = next(
+                (u for u in all_users
+                 if u.get("id") == user_id
+                 or str(u.get("PK", "")).replace("USER#", "") == user_id),
+                None
+            )
+            if found:
+                pk = found.get("PK", pk)
+                print(f" [UPDATE_USER] Resolved key via scan: {pk}")
+            else:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        # --- Build the update payload ---
+        updates = {k: v for k, v in req.dict(exclude_unset=True).items()
+                   if k != "id"}   # strip stray 'id' sent by the frontend
         if "perfil" in updates:
             updates["role"] = _normalize_role(updates["perfil"])
-        await db.update_item("users", pk, sk, updates)
-        
-        # Enviar notificación por correo
-        resend_api_key = os.getenv("RESEND_API_KEY")
-        target_email = updates.get("email")
-        if not target_email:
-            current_user = await db.get_item("users", pk, sk)
-            target_email = current_user.get("email")
 
-        if resend_api_key and target_email:
-            try:
+        await db.update_item("users", pk, sk, updates)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f" [UPDATE_USER] Error al actualizar {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # --- Email notification (isolated so failures here never roll back the save) ---
+    try:
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if resend_api_key:
+            target_email = updates.get("email") or (existing or {}).get("email")
+            if target_email:
                 import resend
                 resend.api_key = resend_api_key
                 resend.Emails.send({
                     "from": "OSE IA <notificaciones@ose-ia.com>",
                     "to": target_email,
                     "subject": "Actualización de tu Perfil en OSE IA",
-                    "html": f"""
-                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-                            <h2 style="color: #00bfa5;">¡Hola! 👋</h2>
-                            <p>Te informamos que un administrador ha actualizado la información de tu perfil en la plataforma <strong>OSE IA</strong>.</p>
-                            <p>Si no reconoces esta actividad, por favor contacta a soporte técnico de tu entidad.</p>
-                            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                            <p style="font-size: 12px; color: #64748b;">Este es un mensaje automático de OSE IA - Plataforma de Gestión Documental Inteligente.</p>
-                        </div>
-                    """
+                    "html": (
+                        '<div style="font-family:sans-serif;max-width:600px;margin:0 auto;'
+                        'padding:20px;border:1px solid #e2e8f0;border-radius:12px;">'
+                        "<h2 style=\"color:#00bfa5;\">¡Hola! 👋</h2>"
+                        "<p>Un administrador actualizó tu perfil en <strong>OSE IA</strong>.</p>"
+                        "<p>Si no reconoces esta actividad contacta al soporte de tu entidad.</p>"
+                        "</div>"
+                    )
                 })
-                print(f" [EMAIL] Notificación de actualización enviada a {target_email}")
-            except Exception as e:
-                print(f" [EMAIL] Error enviando notificación: {e}")
+                print(f" [EMAIL] Notificación enviada a {target_email}")
+    except Exception as email_err:
+        print(f" [EMAIL] Fallo al enviar notificación (el cambio SÍ fue guardado): {email_err}")
 
-        return {"status": "ok"}
-    except Exception as e:
+    return {"status": "ok"}
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/users/{user_id}")

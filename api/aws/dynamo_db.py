@@ -6,30 +6,34 @@ from typing import Dict, Any, List, Optional
 class DynamoDBManager:
     def __init__(self):
         self.region = os.getenv("AWS_REGION", "us-east-1")
-        self.prefix = os.getenv("DYNAMODB_TABLE_PREFIX", "ose_")
+
+        # Single-table name takes priority; fall back to prefix-based names if not set.
         self.single_table_name = os.getenv("DYNAMODB_TABLE_NAME")
-        
-        # Usar credenciales explícitas
+        self.prefix = os.getenv("DYNAMODB_TABLE_PREFIX", "ose_")
+
         self.dynamodb = boto3.resource(
-            "dynamodb", 
+            "dynamodb",
             region_name=self.region,
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
         )
 
     def get_table(self, table_name: str):
-        # Mapeo de nombres lógicos a nombres reales en la base de datos
+        # If a single-table name is configured (e.g. OSE_IA_Main), ALL logical
+        # table names map to that one physical table.
+        if self.single_table_name:
+            print(f" [DYNAMO] Tabla física: {self.single_table_name} (lógica: {table_name})")
+            return self.dynamodb.Table(self.single_table_name)
+
+        # Legacy multi-table mode: apply name aliases and the configured prefix.
         mapping = {
             "dependencias": "dependencies",
             "trd_records": "trds",
             "RagDocuments": "rag_documents"
         }
         real_name = mapping.get(table_name, table_name)
-
-        # Usamos el prefijo (ej: ose_users, ose_dependencies)
         full_name = f"{self.prefix}{real_name}"
-            
-        print(f" [DYNAMO] Accediendo a tabla: {full_name}")
+        print(f" [DYNAMO] Tabla física: {full_name} (lógica: {table_name})")
         return self.dynamodb.Table(full_name)
 
     async def get_item(self, table: str, pk_value: str, sk_value: Optional[str] = None) -> Optional[Dict]:
@@ -37,26 +41,26 @@ class DynamoDBManager:
         key = {"PK": pk_value}
         if sk_value:
             key["SK"] = sk_value
-        
         response = table_obj.get_item(Key=key)
         return response.get("Item")
 
     async def put_item(self, table: str, item: Dict[str, Any]):
         table_obj = self.get_table(table)
-        return table_obj.put_item(Item=item)
+        try:
+            result = table_obj.put_item(Item=item)
+            print(f" [DYNAMO] put_item OK: {item.get('PK')}/{item.get('SK')}")
+            return result
+        except Exception as e:
+            print(f" [DYNAMO] put_item FAILED: {item.get('PK')}/{item.get('SK')} → {e}")
+            raise
 
     async def query_by_entity(self, table: str, entity_id: str, sk_prefix: Optional[str] = None) -> List[Dict]:
         table_obj = self.get_table(table)
-        # En nuestro esquema, la Partition Key es PK = ENTITY#{entity_id}
         pk = entity_id if (entity_id.startswith("ENTITY#") or entity_id == "GLOBAL") else f"ENTITY#{entity_id}"
         key_condition = Key("PK").eq(pk)
-        
         if sk_prefix:
             key_condition &= Key("SK").begins_with(sk_prefix)
-            
-        response = table_obj.query(
-            KeyConditionExpression=key_condition
-        )
+        response = table_obj.query(KeyConditionExpression=key_condition)
         return response.get("Items", [])
 
     async def delete_item(self, table: str, pk_value: str, sk_value: Optional[str] = None):
@@ -67,22 +71,46 @@ class DynamoDBManager:
         return table_obj.delete_item(Key=key)
 
     async def update_item(self, table: str, pk: str, sk: str, updates: Dict[str, Any]):
+        # Strip None values — DynamoDB SET expressions cannot accept NULL types
+        # via the high-level resource API without explicit type declaration.
+        clean = {k: v for k, v in updates.items() if v is not None}
+        if not clean:
+            print(f" [DYNAMO] update_item skipped (empty payload): {pk}/{sk}")
+            return {}
+
         table_obj = self.get_table(table)
-        update_expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates.keys())
-        attr_names = {f"#{k}": k for k in updates.keys()}
-        attr_values = {f":{k}": v for k, v in updates.items()}
-        
-        return table_obj.update_item(
-            Key={"PK": pk, "SK": sk},
-            UpdateExpression=update_expr,
-            ExpressionAttributeNames=attr_names,
-            ExpressionAttributeValues=attr_values,
-            ReturnValues="UPDATED_NEW"
-        )
+        update_expr = "SET " + ", ".join(f"#{k} = :{k}" for k in clean.keys())
+        attr_names = {f"#{k}": k for k in clean.keys()}
+        attr_values = {f":{k}": v for k, v in clean.items()}
+
+        print(f" [DYNAMO] update_item: {pk}/{sk} → fields: {list(clean.keys())}")
+        try:
+            result = table_obj.update_item(
+                Key={"PK": pk, "SK": sk},
+                UpdateExpression=update_expr,
+                ExpressionAttributeNames=attr_names,
+                ExpressionAttributeValues=attr_values,
+                ReturnValues="UPDATED_NEW"
+            )
+            print(f" [DYNAMO] update_item OK: {pk}/{sk}")
+            return result
+        except Exception as e:
+            print(f" [DYNAMO] update_item FAILED: {pk}/{sk} → {e}")
+            raise
 
     async def scan_table(self, table_name: str) -> List[Dict]:
+        """Full scan with automatic pagination (DynamoDB returns ≤ 1 MB per page)."""
         table_obj = self.get_table(table_name)
-        response = table_obj.scan()
-        return response.get("Items", [])
+        items: List[Dict] = []
+        try:
+            response = table_obj.scan()
+            items.extend(response.get("Items", []))
+            while "LastEvaluatedKey" in response:
+                response = table_obj.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+                items.extend(response.get("Items", []))
+        except Exception as e:
+            print(f" [DYNAMO] scan_table FAILED on '{table_name}': {e}")
+            raise
+        return items
 
 db = DynamoDBManager()
