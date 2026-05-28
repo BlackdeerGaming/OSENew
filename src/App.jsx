@@ -392,11 +392,10 @@ function App() {
 
       console.log("🚀 [App] [FETCH] Iniciando carga de datos globales...");
 
-      const [usersRes, entitiesRes, invRes, profileRes] = await Promise.all([
+      const [usersRes, entitiesRes, invRes] = await Promise.all([
         fetch(`${API_BASE_URL}/users`, { headers }),
         fetch(`${API_BASE_URL}/entities`, { headers }),
-        fetch(`${API_BASE_URL}/invitations/my`, { headers }),
-        fetch(`${API_BASE_URL}/users/profile`, { headers })
+        fetch(`${API_BASE_URL}/invitations/my`, { headers })
       ]);
 
       if (!usersRes.ok || !entitiesRes.ok || !invRes.ok) {
@@ -406,26 +405,6 @@ function App() {
       const uData = await usersRes.json();
       const eData = await entitiesRes.json();
       const iData = await invRes.json();
-
-      // Refresh currentUser from the server so that superadmin permission edits
-      // (role, iaDisponible) are visible immediately on the next page load, without
-      // waiting for an explicit logout/login cycle.
-      let freshProfile = null;
-      if (profileRes.ok) {
-        try {
-          freshProfile = await profileRes.json();
-          if (freshProfile && localStorage.getItem('ose_user')) {
-            const updatedUser = { ...currentUser, ...freshProfile };
-            setCurrentUser(updatedUser);
-            localStorage.setItem('ose_user', JSON.stringify(updatedUser));
-          }
-        } catch (profileErr) {
-          console.warn("[App] Could not parse profile refresh:", profileErr);
-        }
-      }
-
-      // Use the freshest role/entidadIds available for entity context calculation
-      const effectiveUser = freshProfile ? { ...currentUser, ...freshProfile } : currentUser;
 
       // A. Cargar usuarios
       setUsers(uData);
@@ -452,10 +431,10 @@ function App() {
       });
 
       let finalUserEntities = userAvailableEntities;
-      if (effectiveUser.role !== 'superadmin') {
-        const rawIds = effectiveUser.entidadIds?.length > 0
-          ? effectiveUser.entidadIds
-          : effectiveUser.entidadId ? [effectiveUser.entidadId] : [];
+      if (currentUser.role !== 'superadmin') {
+        const rawIds = currentUser.entidadIds?.length > 0
+          ? currentUser.entidadIds
+          : currentUser.entidadId ? [currentUser.entidadId] : [];
 
         const ids = rawIds.map(id => typeof id === 'string' && id.startsWith("ENTITY#") ? id.replace("ENTITY#", "") : id);
         finalUserEntities = ids.length > 0 ? userAvailableEntities.filter(e => ids.includes(e.id)) : userAvailableEntities;

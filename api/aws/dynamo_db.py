@@ -19,13 +19,9 @@ class DynamoDBManager:
         )
 
     def get_table(self, table_name: str):
-        # If a single-table name is configured (e.g. OSE_IA_Main), ALL logical
-        # table names map to that one physical table.
-        if self.single_table_name:
-            print(f" [DYNAMO] Tabla física: {self.single_table_name} (lógica: {table_name})")
-            return self.dynamodb.Table(self.single_table_name)
-
-        # Legacy multi-table mode: apply name aliases and the configured prefix.
+        # Apply known name aliases then prepend the configured prefix.
+        # DYNAMODB_TABLE_NAME is stored for reference but each logical table
+        # has its own physical table (ose_users, ose_entities, etc.).
         mapping = {
             "dependencias": "dependencies",
             "trd_records": "trds",
@@ -33,7 +29,7 @@ class DynamoDBManager:
         }
         real_name = mapping.get(table_name, table_name)
         full_name = f"{self.prefix}{real_name}"
-        print(f" [DYNAMO] Tabla física: {full_name} (lógica: {table_name})")
+        print(f" [DYNAMO] Tabla: {full_name}")
         return self.dynamodb.Table(full_name)
 
     async def get_item(self, table: str, pk_value: str, sk_value: Optional[str] = None) -> Optional[Dict]:

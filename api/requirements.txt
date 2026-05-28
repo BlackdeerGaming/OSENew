@@ -1,4 +1,7 @@
 fastapi
+mangum
+boto3
+uvicorn
 python-multipart
 pymupdf
 python-dotenv
@@ -10,3 +13,5 @@ supabase
 httpx
 PyJWT
 pillow
+resend
+pinecone
