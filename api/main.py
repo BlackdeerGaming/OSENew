@@ -1475,7 +1475,6 @@ async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depen
         print(f" [EMAIL] Fallo al enviar notificación (el cambio SÍ fue guardado): {email_err}")
 
     return {"status": "ok"}
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/users/{user_id}")
 async def delete_user_endpoint(user_id: str, user: dict = Depends(require_super_admin)):
