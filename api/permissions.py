@@ -36,6 +36,20 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
             except Exception as db_err:
                 print(f" [PERMISSIONS] Error consultando DynamoDB para {user_id}: {db_err}")
 
+        # Fallback: search by email for users created before Cognito sub alignment.
+        # This ensures existing users with a mismatched UUID still authenticate correctly.
+        if not user_data and verified_email:
+            try:
+                all_users = await db.scan_table("users")
+                matched = [u for u in all_users if u.get("email", "").lower().strip() == verified_email]
+                if matched:
+                    user_data = matched[0]
+                    actual_id = user_data.get("id") or str(user_data.get("PK", "")).replace("USER#", "")
+                    if actual_id:
+                        user_id = actual_id
+            except Exception as fb_err:
+                print(f" [PERMISSIONS] Email fallback error: {fb_err}")
+
         if user_data:
             raw_role = str(user_data.get("role", user_data.get("perfil", raw_role))).lower().strip()
             allowed_entities = user_data.get("entidadIds", allowed_entities)

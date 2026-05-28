@@ -88,7 +88,7 @@ export default function SignUp({ onSignUp, onNavigateToLogin }) {
               <input 
                 type="tel" 
                 className="w-full rounded-xl border border-input bg-background py-3 pl-11 pr-4 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-1 focus:ring-primary"
-                placeholder="Ej. +57 320 000 0000"
+                placeholder="Ej. 3001234567 o +57 300 123 4567"
                 value={formData.phone}
                 onChange={(e) => setFormData({...formData, phone: e.target.value})}
               />

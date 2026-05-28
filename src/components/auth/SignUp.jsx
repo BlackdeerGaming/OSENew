@@ -157,7 +157,7 @@ export default function SignUp({ onSignUp, onNavigateToLogin, initialEmail = '' 
               <input
                 type="tel"
                 className={inputClass}
-                placeholder="Opcional"
+                placeholder="Ej. 3001234567 o +57 300 123 4567"
                 value={formData.phone}
                 onChange={set('phone')}
               />

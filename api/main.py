@@ -726,8 +726,9 @@ async def signup(req: UserSignUp):
         raise HTTPException(status_code=409, detail="Ya existe una cuenta registrada con este correo. Por favor inicia sesión.")
 
     # 2. Crear en Cognito
+    cognito_result = None
     try:
-        await cognito.sign_up(
+        cognito_result = await cognito.sign_up(
             username=email,
             password=req.password,
             email=email,
@@ -744,7 +745,10 @@ async def signup(req: UserSignUp):
         raise HTTPException(status_code=400, detail=f"Error al crear la cuenta: {detail}")
 
     # 3. Crear perfil en DynamoDB
-    user_id = str(uuid.uuid4())
+    # Use the Cognito UserSub as the user_id so that get_current_user (which decodes
+    # the Cognito JWT sub claim) always finds the correct DynamoDB record.
+    user_sub = (cognito_result.get("UserSub") if isinstance(cognito_result, dict) else None)
+    user_id = user_sub or str(uuid.uuid4())
     item = {
         "PK": f"USER#{user_id}",
         "SK": "PROFILE",
@@ -809,8 +813,6 @@ class UserUpdate(BaseModel):
     isActivated: bool | None = None
     iaDisponible: bool | None = None
     password: str | None = None
-    username: str | None = None
-    celular: str | None = None
 
 
 class UserActivate(BaseModel):
@@ -1369,6 +1371,15 @@ async def get_users(user: dict = Depends(get_current_user)):
         print(f"Error listing users: {e}")
         return []
 
+def _normalize_role(raw: str) -> str:
+    """Canonical role string used by all permission checks."""
+    r = (raw or "").lower().strip()
+    if r == "superadmin":
+        return "superadmin"
+    if r in ("admin", "administrador", "administración", "administracion"):
+        return "administrador"
+    return "usuario"
+
 @router.post("/users")
 async def create_user_endpoint(req: UserCreate, user: dict = Depends(require_super_admin)):
     """Crea un nuevo usuario en DynamoDB (y Cognito)."""
@@ -1380,6 +1391,8 @@ async def create_user_endpoint(req: UserCreate, user: dict = Depends(require_sup
         item["id"] = user_id
         item["created_at"] = datetime.now().isoformat()
         item["isActivated"] = False
+        # Keep 'role' and 'perfil' in sync so every permission check finds the right value
+        item["role"] = _normalize_role(item.get("perfil", ""))
         await db.put_item("users", item)
         return {"status": "ok", "id": user_id}
     except Exception as e:
@@ -1398,6 +1411,11 @@ async def update_user_endpoint(user_id: str, req: UserUpdate, user: dict = Depen
     try:
         pk, sk = f"USER#{user_id}", "PROFILE"
         updates = req.dict(exclude_unset=True)
+        # Whenever 'perfil' is changed, write 'role' with the canonical value so that
+        # every downstream permission check (login, /users/profile, get_current_user)
+        # reads the correct role without needing to know about the 'perfil' alias.
+        if "perfil" in updates:
+            updates["role"] = _normalize_role(updates["perfil"])
         await db.update_item("users", pk, sk, updates)
         
         # Enviar notificación por correo
@@ -1822,33 +1840,54 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
                     except Exception as e:
                         print(f"Error enviando notificación de rechazo: {e}")
 
-        # 2. SI FUE ACEPTADA: Añadir la entidad al usuario actual
+        # 2. SI FUE ACEPTADA: Añadir la entidad al usuario y aplicar rol e IA de la invitación
         if req.action == "accept":
             entity_id = invite.get("entity_id")
             user_pk = f"USER#{user.get('user_id')}"
             user_sk = "PROFILE"
             user_data = await db.get_item("users", user_pk, user_sk)
-            
+
+            # Fallback: find by email when the user_id from the token doesn't match
+            # any DynamoDB record (can happen for accounts created before the Cognito
+            # sub alignment fix).
+            if not user_data:
+                invite_email = invite.get("email", "").lower().strip()
+                if invite_email:
+                    all_users = await db.scan_table("users")
+                    matched = [u for u in all_users if u.get("email", "").lower().strip() == invite_email]
+                    if matched:
+                        user_data = matched[0]
+                        user_pk = user_data.get("PK", user_pk)
+
             if user_data:
-                current_entities = user_data.get("entidadIds", [])
-                if entity_id not in current_entities:
+                # Ensure entity is in the user's allowed list
+                current_entities = list(user_data.get("entidadIds", []))
+                if entity_id and entity_id not in current_entities:
                     current_entities.append(entity_id)
-                    invited_role = invite.get("role", "usuario")
-                    ia_enabled = invite.get("ia_disponible", False)
-                    
-                    # Prioridad de roles: superadmin > administrador > usuario
-                    current_role = user_data.get("role", "usuario")
+
+                invited_role = invite.get("role", "usuario")
+                ia_enabled = invite.get("ia_disponible", False)
+
+                # Role priority: superadmin > administrador > usuario.
+                # Apply invited role when it is equal or higher than current role;
+                # never downgrade an already-elevated role.
+                role_rank = {"usuario": 0, "administrador": 1, "admin": 1, "superadmin": 2}
+                current_role = user_data.get("role", "usuario")
+                if role_rank.get(invited_role, 0) >= role_rank.get(current_role, 0):
+                    final_role = "administrador" if invited_role in ("admin", "administrador") else "usuario"
+                else:
                     final_role = current_role
-                    if current_role == 'usuario' and invited_role in ('admin', 'administrador'):
-                        final_role = 'administrador'
-                    
-                    await db.update_item("users", user_pk, user_sk, {
-                        "entidadIds": current_entities,
-                        # No cambiamos entidadId principal para no forzar cambio de contexto brusco si no quiere
-                        "role": final_role,
-                        "perfil": final_role,
-                        "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled
-                    })
+
+                # Set primary entidadId when the user doesn't have one yet
+                primary_entity = user_data.get("entidadId") or entity_id
+
+                await db.update_item("users", user_pk, user_sk, {
+                    "entidadIds": current_entities,
+                    "entidadId": primary_entity,
+                    "role": final_role,
+                    "perfil": final_role,
+                    "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled
+                })
                     
         return {"status": "ok", "message": f"Invitación {new_status} exitosamente"}
     except HTTPException as e:

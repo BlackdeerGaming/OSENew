@@ -1,5 +1,6 @@
 import boto3
 import os
+import re
 import jwt
 import requests
 import hmac
@@ -94,6 +95,29 @@ class CognitoManager:
             print(f" [AUTH] Error decodificando token: {str(e)}")
             raise HTTPException(status_code=401, detail=f"Token invalido: {str(e)}")
 
+    def _normalize_phone_e164(self, phone: str) -> Optional[str]:
+        """Convert phone number to E.164 format required by Cognito.
+        Assumes +57 (Colombia) when no country code is present."""
+        if not phone or not phone.strip():
+            return None
+        stripped = phone.strip()
+        has_plus = stripped.startswith('+')
+        digits = re.sub(r'\D', '', stripped)
+        if not digits:
+            return None
+        if has_plus:
+            return f"+{digits}"
+        # 12 digits starting with 57 → already has Colombian country code
+        if len(digits) == 12 and digits.startswith('57'):
+            return f"+{digits}"
+        # 10-digit local Colombian number
+        if len(digits) == 10:
+            return f"+57{digits}"
+        # Fallback: prepend Colombian code for any reasonably-sized number
+        if len(digits) >= 7:
+            return f"+57{digits}"
+        return None
+
     async def sign_up(self, username, password, email, name, family_name=None, phone=None):
         try:
             full_name = f"{name} {family_name}" if family_name else name
@@ -105,7 +129,9 @@ class CognitoManager:
             if family_name:
                 user_attributes.append({"Name": "family_name", "Value": family_name})
             if phone:
-                user_attributes.append({"Name": "phone_number", "Value": phone})
+                normalized = self._normalize_phone_e164(phone)
+                if normalized:
+                    user_attributes.append({"Name": "phone_number", "Value": normalized})
             
             params = {
                 "ClientId": self.client_id,
