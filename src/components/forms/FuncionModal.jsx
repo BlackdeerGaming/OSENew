@@ -291,38 +291,38 @@ export default function FuncionModal({
             </div>
 
             {/* Row 4 */}
+            <div className="md:col-span-2">
+              <FormGroup label="Título de la Función" required error={errors.titulo}>
+                <input
+                  name="titulo"
+                  value={formData.titulo}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="Ej. Dirigir, coordinar y controlar las políticas..."
+                />
+              </FormGroup>
+            </div>
+
+            {/* Row 5 */}
             <FormGroup label="Sigla (Dependencia)">
-              <input 
-                type="text" 
-                value={formData.sigla || ""} 
-                readOnly 
-                className={cn(inputClass, "bg-secondary text-muted-foreground cursor-not-allowed border-dashed")} 
+              <input
+                type="text"
+                value={formData.sigla || ""}
+                readOnly
+                className={cn(inputClass, "bg-secondary text-muted-foreground cursor-not-allowed border-dashed")}
                 placeholder="Auto"
               />
             </FormGroup>
 
             <FormGroup label="Código (Dependencia)">
-              <input 
-                type="text" 
-                value={formData.codigo || ""} 
-                readOnly 
-                className={cn(inputClass, "bg-secondary text-muted-foreground cursor-not-allowed border-dashed")} 
+              <input
+                type="text"
+                value={formData.codigo || ""}
+                readOnly
+                className={cn(inputClass, "bg-secondary text-muted-foreground cursor-not-allowed border-dashed")}
                 placeholder="Auto"
               />
             </FormGroup>
-
-            {/* Row 5 */}
-            <div className="md:col-span-2">
-              <FormGroup label="Título de la Función" required error={errors.titulo}>
-                <input 
-                  name="titulo" 
-                  value={formData.titulo} 
-                  onChange={handleChange} 
-                  className={inputClass} 
-                  placeholder="Ej. Dirigir, coordinar y controlar las políticas..." 
-                />
-              </FormGroup>
-            </div>
 
             {/* Row 6 */}
             <div className="md:col-span-2">

@@ -1322,26 +1322,40 @@ async def debug_vars():
         "VERCEL_ENV": os.getenv("VERCEL_ENV", "local"),
     }
 
+def _normalize_entity_id(raw_id: str) -> str:
+    """Strip the ENTITY# prefix so callers always get a plain UUID."""
+    return raw_id.replace("ENTITY#", "", 1) if raw_id.startswith("ENTITY#") else raw_id
+
+def _ensure_entity_id(item: dict) -> dict:
+    """Guarantee the item has an `id` field that is a plain UUID (no ENTITY# prefix)."""
+    if not item.get("id"):
+        pk = item.get("PK", "")
+        item["id"] = _normalize_entity_id(pk)
+    else:
+        item["id"] = _normalize_entity_id(str(item["id"]))
+    return item
+
 @router.get("/entities")
 async def get_entities(user: dict = Depends(get_current_user)):
     """Lista las entidades permitidas para el usuario actual."""
     try:
         if user.get("role") == SUPERADMIN_ROLE:
-            return await db.scan_table("entities")
-        
+            items = await db.scan_table("entities")
+            return [_ensure_entity_id(i) for i in items]
+
         # Para administradores multi-entidad, devolver todas sus entidades permitidas
         allowed_ids = user.get("allowed_entities", [])
         if not allowed_ids:
-            # Fallback a la entidad principal si allowed_entities no está en el payload
             main_id = user.get("entity_id")
             allowed_ids = [main_id] if main_id else []
-            
+
         items = []
         for eid in allowed_ids:
             if not eid: continue
-            item = await db.get_item("entities", f"ENTITY#{eid}", "METADATA")
+            clean_eid = _normalize_entity_id(str(eid))
+            item = await db.get_item("entities", f"ENTITY#{clean_eid}", "METADATA")
             if item:
-                items.append(item)
+                items.append(_ensure_entity_id(item))
         return items
     except Exception as e:
         print(f"Error listing entities: {e}")

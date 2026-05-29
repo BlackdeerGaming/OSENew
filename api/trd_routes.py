@@ -96,10 +96,15 @@ class DocumentoOficialCreate(BaseModel):
     contenido: str
 
 
-# ---------- Helper ----------
+# ---------- Helpers ----------
 def _strip_keys(item: dict) -> dict:
     """Remove DynamoDB PK/SK from items before returning to frontend."""
     return {k: v for k, v in item.items() if k not in ("PK", "SK")}
+
+def _epk(entity_id: str) -> str:
+    """Return ENTITY#{entity_id}, adding the prefix only when not already present.
+    Prevents double-prefix when entity_id arrives as 'ENTITY#abc' from the frontend."""
+    return entity_id if entity_id.startswith("ENTITY#") else f"ENTITY#{entity_id}"
 
 
 # ---------- Dependencias ----------
@@ -122,7 +127,7 @@ async def create_dependencia_entity(entity_id: str, payload: DependenciaCreate, 
         "id": dep_id,
         "codigo": clean_codigo,
         "entidad_id": entity_id,
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"DEP#{dep_id}",
         "created_at": now,
         "updated_at": now,
@@ -147,7 +152,7 @@ async def update_dependencia_entity(entity_id: str, dep_id: str, payload: Depend
             if dep.get("codigo", "").strip().lower() == clean_codigo.lower() and str(dep.get("id")) != str(dep_id):
                 raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el código '{clean_codigo}' en esta entidad.")
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"DEP#{dep_id}"
     existing = await db.get_item("dependencias", pk, sk)
     if not existing:
@@ -209,7 +214,7 @@ async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = De
         except Exception as e:
             print(f"[CASCADE] entrevistas for dep {dep_id}: {e}")
 
-        pk = f"ENTITY#{entity_id}"
+        pk = _epk(entity_id)
         sk = f"DEP#{dep_id}"
         await db.delete_item("dependencias", pk, sk)
         return {"status": "deleted", "id": dep_id}
@@ -239,7 +244,7 @@ async def create_serie_entity(entity_id: str, payload: SerieCreate, user: dict =
         "id": serie_id,
         "codigo": clean_codigo,
         "entidad_id": entity_id,
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"SER#{serie_id}",
         "created_at": now,
         "updated_at": now,
@@ -267,7 +272,7 @@ async def update_serie_entity(entity_id: str, serie_id: str, payload: SerieCreat
                     str(ser.get("id")) != str(serie_id)):
                 raise HTTPException(status_code=400, detail=f"Ya existe una serie con el código '{clean_codigo}' en esta dependencia.")
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"SER#{serie_id}"
     existing = await db.get_item("series", pk, sk)
     if not existing:
@@ -303,7 +308,7 @@ async def delete_serie_entity(entity_id: str, serie_id: str, user: dict = Depend
         except Exception as e:
             print(f"[CASCADE] subseries for serie {serie_id}: {e}")
 
-        pk = f"ENTITY#{entity_id}"
+        pk = _epk(entity_id)
         sk = f"SER#{serie_id}"
         await db.delete_item("series", pk, sk)
         return {"status": "deleted", "id": serie_id}
@@ -341,7 +346,7 @@ async def create_subserie_entity(entity_id: str, payload: SubserieCreate, user: 
         "id": sub_id,
         "codigo": clean_codigo,
         "entidad_id": entity_id,
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"SUB#{sub_id}",
         "created_at": now,
         "updated_at": now,
@@ -369,7 +374,7 @@ async def update_subserie_entity(entity_id: str, subserie_id: str, payload: Subs
                     str(sub.get("id")) != str(subserie_id)):
                 raise HTTPException(status_code=400, detail=f"Ya existe una subserie con el código '{clean_codigo}' en esta serie.")
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"SUB#{subserie_id}"
     existing = await db.get_item("subseries", pk, sk)
     if not existing:
@@ -396,7 +401,7 @@ async def delete_subserie_entity(entity_id: str, subserie_id: str, user: dict = 
         except Exception as e:
             print(f"[CASCADE] trd_records for subserie {subserie_id}: {e}")
 
-        pk = f"ENTITY#{entity_id}"
+        pk = _epk(entity_id)
         sk = f"SUB#{subserie_id}"
         await db.delete_item("subseries", pk, sk)
         return {"status": "deleted", "id": subserie_id}
@@ -415,7 +420,7 @@ async def create_trd_record_entity(entity_id: str, payload: TRDRecordCreate, use
     item.update({
         "id": record_id,
         "entidad_id": entity_id,
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"TRD#{record_id}",
         "created_at": now,
         "updated_at": now,
@@ -436,7 +441,7 @@ async def list_trd_records_entity(entity_id: str, user: dict = Depends(get_curre
 async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDRecordCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"TRD#{record_id}"
     existing = await db.get_item("trd_records", pk, sk)
     if not existing:
@@ -454,7 +459,7 @@ async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDR
 async def delete_trd_record_entity(entity_id: str, record_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
     try:
-        pk = f"ENTITY#{entity_id}"
+        pk = _epk(entity_id)
         sk = f"TRD#{record_id}"
         existing = await db.get_item("trd_records", pk, sk)
         if not existing:
@@ -476,7 +481,7 @@ async def create_funcion_entity(entity_id: str, payload: FuncionCreate, user: di
     item.update({
         "id": func_id,
         "entidad_id": entity_id,
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"FUN#{func_id}",
         "created_at": now,
         "updated_at": now,
@@ -498,7 +503,7 @@ async def list_funciones_entity(entity_id: str, user: dict = Depends(get_current
 async def update_funcion_entity(entity_id: str, func_id: str, payload: FuncionCreate, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"FUN#{func_id}"
     existing = await db.get_item("funciones", pk, sk)
     if not existing:
@@ -513,7 +518,7 @@ async def update_funcion_entity(entity_id: str, func_id: str, payload: FuncionCr
 @router.delete("/entity/{entity_id}/funciones/{func_id}", response_model=dict)
 async def delete_funcion_entity(entity_id: str, func_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"FUN#{func_id}"
     await db.delete_item("funciones", pk, sk)
     return {"status": "deleted", "id": func_id}
@@ -540,7 +545,7 @@ async def create_entrevista_entity(entity_id: str, payload: EntrevistaCreate, us
     entrevistado_id = entrevistado_data.get("id")
 
     if entrevistado_id:
-        pk_intv = f"ENTITY#{entity_id}"
+        pk_intv = _epk(entity_id)
         sk_intv = f"INTV#{entrevistado_id}"
         await db.update_item("entrevistados", pk_intv, sk_intv, {
             "nombres": entrevistado_data["nombres"],
@@ -550,7 +555,7 @@ async def create_entrevista_entity(entity_id: str, payload: EntrevistaCreate, us
         })
     else:
         entrevistado_id = str(uuid.uuid4())
-        pk_intv = f"ENTITY#{entity_id}"
+        pk_intv = _epk(entity_id)
         sk_intv = f"INTV#{entrevistado_id}"
         await db.put_item("entrevistados", {
             "PK": pk_intv, "SK": sk_intv,
@@ -564,7 +569,7 @@ async def create_entrevista_entity(entity_id: str, payload: EntrevistaCreate, us
     # Create entrevista
     entrevista_id = str(uuid.uuid4())
     record = {
-        "PK": f"ENTITY#{entity_id}",
+        "PK": _epk(entity_id),
         "SK": f"INT#{entrevista_id}",
         "id": entrevista_id,
         "entidad_id": entity_id,
@@ -597,7 +602,7 @@ async def list_entrevistas_entity(entity_id: str, user: dict = Depends(get_curre
 @router.delete("/entity/{entity_id}/entrevistas/{ent_id}", response_model=dict)
 async def delete_entrevista_entity(entity_id: str, ent_id: str, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"INT#{ent_id}"
     await db.delete_item("entrevistas", pk, sk)
     return {"status": "deleted", "id": ent_id}
@@ -667,7 +672,7 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
 async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
 
-    dep_item = await db.get_item("dependencias", f"ENTITY#{entity_id}", f"DEP#{payload.dependencia_id}")
+    dep_item = await db.get_item("dependencias", _epk(entity_id), f"DEP#{payload.dependencia_id}")
     dep_data = _strip_keys(dep_item) if dep_item else {}
 
     all_funs = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
@@ -734,7 +739,7 @@ async def create_documento_oficial(entity_id: str, payload: DocumentoOficialCrea
         # Insert new active
         doc_id = str(uuid.uuid4())
         new_doc = {
-            "PK": f"ENTITY#{entity_id}",
+            "PK": _epk(entity_id),
             "SK": f"DOC#{doc_id}",
             "id": doc_id,
             "entidad_id": entity_id,
@@ -756,7 +761,7 @@ async def restore_documento_oficial(entity_id: str, doc_id: str, user: dict = De
     require_entity_admin(user, entity_id)
     now = datetime.now().isoformat()
 
-    pk = f"ENTITY#{entity_id}"
+    pk = _epk(entity_id)
     sk = f"DOC#{doc_id}"
     doc_to_restore = await db.get_item("documentos_oficiales", pk, sk)
     if not doc_to_restore:

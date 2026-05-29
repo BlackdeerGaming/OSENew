@@ -1511,7 +1511,18 @@ function App() {
       if (record['disp_Eliminación']) disposicionStr.push("E");
       if (record['disp_Selección']) disposicionStr.push("S");
 
-      const fullCodigo = [dep.codigo, serie.codigo, subserie?.codigo].filter(Boolean).join("-");
+      const codigoD   = dep.codigo     || "";
+      const codigoS   = serie.codigo   || "";
+      const codigoSub = subserie?.codigo || "";
+      const fullCodigo = [codigoD, codigoS, codigoSub].filter(Boolean).join("-");
+
+      // Sistema de Ordenación (Acuerdo 001/2024)
+      const ordenacionParts = [
+        record['ord_Alfabética']  ? 'Alfabética'  : '',
+        record['ord_Cronológica'] ? 'Cronológica' : '',
+        record['ord_Numérica']    ? 'Numérica'    : '',
+        record['ord_Otra']        ? 'Otra'        : '',
+      ].filter(Boolean);
 
       return {
         id: record.id,
@@ -1520,17 +1531,34 @@ function App() {
         subserieId: record.subserieId,
         dependencia: dep.nombre || "(Desconocida)",
         codigo: fullCodigo,
+        // Individual code segments — used by TRDGenerator to avoid splitting on '.' or '-'
+        codigoD,
+        codigoS,
+        codigoSub,
         serie: serie.nombre || "(Sin Serie)",
         subserie: subserie ? subserie.nombre : "",
         tipoDocumental: subserie ? subserie.tipoDocumental : serie.tipoDocumental || "",
         retencionGestion: record.retencionGestion || "0",
         retencionCentral: record.retencionCentral || "0",
+        // Disposition booleans (Acuerdo 001/2024 columns)
+        dispCT: !!record['disp_Conservación total'],
+        dispE:  !!record['disp_Eliminación'],
+        dispS:  !!record['disp_Selección'],
+        dispMT: !!(record.rep_microfilmacion || record.rep_digitalizacion),
+        // Legacy string for backward-compat with other views
         disposicion: disposicionStr.join(", ") || record.disposicion || "N/A",
         procedimiento: record.procedimiento || "",
+        // Soporte booleans
+        soporteFisico:     !(record.rep_digitalizacion && !record.rep_microfilmacion),
+        soporteElectronico: !!(record.rep_digitalizacion),
         soporte: record.rep_digitalizacion || record.rep_microfilmacion ? 'ambos' : 'fisico',
         reproduccion: record.rep_digitalizacion ? 'Digitalización' : (record.rep_microfilmacion ? 'Microfilmación' : 'Ninguna'),
+        // Acuerdo 001/2024 new columns
+        criterio:             record.ddhh          || "",
+        sistemaOrdenacion:    ordenacionParts.join(", ") || "",
+        actoAdmo:             record.actoAdmo       || "",
         tiposDocumentales: record.tiposDocumentales || [],
-        funcionesIds: record.funcionesIds || []
+        funcionesIds:      record.funcionesIds      || []
       };
     });
 
