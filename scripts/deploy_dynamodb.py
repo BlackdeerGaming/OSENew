@@ -17,10 +17,14 @@ def create_ose_tables():
         "entities",
         "users",
         "chat_sessions",
-        "trds",
-        "dependencies",
+        "dependencias",
         "series",
         "subseries",
+        "trd_records",
+        "funciones",
+        "entrevistados",
+        "entrevistas",
+        "documentos_oficiales",
         "activity_logs",
         "rag_documents"
     ]
