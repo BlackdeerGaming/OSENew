@@ -577,21 +577,25 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
                                     <FileText className="h-3.5 w-3.5" />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[9px] font-mono font-bold text-slate-400 bg-slate-50 px-1 rounded">{sub.codigo}</span>
-                                        <h5 className="font-bold text-xs text-slate-800 uppercase tracking-tight">{sub.nombre}</h5>
-                                        {canModify && onEdit && (
-                                          <button onClick={() => onEdit('subseries', sub)} className="ml-2 p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-primary transition-colors" title="Editar Subserie">
-                                            <Pencil className="h-3 w-3" />
-                                          </button>
-                                        )}
-                                        {canModify && onDelete && (
-                                          <button onClick={() => onDelete('subseries', sub.id)} className="ml-1 p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-500 transition-colors" title="Eliminar Subserie">
-                                            <Trash2 className="h-3 w-3" />
-                                          </button>
-                                        )}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-[9px] font-mono font-bold text-slate-400 bg-slate-50 px-1 rounded shrink-0">{sub.codigo}</span>
+                                        <h5 className="font-bold text-xs text-slate-800 uppercase tracking-tight truncate">{sub.nombre}</h5>
                                       </div>
+                                      {canModify && (
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {onEdit && (
+                                            <button onClick={() => onEdit('subseries', sub)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-primary transition-colors" title="Editar Subserie">
+                                              <Pencil className="h-3 w-3" />
+                                            </button>
+                                          )}
+                                          {onDelete && (
+                                            <button onClick={() => onDelete('subseries', sub.id)} className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-500 transition-colors" title="Eliminar Subserie">
+                                              <Trash2 className="h-3 w-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="flex flex-wrap gap-1 mt-1.5">
                                       {(sub.tiposDocumentales || []).length > 0 ? (
