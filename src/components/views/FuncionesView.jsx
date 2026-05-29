@@ -6,7 +6,7 @@ import FuncionModal from "../forms/FuncionModal";
 import ViewHeader from "../ui/ViewHeader";
 
 
-export default function FuncionesView({ dependencias, entities, currentUser, selectedEntityId }) {
+export default function FuncionesView({ dependencias, entities, currentUser, selectedEntityId, onFuncionSaved }) {
   const [funciones, setFunciones] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,6 +63,7 @@ export default function FuncionesView({ dependencias, entities, currentUser, sel
       });
       if (!resp.ok) throw new Error("Error al eliminar función");
       setFunciones(prev => prev.filter(f => f.id !== id));
+      onFuncionSaved?.();
     } catch (err) {
       console.error(err);
       alert(err.message);
@@ -230,8 +231,9 @@ export default function FuncionesView({ dependencias, entities, currentUser, sel
       <FuncionModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={(updated) => {
-           loadFunciones(); // recargar para consistencia
+        onSave={() => {
+          loadFunciones();
+          onFuncionSaved?.();
         }}
         dependencias={dependencias}
         funciones={funciones}

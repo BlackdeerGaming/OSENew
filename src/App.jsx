@@ -271,20 +271,22 @@ function App() {
     if (selectedEntityId) h['x-entity-context'] = selectedEntityId;
     return h;
   }, [currentUser?.token, selectedEntityId]);
+  const refreshFunciones = React.useCallback(async () => {
+    if (!currentUser?.token || !selectedEntityId) return;
+    try {
+      const resp = await fetch(
+        `${API_BASE_URL}/trd/entity/${selectedEntityId}/funciones`,
+        { headers: { 'Authorization': `Bearer ${currentUser.token}` } }
+      );
+      if (resp.ok) setFunciones(await resp.json());
+    } catch (err) {
+      console.error("[App] Error cargando funciones:", err);
+    }
+  }, [currentUser?.token, selectedEntityId]);
+
   useEffect(() => {
     if (!currentUser?.token || !selectedEntityId || !hasInitialized) return;
-    const loadFunciones = async () => {
-      try {
-        const resp = await fetch(
-          `${API_BASE_URL}/trd/entity/${selectedEntityId}/funciones`,
-          { headers: { 'Authorization': `Bearer ${currentUser.token}` } }
-        );
-        if (resp.ok) setFunciones(await resp.json());
-      } catch (err) {
-        console.error("[App] Error cargando funciones:", err);
-      }
-    };
-    loadFunciones();
+    refreshFunciones();
   }, [currentUser?.token, selectedEntityId, hasInitialized]);
 
 
@@ -2141,11 +2143,12 @@ function App() {
               <StructuredDataView dependencias={dependencias} series={series} subseries={subseries} trdRecords={trdRecords} onEdit={handleEdit} onDelete={handleDelete} currentUser={currentUser} />
             )}
             {activeModule === 'funciones' && (
-              <FuncionesView 
-                dependencias={dependencias} 
-                entities={userEntities} 
-                currentUser={currentUser} 
+              <FuncionesView
+                dependencias={dependencias}
+                entities={userEntities}
+                currentUser={currentUser}
                 selectedEntityId={selectedEntityId}
+                onFuncionSaved={refreshFunciones}
               />
             )}
             {activeModule === 'entrevistas' && (
