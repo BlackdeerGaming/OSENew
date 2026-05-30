@@ -2,18 +2,18 @@ import React from "react";
 import { FileText, Download, Info } from "lucide-react";
 
 /**
- * TRDGenerator — Formato Oficial Acuerdo 001 de 2024 — Archivo General de la Nación — Colombia
+ * TRDGenerator — Formato Oficial Acuerdo 001 de 2024
+ * Archivo General de la Nación — Colombia
+ * Ref: Acuerdo No. 001 del 29 de febrero de 2024, página 143
  *
- * Props:
- *  rows                        : filas TRD (de trdRows en App.jsx)
- *  selectedIds                 : Set de IDs seleccionados (vacío = mostrar todo)
- *  currentEntity               : objeto entidad actual
- *  logoBase64                  : logo en base64
- *  orientation                 : 'portrait' | 'landscape'
- *  onExportPDF                 : callback "Descargar TRD"
- *  availableDependencias       : dependencias disponibles para filtrado
- *  selectedPrintDependencias
- *  onSelectDependencia
+ * Columnas oficiales:
+ *   CÓDIGO | SERIES, SUBSERIES Y TIPOS DOCUMENTALES
+ *   | SOPORTE o FORMATO (Papel / Electrónico (extensión))
+ *   | RETENCIÓN (Archivo de Gestión / Archivo Central)
+ *   | DISPOSICIÓN FINAL (C / S / E)
+ *   | REPRODUCCIÓN TÉCNICA DEL PAPEL (M/D)
+ *   | SERIE DE DDHH/DIH
+ *   | PROCEDIMIENTO
  */
 export default function TRDGenerator({
   rows = [],
@@ -45,71 +45,82 @@ export default function TRDGenerator({
 
   if (exportRows.length === 0) {
     return (
-      <div
-        className="flex flex-col items-center justify-center min-h-[400px] p-12 text-muted-foreground bg-white rounded-2xl border border-dashed"
-        style={{ borderColor: "#334155" }}
-      >
+      <div className="flex flex-col items-center justify-center min-h-[400px] p-12 text-muted-foreground bg-white rounded-2xl border border-dashed border-slate-400">
         <FileText className="h-10 w-10 text-slate-400 mb-4" />
         <p className="font-bold text-slate-800 text-lg">Tabla de Retención Vacía</p>
-        <p className="text-sm mt-2 max-w-sm text-center text-slate-500 font-medium">
+        <p className="text-sm mt-2 max-w-sm text-center text-slate-500">
           Completa la valoración técnica de las series en "Valoración TRD" para generar el reporte.
         </p>
       </div>
     );
   }
 
-  // ── Datos institucionales ─────────────────────────────────────────────────
-  const entityName  = currentEntity?.razonSocial || currentEntity?.nombre || "ENTIDAD PRODUCTORA";
-  const logoSrc     = logoBase64 || currentEntity?.logoUrl;
-  const fechaHoy    = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const pageWidth   = isLandscape ? "max-w-[277mm]" : "max-w-[210mm]";
+  // ── Datos institucionales ────────────────────────────────────────────────
+  const entityName = currentEntity?.razonSocial || currentEntity?.nombre || "";
+  const logoSrc    = logoBase64 || currentEntity?.logoUrl;
+  const fechaHoy   = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const pageWidth  = isLandscape ? "277mm" : "210mm";
 
-  // ── Estilos base ──────────────────────────────────────────────────────────
-  const BD    = "1px solid #000";
-  const BASE  = { fontFamily: "Arial, Helvetica, sans-serif", borderCollapse: "collapse", width: "100%" };
+  // ── Estilos tabla ─────────────────────────────────────────────────────────
+  const BD  = "1px solid #000";
+  const fSz = isLandscape ? "7.5px" : "6.5px";     // datos
+  const fHd = isLandscape ? "6.5px" : "5.5px";     // cabeceras
 
-  // Celda cabecera
-  const TH = (extra = {}) => ({
+  const cellBase = {
     border: BD,
+    fontFamily: "Arial, Helvetica, sans-serif",
+    fontSize: fSz,
+    lineHeight: "1.3",
+  };
+
+  // Cabecera (TH)
+  const th = (extra = {}) => ({
+    ...cellBase,
+    fontSize: fHd,
+    fontWeight: "bold",
     textAlign: "center",
     verticalAlign: "middle",
-    padding: "2px 3px",
-    fontWeight: "bold",
+    padding: "3px 3px",
     textTransform: "uppercase",
-    fontSize: isLandscape ? "6.5px" : "6px",
-    lineHeight: "1.3",
-    backgroundColor: "#d9d9d9",
+    backgroundColor: "#e8e8e8",
     ...extra,
   });
 
-  // Celda dato centrada
-  const TDC = (extra = {}) => ({
-    border: BD,
+  // Celda centrada (check / número)
+  const tdc = (extra = {}) => ({
+    ...cellBase,
     textAlign: "center",
     verticalAlign: "middle",
     padding: "2px 2px",
-    fontSize: isLandscape ? "8px" : "7px",
     ...extra,
   });
 
-  // Celda dato texto
-  const TDT = (extra = {}) => ({
-    border: BD,
+  // Celda texto
+  const tdt = (extra = {}) => ({
+    ...cellBase,
     verticalAlign: "top",
-    padding: "4px 6px",
-    fontSize: isLandscape ? "8px" : "7px",
-    lineHeight: "1.35",
+    padding: "4px 5px",
     ...extra,
   });
 
-  // ── Anchos de columna ─────────────────────────────────────────────────────
-  // Total columnas: 14
-  // CÓDIGO | SERIES/SUBSERIES/TIPOS | SF | SE | A.G | A.C | CT | E | S | MT | CRITERIO | CLASIF | ORDEN | PROCEDIMIENTO
-  const colWidths = isLandscape
-    ? ["7%", "22%", "2.5%", "2.5%", "3%", "3%", "2.5%", "2.5%", "2.5%", "2.5%", "9%", "7%", "7%", ""]
-    : ["7%", "22%", "2.5%", "2.5%", "3%", "3%", "2.5%", "2.5%", "2.5%", "2.5%", "9%", "7%", "7%", ""];
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  // ── Agrupación por dependencia ────────────────────────────────────────────
+  // Marca "X" oficial para celdas booleanas
+  const X = (val) => val
+    ? <span style={{ fontWeight: "bold", fontSize: "9px", display: "block", textAlign: "center" }}>X</span>
+    : null;
+
+  // Valor para la columna REPRODUCCIÓN TÉCNICA DEL PAPEL (M/D)
+  const repValue = (row) => {
+    const r = row.reproduccion || "";
+    if (r === "Digitalización") return "D";
+    if (r === "Microfilmación")  return "M";
+    // Ambas
+    if (row.dispMT && r === "Ninguna") return "";
+    return "";
+  };
+
+  // ── Agrupación por dependencia → serie ───────────────────────────────────
   const groupedByDep = React.useMemo(() => {
     const g = {};
     exportRows.forEach((row) => {
@@ -122,35 +133,41 @@ export default function TRDGenerator({
 
   const depGroups = Object.entries(groupedByDep);
 
-  // ── Agrupa filas de una dependencia por serie ─────────────────────────────
-  const groupBySerie = (rows) => {
-    const g = {};
-    rows.forEach((row) => {
+  // Agrupa las filas de una dependencia por serieId
+  const groupBySerie = (depRows) => {
+    const map = {};
+    depRows.forEach((row) => {
       const k = row.serieId || row.serie;
-      if (!g[k]) g[k] = { serie: row.serie, codigoS: row.codigoS || "", codigoD: row.codigoD || "", rows: [] };
-      g[k].rows.push(row);
+      if (!map[k]) map[k] = { serie: row.serie, codigoS: row.codigoS || "", codigoD: row.codigoD || "", rows: [] };
+      map[k].rows.push(row);
     });
-    return Object.values(g);
+    return Object.values(map);
   };
 
-  // ── Marca X para disposición ──────────────────────────────────────────────
-  const X = (val) =>
-    val ? (
-      <span style={{ fontWeight: "bold", fontSize: "9px" }}>X</span>
-    ) : null;
+  // ── Tabla principal ───────────────────────────────────────────────────────
+  // 12 columnas totales:
+  // [1] CÓDIGO
+  // [2] SERIES, SUBSERIES Y TIPOS DOCUMENTALES
+  // [3] Papel
+  // [4] Electrónico (extensión)
+  // [5] Archivo de Gestión
+  // [6] Archivo Central
+  // [7] C
+  // [8] S
+  // [9] E
+  // [10] REPRODUCCIÓN TÉCNICA DEL PAPEL (M/D)
+  // [11] SERIE DE DDHH/DIH
+  // [12] PROCEDIMIENTO
 
-  // ── Ordena sistemas de ordenación ─────────────────────────────────────────
-  const fmtOrden = (row) => row.sistemaOrdenacion || "";
-  const fmtClasif = () => "Funcional";
+  const colWidths = isLandscape
+    ? ["6%", "22%", "3.5%", "4%", "5%", "5%", "3%", "3%", "3%", "5%", "4%", ""]
+    : ["6%", "22%", "3.5%", "4%", "5%", "5%", "3%", "3%", "3%", "5%", "4%", ""];
 
   return (
-    <div className="flex flex-col gap-6 bg-slate-50 min-h-full pb-20">
+    <div className="flex flex-col gap-6 bg-slate-100 min-h-full pb-20">
 
       {/* ── Barra de acción ── */}
-      <div
-        className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10 print:hidden shadow-sm"
-        style={{ borderColor: "#334155" }}
-      >
+      <div className="flex items-center justify-between p-4 bg-white border-b border-slate-300 sticky top-0 z-10 print:hidden shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-red-50">
             <FileText className="h-5 w-5 text-red-700" />
@@ -160,8 +177,7 @@ export default function TRDGenerator({
               Reporte TRD — Acuerdo 001 de 2024 AGN
             </h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-              Orientación:{" "}
-              <span className="text-slate-700">{isLandscape ? "Horizontal" : "Vertical"}</span>
+              Orientación: <span className="text-slate-700">{isLandscape ? "Horizontal" : "Vertical"}</span>
             </p>
           </div>
         </div>
@@ -173,19 +189,14 @@ export default function TRDGenerator({
             </span>
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
               <select
-                value={
-                  selectedPrintDependencias.length === 1 && !selectedPrintDependencias.includes("TODAS")
-                    ? selectedPrintDependencias[0]
-                    : ""
-                }
+                value={selectedPrintDependencias.length === 1 && !selectedPrintDependencias.includes("TODAS") ? selectedPrintDependencias[0] : ""}
                 onChange={handleDepChange}
                 className="text-[11px] font-bold bg-transparent text-slate-700 outline-none w-52 truncate cursor-pointer"
               >
                 <option value="TODAS">— TODAS LAS DEPENDENCIAS —</option>
                 {availableDependencias.map((dep) => (
                   <option key={dep} value={dep}>
-                    {selectedPrintDependencias.includes(dep) ? "✓ " : ""}
-                    {dep}
+                    {selectedPrintDependencias.includes(dep) ? "✓ " : ""}{dep}
                   </option>
                 ))}
               </select>
@@ -213,68 +224,61 @@ export default function TRDGenerator({
         </div>
       </div>
 
-      {/* ── Páginas de la TRD ── */}
+      {/* ── Páginas TRD ── */}
       <div
         id="trd-capture-frame"
-        className="flex flex-col gap-12 print:block print:p-0 print:m-0 print:w-full print:flex-none"
-        style={{ padding: isLandscape ? "20px 16px" : "32px 24px", backgroundColor: "#f1f5f9" }}
+        className="flex flex-col gap-10 print:block print:p-0 print:m-0"
+        style={{ padding: isLandscape ? "16px 12px" : "28px 20px" }}
       >
         {depGroups.map(([depName, depData], groupIdx) => {
           const serieGroups = groupBySerie(depData.rows);
-          const codigoUnidad = depData.codigoD || "";
-          const totalPages = depGroups.length;
 
           return (
             <div
               key={depName}
               id={`trd-report-section-${groupIdx}`}
-              className={`bg-white flex flex-col font-sans shadow-2xl w-full ${pageWidth} print:shadow-none print:border-0 print:m-0 print:w-full print:max-w-none page-break-after-always`}
-              style={{ margin: "0 auto" }}
+              className="bg-white shadow-xl print:shadow-none print:m-0 print:w-full page-break-after-always"
+              style={{
+                width: pageWidth,
+                margin: "0 auto",
+                padding: isLandscape ? "8mm 8mm" : "10mm 8mm",
+                fontFamily: "Arial, Helvetica, sans-serif",
+              }}
             >
-              <table style={{ ...BASE, border: BD }}>
-                <colgroup>
-                  {colWidths.map((w, i) => (
-                    <col key={i} style={w ? { width: w } : {}} />
-                  ))}
-                </colgroup>
 
-                <thead>
-                  {/* ════ FILA 1: Encabezado institucional ════ */}
+              {/* ════ ENCABEZADO DEL DOCUMENTO ════ */}
+              <table
+                style={{ borderCollapse: "collapse", width: "100%", border: BD, marginBottom: "0" }}
+              >
+                <tbody>
                   <tr>
-                    {/* Logo / Escudo */}
+                    {/* Logo / escudo */}
                     <td
-                      colSpan={2}
                       style={{
                         border: BD,
+                        width: "18%",
                         textAlign: "center",
                         verticalAlign: "middle",
                         padding: "6px 8px",
-                        width: "29%",
                       }}
                     >
                       {logoSrc ? (
                         <img
                           src={logoSrc}
                           alt="Escudo"
-                          style={{ height: "48px", objectFit: "contain", display: "block", margin: "0 auto" }}
+                          style={{ height: "52px", objectFit: "contain", display: "block", margin: "0 auto" }}
                           crossOrigin="anonymous"
                         />
                       ) : (
                         <div
                           style={{
-                            width: "48px",
-                            height: "48px",
-                            border: "2px solid #000",
+                            width: "52px", height: "52px",
+                            border: "1.5px solid #888",
                             borderRadius: "50%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            display: "flex", alignItems: "center", justifyContent: "center",
                             margin: "0 auto",
-                            fontSize: "8px",
-                            fontWeight: "bold",
-                            color: "#555",
-                            textAlign: "center",
-                            lineHeight: "1.2",
+                            fontSize: "7px", color: "#666",
+                            fontFamily: "Arial, sans-serif",
                           }}
                         >
                           LOGO
@@ -284,176 +288,148 @@ export default function TRDGenerator({
 
                     {/* Título central */}
                     <td
-                      colSpan={11}
                       style={{
                         border: BD,
                         textAlign: "center",
                         verticalAlign: "middle",
-                        padding: "8px 12px",
+                        padding: "10px 16px",
                       }}
                     >
                       <div
                         style={{
-                          fontSize: isLandscape ? "14px" : "11px",
+                          fontSize: isLandscape ? "13px" : "10px",
                           fontWeight: "bold",
                           textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: "#000",
+                          letterSpacing: "0.06em",
+                          fontFamily: "Arial, Helvetica, sans-serif",
                         }}
                       >
-                        Tabla de Retención Documental
+                        Formato de Tabla de Retención Documental - TRD
                       </div>
                     </td>
 
-                    {/* Código / Versión / Fecha */}
+                    {/* Hoja */}
                     <td
                       style={{
                         border: BD,
-                        padding: 0,
-                        verticalAlign: "top",
+                        width: "12%",
+                        textAlign: "center",
+                        verticalAlign: "middle",
+                        padding: "6px 8px",
                         fontSize: "7px",
-                        fontWeight: "bold",
-                        minWidth: "80px",
+                        fontFamily: "Arial, sans-serif",
                       }}
                     >
-                      <div
-                        style={{
-                          borderBottom: BD,
-                          padding: "3px 6px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "4px",
-                        }}
-                      >
-                        <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Código:</span>
-                        <span>TRD-001</span>
+                      <div style={{ fontWeight: "bold", textTransform: "uppercase", marginBottom: "2px" }}>
+                        Hoja N.°
                       </div>
-                      <div
-                        style={{
-                          borderBottom: BD,
-                          padding: "3px 6px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "4px",
-                        }}
-                      >
-                        <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Versión:</span>
-                        <span>01</span>
-                      </div>
-                      <div style={{ padding: "3px 6px", display: "flex", justifyContent: "space-between", gap: "4px" }}>
-                        <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Fecha:</span>
-                        <span>{fechaHoy}</span>
+                      <div style={{ fontSize: "9px", fontWeight: "bold" }}>
+                        {groupIdx + 1} de {depGroups.length}
                       </div>
                     </td>
                   </tr>
+                </tbody>
+              </table>
 
-                  {/* ════ FILA 2: Datos de la entidad ════ */}
+              {/* ════ DATOS DE LA ENTIDAD ════ */}
+              <table
+                style={{ borderCollapse: "collapse", width: "100%", borderTop: "none", border: BD, marginTop: "-1px" }}
+              >
+                <tbody>
                   <tr>
-                    <td colSpan={14} style={{ border: BD, padding: "4px 8px" }}>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1.4fr 1.4fr 0.8fr 0.6fr",
-                          gap: "2px 20px",
-                          fontSize: "7.5px",
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                            Entidad Productora:
-                          </span>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", color: "#000" }}>
-                            {entityName}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                            Unidad Administrativa:
-                          </span>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", color: "#000" }}>
-                            {depName}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                            Código:
-                          </span>
-                          <span style={{ fontWeight: "bold", color: "#000" }}>{codigoUnidad}</span>
-                        </div>
-                        <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
-                          <span style={{ fontWeight: "bold", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                            Hoja N.º:
-                          </span>
-                          <span style={{ fontWeight: "bold" }}>
-                            {groupIdx + 1} de {totalPages}
-                          </span>
-                        </div>
-                      </div>
+                    <td style={{ border: BD, padding: "4px 8px", fontSize: "8px", fontFamily: "Arial, sans-serif" }}>
+                      <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Entidad Productora: </span>
+                      <span style={{ textTransform: "uppercase" }}>{entityName}</span>
                     </td>
                   </tr>
-
-                  {/* ════ FILA 3: Cabeceras principales ════ */}
                   <tr>
-                    <th rowSpan={2} style={TH()}>CÓDIGO</th>
-                    <th rowSpan={2} style={{ ...TH(), textAlign: "left", padding: "3px 6px" }}>
-                      SERIES DOCUMENTALES, SUBSERIES DOCUMENTALES Y TIPOS DOCUMENTALES
+                    <td style={{ border: BD, padding: "4px 8px", fontSize: "8px", fontFamily: "Arial, sans-serif" }}>
+                      <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Oficina Productora: </span>
+                      <span style={{ textTransform: "uppercase" }}>{depName}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* ════ TABLA PRINCIPAL ════ */}
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  width: "100%",
+                  tableLayout: "fixed",
+                  fontFamily: "Arial, Helvetica, sans-serif",
+                  border: BD,
+                  marginTop: "-1px",
+                }}
+              >
+                <colgroup>
+                  {colWidths.map((w, i) => (
+                    <col key={i} style={w ? { width: w } : {}} />
+                  ))}
+                </colgroup>
+
+                <thead>
+                  {/* ── Fila cabeceras principales ── */}
+                  <tr>
+                    <th rowSpan={2} style={th()}>CÓDIGO</th>
+                    <th rowSpan={2} style={th({ textAlign: "left", padding: "3px 5px" })}>
+                      SERIES, SUBSERIES Y TIPOS DOCUMENTALES
                     </th>
-                    <th colSpan={2} style={TH()}>SOPORTE</th>
-                    <th colSpan={2} style={TH()}>
-                      TIEMPO DE RETENCIÓN EN AÑOS
+                    <th colSpan={2} style={th()}>SOPORTE o FORMATO</th>
+                    <th colSpan={2} style={th()}>RETENCIÓN</th>
+                    <th colSpan={3} style={th()}>DISPOSICIÓN FINAL</th>
+                    <th rowSpan={2} style={th({ fontSize: fHd })}>
+                      REPRODUCCIÓN<br />TÉCNICA DEL<br />PAPEL (M/D)
                     </th>
-                    <th colSpan={4} style={TH()}>DISPOSICIÓN FINAL</th>
-                    <th rowSpan={2} style={TH({ fontSize: isLandscape ? "6px" : "5.5px" })}>
-                      CRITERIO DISPOSICIÓN FINAL
+                    <th rowSpan={2} style={th({ fontSize: fHd })}>
+                      SERIE DE<br />DDHH/DIH
                     </th>
-                    <th rowSpan={2} style={TH({ fontSize: isLandscape ? "6px" : "5.5px" })}>
-                      SISTEMA DE CLASIFICACIÓN DOCUMENTAL
-                    </th>
-                    <th rowSpan={2} style={TH({ fontSize: isLandscape ? "6px" : "5.5px" })}>
-                      SISTEMA DE ORDENACIÓN DOCUMENTAL
-                    </th>
-                    <th rowSpan={2} style={TH()}>PROCEDIMIENTO</th>
+                    <th rowSpan={2} style={th()}>PROCEDIMIENTO</th>
                   </tr>
 
-                  {/* ════ FILA 4: Sub-cabeceras ════ */}
+                  {/* ── Fila sub-cabeceras ── */}
                   <tr>
-                    <th style={TH()}>SF</th>
-                    <th style={TH()}>SE</th>
-                    <th style={TH()}>A.G</th>
-                    <th style={TH()}>A.C</th>
-                    <th style={TH()}>CT</th>
-                    <th style={TH()}>E</th>
-                    <th style={TH()}>S</th>
-                    <th style={TH()}>MT</th>
+                    <th style={th({ fontSize: fHd })}>Papel</th>
+                    <th style={th({ fontSize: isLandscape ? "5.5px" : "5px" })}>
+                      Electrónico<br />(extensión)
+                    </th>
+                    <th style={th({ fontSize: isLandscape ? "5.5px" : "5px" })}>
+                      Archivo de<br />Gestión
+                    </th>
+                    <th style={th({ fontSize: isLandscape ? "5.5px" : "5px" })}>
+                      Archivo<br />Central
+                    </th>
+                    <th style={th()}>C</th>
+                    <th style={th()}>S</th>
+                    <th style={th()}>E</th>
                   </tr>
                 </thead>
 
-                {/* ════ CUERPO ════ */}
+                {/* ── CUERPO ── */}
                 <tbody>
                   {serieGroups.map((sg) => {
                     const hasSubseries = sg.rows.some((r) => r.subserieId && r.codigoSub);
+                    // Código de la serie: depCod.serieCod
                     const serieCode = [sg.codigoD, sg.codigoS].filter(Boolean).join(".");
 
                     return (
                       <React.Fragment key={sg.serie}>
-                        {/* ── Fila de SERIE ── */}
-                        <tr style={{ backgroundColor: hasSubseries ? "#f0f0f0" : "#fff" }}>
+
+                        {/* ─── Fila SERIE ─── */}
+                        <tr style={{ backgroundColor: hasSubseries ? "#f5f5f5" : "#fff" }}>
                           {/* Código */}
-                          <td style={TDC({ fontWeight: "bold", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
+                          <td style={tdc({ fontWeight: "bold", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
                             {serieCode}
                           </td>
 
-                          {/* Nombre de la Serie */}
-                          <td style={TDT({ fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.01em" })}>
+                          {/* Nombre serie */}
+                          <td style={tdt({ fontWeight: "bold", textTransform: "uppercase" })}>
                             {sg.serie}
-                            {/* Si la serie no tiene subseries, listar tipos documentales aquí */}
+                            {/* Tipos documentales si la serie no tiene subseries */}
                             {!hasSubseries && sg.rows[0]?.tiposDocumentales?.length > 0 && (
-                              <div style={{ borderLeft: "1.5px solid #000", marginLeft: "4px", paddingLeft: "6px", marginTop: "3px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                              <div style={{ marginTop: "3px", borderLeft: "1.5px solid #000", paddingLeft: "5px" }}>
                                 {sg.rows[0].tiposDocumentales.map((t, i) => (
-                                  <div
-                                    key={i}
-                                    style={{ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic", fontWeight: "normal", textTransform: "none" }}
-                                  >
+                                  <div key={i} style={{ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic", fontWeight: "normal" }}>
                                     — {t.titulo_documento}
                                   </div>
                                 ))}
@@ -461,249 +437,205 @@ export default function TRDGenerator({
                             )}
                           </td>
 
-                          {/* Si no tiene subseries → mostrar retención y disposición en la fila de serie */}
-                          {!hasSubseries ? (
+                          {hasSubseries ? (
+                            // Serie con subseries: celdas de datos vacías en la fila de serie
                             <>
-                              <td style={TDC()}>{X(sg.rows[0]?.soporteFisico)}</td>
-                              <td style={TDC()}>{X(sg.rows[0]?.soporteElectronico)}</td>
-                              <td style={TDC({ fontWeight: "bold" })}>{sg.rows[0]?.retencionGestion ?? ""}</td>
-                              <td style={TDC({ fontWeight: "bold" })}>{sg.rows[0]?.retencionCentral ?? ""}</td>
-                              <td style={TDC()}>{X(sg.rows[0]?.dispCT)}</td>
-                              <td style={TDC()}>{X(sg.rows[0]?.dispE)}</td>
-                              <td style={TDC()}>{X(sg.rows[0]?.dispS)}</td>
-                              <td style={TDC()}>{X(sg.rows[0]?.dispMT)}</td>
-                              <td style={TDT({ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic" })}>
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdc()} />
+                              <td style={tdt()} />
+                            </>
+                          ) : (
+                            // Serie sin subseries: muestra datos directamente
+                            <>
+                              <td style={tdc()}>{X(sg.rows[0]?.soporteFisico)}</td>
+                              <td style={tdc()}>{X(sg.rows[0]?.soporteElectronico)}</td>
+                              <td style={tdc({ fontWeight: "bold" })}>{sg.rows[0]?.retencionGestion ?? ""}</td>
+                              <td style={tdc({ fontWeight: "bold" })}>{sg.rows[0]?.retencionCentral ?? ""}</td>
+                              <td style={tdc()}>{X(sg.rows[0]?.dispCT)}</td>
+                              <td style={tdc()}>{X(sg.rows[0]?.dispS)}</td>
+                              <td style={tdc()}>{X(sg.rows[0]?.dispE)}</td>
+                              <td style={tdc({ fontWeight: "bold" })}>{repValue(sg.rows[0])}</td>
+                              <td style={tdt({ fontSize: isLandscape ? "7px" : "6px", textAlign: "center", verticalAlign: "middle" })}>
                                 {sg.rows[0]?.criterio || ""}
                               </td>
-                              <td style={TDC({ fontSize: isLandscape ? "7px" : "6px" })}>
-                                {fmtClasif()}
-                              </td>
-                              <td style={TDC({ fontSize: isLandscape ? "7px" : "6px" })}>
-                                {fmtOrden(sg.rows[0])}
-                              </td>
-                              <td style={TDT({ textAlign: "justify" })}>
+                              <td style={tdt({ textAlign: "justify", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
                                 {sg.rows[0]?.procedimiento || ""}
                                 {sg.rows[0]?.actoAdmo && (
-                                  <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#555" }}>
+                                  <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#444" }}>
                                     Acto admo.: {sg.rows[0].actoAdmo}
                                   </div>
                                 )}
                               </td>
                             </>
-                          ) : (
-                            /* Si tiene subseries → celdas de retención/disposición vacías en la fila de serie */
-                            <>
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDC()} />
-                              <td style={TDT()} />
-                              <td style={TDT()} />
-                              <td style={TDT()} />
-                              <td style={TDT()} />
-                            </>
                           )}
                         </tr>
 
-                        {/* ── Filas de SUBSERIES ── */}
-                        {hasSubseries &&
-                          sg.rows.map((row, rIdx) => {
-                            const subCode = [row.codigoD, row.codigoS, row.codigoSub]
-                              .filter(Boolean)
-                              .join(".");
+                        {/* ─── Filas SUBSERIES ─── */}
+                        {hasSubseries && sg.rows.map((row, rIdx) => {
+                          const subCode = [row.codigoD, row.codigoS, row.codigoSub].filter(Boolean).join(".");
 
-                            return (
-                              <tr key={row.id || rIdx} style={{ backgroundColor: "#fff" }}>
-                                {/* Código subserie */}
-                                <td style={TDC({ fontWeight: "bold", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
-                                  {subCode}
-                                </td>
+                          return (
+                            <tr key={row.id || rIdx} style={{ backgroundColor: "#fff" }}>
+                              {/* Código subserie */}
+                              <td style={tdc({ fontWeight: "bold", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
+                                {subCode}
+                              </td>
 
-                                {/* Nombre subserie + tipos documentales */}
-                                <td style={TDT({ paddingLeft: "14px" })}>
-                                  <div style={{ fontWeight: "bold", textTransform: "uppercase", marginBottom: "3px" }}>
-                                    {row.subserie}
+                              {/* Nombre subserie + tipos documentales */}
+                              <td style={tdt({ paddingLeft: "12px" })}>
+                                <div style={{ fontWeight: "bold", textTransform: "uppercase", marginBottom: "2px" }}>
+                                  {row.subserie}
+                                </div>
+                                {row.tiposDocumentales?.length > 0 ? (
+                                  <div style={{ borderLeft: "1.5px solid #000", paddingLeft: "5px", display: "flex", flexDirection: "column", gap: "1px" }}>
+                                    {row.tiposDocumentales.map((t, i) => (
+                                      <div key={i} style={{ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic" }}>
+                                        — {t.titulo_documento}
+                                      </div>
+                                    ))}
                                   </div>
-                                  {row.tiposDocumentales?.length > 0 ? (
-                                    <div
-                                      style={{
-                                        borderLeft: "1.5px solid #000",
-                                        paddingLeft: "6px",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "2px",
-                                      }}
-                                    >
-                                      {row.tiposDocumentales.map((t, i) => (
-                                        <div
-                                          key={i}
-                                          style={{
-                                            fontSize: isLandscape ? "7px" : "6px",
-                                            fontStyle: "italic",
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            gap: "6px",
-                                          }}
-                                        >
-                                          <span>— {t.titulo_documento}</span>
-                                          {(t.formato?.papel || t.formato?.electronico) && (
-                                            <span style={{ fontSize: "6px", opacity: 0.7, flexShrink: 0 }}>
-                                              ({[t.formato?.papel && "F", t.formato?.electronico && "E"]
-                                                .filter(Boolean)
-                                                .join("/")})
-                                            </span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : row.tipoDocumental ? (
-                                    <div
-                                      style={{
-                                        borderLeft: "1.5px solid #000",
-                                        paddingLeft: "6px",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "1px",
-                                      }}
-                                    >
-                                      {row.tipoDocumental.split(",").map((t, i) => (
-                                        <div
-                                          key={i}
-                                          style={{ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic" }}
-                                        >
-                                          — {t.trim()}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </td>
+                                ) : row.tipoDocumental ? (
+                                  <div style={{ borderLeft: "1.5px solid #000", paddingLeft: "5px" }}>
+                                    {row.tipoDocumental.split(",").map((t, i) => (
+                                      <div key={i} style={{ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic" }}>
+                                        — {t.trim()}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </td>
 
-                                {/* Soporte */}
-                                <td style={TDC()}>{X(row.soporteFisico)}</td>
-                                <td style={TDC()}>{X(row.soporteElectronico)}</td>
+                              {/* Soporte */}
+                              <td style={tdc()}>{X(row.soporteFisico)}</td>
+                              <td style={tdc()}>{X(row.soporteElectronico)}</td>
 
-                                {/* Retención */}
-                                <td style={TDC({ fontWeight: "bold" })}>{row.retencionGestion ?? ""}</td>
-                                <td style={TDC({ fontWeight: "bold" })}>{row.retencionCentral ?? ""}</td>
+                              {/* Retención */}
+                              <td style={tdc({ fontWeight: "bold" })}>{row.retencionGestion ?? ""}</td>
+                              <td style={tdc({ fontWeight: "bold" })}>{row.retencionCentral ?? ""}</td>
 
-                                {/* Disposición Final */}
-                                <td style={TDC()}>{X(row.dispCT)}</td>
-                                <td style={TDC()}>{X(row.dispE)}</td>
-                                <td style={TDC()}>{X(row.dispS)}</td>
-                                <td style={TDC()}>{X(row.dispMT)}</td>
+                              {/* Disposición Final */}
+                              <td style={tdc()}>{X(row.dispCT)}</td>
+                              <td style={tdc()}>{X(row.dispS)}</td>
+                              <td style={tdc()}>{X(row.dispE)}</td>
 
-                                {/* Criterio */}
-                                <td style={TDT({ fontSize: isLandscape ? "7px" : "6px", fontStyle: "italic" })}>
-                                  {row.criterio || ""}
-                                </td>
+                              {/* Reproducción técnica M/D */}
+                              <td style={tdc({ fontWeight: "bold" })}>{repValue(row)}</td>
 
-                                {/* Clasificación */}
-                                <td style={TDC({ fontSize: isLandscape ? "7px" : "6px" })}>
-                                  {fmtClasif()}
-                                </td>
+                              {/* DDHH/DIH */}
+                              <td style={tdt({ fontSize: isLandscape ? "7px" : "6px", textAlign: "center", verticalAlign: "middle" })}>
+                                {row.criterio || ""}
+                              </td>
 
-                                {/* Ordenación */}
-                                <td style={TDC({ fontSize: isLandscape ? "7px" : "6px" })}>
-                                  {fmtOrden(row)}
-                                </td>
+                              {/* Procedimiento */}
+                              <td style={tdt({ textAlign: "justify", fontSize: isLandscape ? "7.5px" : "6.5px" })}>
+                                {row.procedimiento || ""}
+                                {row.actoAdmo && (
+                                  <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#444" }}>
+                                    Acto admo.: {row.actoAdmo}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
 
-                                {/* Procedimiento */}
-                                <td style={TDT({ textAlign: "justify" })}>
-                                  {row.procedimiento || ""}
-                                  {row.actoAdmo && (
-                                    <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#555" }}>
-                                      Acto admo.: {row.actoAdmo}
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
                       </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
 
-              {/* ════ BLOQUE DE FIRMAS (Acuerdo 001/2024) ════ */}
+              {/* ════ FIRMAS ════ */}
               <table
                 style={{
-                  ...BASE,
-                  marginTop: "20px",
-                  fontSize: "7.5px",
+                  borderCollapse: "collapse",
+                  width: "100%",
+                  marginTop: "16px",
                   border: BD,
+                  fontFamily: "Arial, Helvetica, sans-serif",
+                  fontSize: "7px",
                 }}
               >
                 <tbody>
                   <tr>
-                    {["Elaboró", "Revisó", "Aprobó"].map((label) => (
-                      <td
-                        key={label}
-                        style={{ border: BD, padding: 0, width: "33.33%", verticalAlign: "top" }}
-                      >
-                        {/* Título sección */}
+                    {[
+                      "Jefe de la dependencia",
+                      "Responsable del área de gestión documental de la entidad",
+                      "Secretario General o funcionario administrativo de igual o superior jerarquía",
+                    ].map((label) => (
+                      <td key={label} style={{ border: BD, padding: 0, width: "33.33%", verticalAlign: "top" }}>
                         <div
                           style={{
                             borderBottom: BD,
                             padding: "3px 8px",
-                            backgroundColor: "#d9d9d9",
+                            backgroundColor: "#e8e8e8",
                             fontWeight: "bold",
                             textAlign: "center",
                             textTransform: "uppercase",
-                            fontSize: "7.5px",
+                            fontSize: "6.5px",
+                            minHeight: "28px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
                           {label}
                         </div>
-                        {/* Campos */}
-                        {[
-                          { key: "Nombre", height: "auto" },
-                          { key: "Cargo", height: "auto" },
-                          { key: "Firma", height: "30px" },
-                          { key: "Fecha", height: "auto" },
-                        ].map(({ key, height }, i, arr) => (
+                        {["Nombre:", "Cargo:", "Firma:"].map((field, i, arr) => (
                           <div
-                            key={key}
+                            key={field}
                             style={{
                               borderBottom: i < arr.length - 1 ? BD : "none",
-                              display: "flex",
-                              gap: "6px",
                               padding: "3px 8px",
-                              minHeight: height,
+                              minHeight: field === "Firma:" ? "32px" : "18px",
+                              display: "flex",
                               alignItems: "flex-start",
-                              fontSize: "7px",
+                              gap: "4px",
                             }}
                           >
-                            <span style={{ fontWeight: "bold", flexShrink: 0 }}>{key}:</span>
+                            <span style={{ fontWeight: "bold", flexShrink: 0 }}>{field}</span>
                           </div>
                         ))}
                       </td>
                     ))}
                   </tr>
+
+                  {/* Fechas */}
+                  <tr>
+                    <td colSpan={3} style={{ border: BD, padding: "4px 10px" }}>
+                      <div style={{ display: "flex", gap: "48px", fontSize: "7px", fontFamily: "Arial, sans-serif" }}>
+                        <span><strong>Fecha de Aprobación:</strong></span>
+                        <span><strong>Fecha de Convalidación:</strong></span>
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
 
-              {/* ════ PIE DE PÁGINA ════ */}
+              {/* ════ CONVENCIONES ════ */}
               <div
                 style={{
-                  marginTop: "6px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  fontSize: "6px",
-                  color: "#666",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
+                  marginTop: "8px",
+                  fontSize: "7px",
+                  fontFamily: "Arial, Helvetica, sans-serif",
+                  lineHeight: "1.6",
                 }}
               >
-                <span>Generado con OSE IA — {new Date().getFullYear()}</span>
-                <span>Acuerdo 001 de 2024 — Archivo General de la Nación — Colombia</span>
+                <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>Convenciones: </span>
+                <span style={{ marginRight: "16px" }}><strong>C</strong> Conservación Total</span>
+                <span style={{ marginRight: "16px" }}><strong>S</strong> Selección</span>
+                <span style={{ marginRight: "16px" }}><strong>E</strong> Eliminación</span>
+                <span style={{ marginRight: "16px" }}><strong>M</strong> Microfilmación</span>
+                <span><strong>D</strong> Digitalización</span>
               </div>
+
             </div>
           );
         })}
