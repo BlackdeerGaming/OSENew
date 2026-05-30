@@ -2,6 +2,7 @@ import boto3
 import os
 from typing import Optional
 from botocore.exceptions import ClientError
+from botocore.config import Config
 
 class S3Manager:
     def __init__(self):
@@ -12,6 +13,8 @@ class S3Manager:
             region_name=self.region,
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            endpoint_url=f"https://s3.{self.region}.amazonaws.com",
+            config=Config(signature_version="s3v4"),
         )
 
     async def upload_file(self, file_content: bytes, path: str, content_type: str = "application/octet-stream"):

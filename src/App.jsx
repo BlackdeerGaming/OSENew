@@ -645,6 +645,7 @@ function App() {
   });
 
   const [printOrientation, setPrintOrientation] = useState('landscape'); // portrait | landscape — default horizontal
+  const [printPaperSize, setPrintPaperSize] = useState('letter'); // letter | legal | a4
   const [aiQueryResult, setAiQueryResult] = useState(null); // Para mostrar resultados de consultas de Orianna
   const [conflictModal, setConflictModal] = useState({ isOpen: false, info: null });
   const [conflictResolver, setConflictResolver] = useState(null);
@@ -2294,8 +2295,9 @@ function App() {
           </div>
 
           <div className="flex items-center gap-3">
-             <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 mr-2">
-               <button 
+             {/* Orientación */}
+             <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700">
+               <button
                  onClick={() => setPrintOrientation('portrait')}
                  className={cn(
                    "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
@@ -2304,7 +2306,7 @@ function App() {
                >
                  VERTICAL
                </button>
-               <button 
+               <button
                  onClick={() => setPrintOrientation('landscape')}
                  className={cn(
                    "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
@@ -2313,6 +2315,22 @@ function App() {
                >
                  HORIZONTAL
                </button>
+             </div>
+
+             {/* Tamaño de papel */}
+             <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700">
+               {[['letter','Carta'],['legal','Legal'],['a4','A4']].map(([val, label]) => (
+                 <button
+                   key={val}
+                   onClick={() => setPrintPaperSize(val)}
+                   className={cn(
+                     "px-3 py-1.5 rounded-lg text-xs font-black transition-all",
+                     printPaperSize === val ? "bg-slate-100 text-slate-900 shadow-lg" : "text-slate-400 hover:text-white"
+                   )}
+                 >
+                   {label}
+                 </button>
+               ))}
              </div>
 
             <button 
@@ -2350,7 +2368,7 @@ function App() {
                 const customFilename = `${safeDepName}_${dateStr}_${randomId}`;
                 
                 addActivityLog(`Descarga TRD (${printOrientation}) - ${isGlobal ? "Global" : selectedPrintDependencias.join(", ")}`);
-                handleExportPDFGeneral('trd-final-report-area', customFilename, printOrientation);
+                handleExportPDFGeneral('trd-final-report-area', customFilename, printOrientation, printPaperSize);
               }}
               className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition-all shadow-lg active:scale-95"
             >
@@ -2360,14 +2378,14 @@ function App() {
           </div>
         </div>
 
-        <div className="w-full flex-1 flex justify-center p-0 m-0 print:block">
-          <TRDGenerator 
-            rows={filteredTrdRows} 
+        <div id="trd-final-report-area" className="w-full flex-1 flex justify-center p-0 m-0 print:block">
+          <TRDGenerator
+            rows={filteredTrdRows}
             selectedIds={selectedTrdIds}
             currentEntity={currentEntity}
             logoBase64={entidadLogoBase64}
             orientation={printOrientation}
-            onToggleRow={() => {}} 
+            onToggleRow={() => {}}
             onToggleAll={() => {}}
           />
         </div>
