@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Building2, Search, Plus, ListFilter, FileEdit, Trash2, ShieldAlert, Save, Mail, Phone, Globe, MapPin } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Building2, Search, Plus, ListFilter, FileEdit, Trash2, ShieldAlert, Save, Mail, Phone, Globe, MapPin, X, Scissors, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
 import ViewHeader from "../ui/ViewHeader";
@@ -10,6 +10,109 @@ const locationData = {
   "España": ["Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria", "Castilla y León", "Castilla-La Mancha", "Cataluña", "Comunidad Valenciana", "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja"],
   "Argentina": ["Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"]
 };
+
+function CropModal({ src, onConfirm, onCancel }) {
+  const [sel, setSel] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const [start, setStart] = useState(null);
+  const imgRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const clampedPos = (e) => {
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const cRect = containerRef.current.getBoundingClientRect();
+    return {
+      x: Math.max(imgRect.left - cRect.left, Math.min(e.clientX - cRect.left, imgRect.right  - cRect.left)),
+      y: Math.max(imgRect.top  - cRect.top,  Math.min(e.clientY - cRect.top,  imgRect.bottom - cRect.top)),
+    };
+  };
+
+  const onMouseDown = (e) => { e.preventDefault(); const p = clampedPos(e); setStart(p); setSel({ x: p.x, y: p.y, w: 0, h: 0 }); setDragging(true); };
+  const onMouseMove = (e) => { if (!dragging || !start) return; const p = clampedPos(e); setSel({ x: Math.min(p.x, start.x), y: Math.min(p.y, start.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) }); };
+  const onMouseUp   = () => setDragging(false);
+
+  const handleConfirm = () => {
+    if (!sel || sel.w < 5 || sel.h < 5) return;
+    const imgEl  = imgRef.current;
+    const imgRect = imgEl.getBoundingClientRect();
+    const cRect   = containerRef.current.getBoundingClientRect();
+    const offX = imgRect.left - cRect.left;
+    const offY = imgRect.top  - cRect.top;
+    const scaleX = imgEl.naturalWidth  / imgRect.width;
+    const scaleY = imgEl.naturalHeight / imgRect.height;
+    const natX = Math.max(0, Math.round((sel.x - offX) * scaleX));
+    const natY = Math.max(0, Math.round((sel.y - offY) * scaleY));
+    const natW = Math.min(imgEl.naturalWidth  - natX, Math.round(sel.w * scaleX));
+    const natH = Math.min(imgEl.naturalHeight - natY, Math.round(sel.h * scaleY));
+    const canvas = document.createElement('canvas');
+    canvas.width = natW; canvas.height = natH;
+    canvas.getContext('2d').drawImage(imgEl, natX, natY, natW, natH, 0, 0, natW, natH);
+    onConfirm(canvas.toDataURL('image/png'), natW, natH);
+  };
+
+  const hasSel = sel && sel.w > 5 && sel.h > 5;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-start justify-between">
+          <div>
+            <h3 className="font-bold text-slate-900 text-[15px]">Recortar Logo</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">Haz clic y arrastra para seleccionar el área que deseas conservar.</p>
+          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 transition-colors mt-0.5">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div
+          ref={containerRef}
+          className="relative flex items-center justify-center bg-slate-100 select-none p-4"
+          style={{ minHeight: 180, maxHeight: 420, cursor: 'crosshair' }}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+        >
+          <img
+            ref={imgRef}
+            src={src}
+            draggable={false}
+            style={{ maxWidth: '100%', maxHeight: 380, display: 'block', userSelect: 'none', pointerEvents: 'none' }}
+            alt="Logo"
+          />
+          {hasSel && (
+            <div style={{
+              position: 'absolute', left: sel.x, top: sel.y, width: sel.w, height: sel.h,
+              border: '2px solid #3b82f6',
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)',
+              pointerEvents: 'none',
+            }} />
+          )}
+        </div>
+
+        {hasSel && (
+          <div className="px-6 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 text-center">
+            Área seleccionada: <span className="font-semibold text-slate-700">{Math.round(sel.w)} × {Math.round(sel.h)} px (pantalla)</span>
+          </div>
+        )}
+
+        <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
+          <button onClick={onCancel} className="px-5 py-2 rounded-lg border border-border text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!hasSel}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-all"
+          >
+            <Scissors className="h-4 w-4" /> Aplicar Recorte
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function EntitiesView({ entities, setEntities, currentUser }) {
   const [view, setView] = useState("list"); // 'list', 'create', 'edit'
@@ -48,8 +151,78 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
   });
 
   const [logoPreview, setLogoPreview] = useState(null);
+  const [logoOriginalDataUrl, setLogoOriginalDataUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [logoWarning, setLogoWarning] = useState(null);
+  const [showCropModal, setShowCropModal] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const uploadDataUrl = async (dataUrl, filename = 'logo.png') => {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    const u8arr = new Uint8Array(bstr.length);
+    for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+    const file = new File([u8arr], filename, { type: mime });
+    setIsUploading(true);
+    const body = new FormData();
+    body.append('file', file);
+    try {
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
+        body,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData(prev => ({ ...prev, logoUrl: data.url }));
+      }
+    } catch (err) {
+      console.error("Logo upload failed", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleResize = async () => {
+    if (!logoOriginalDataUrl) return;
+    const dataUrl = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 300, MAX_H = 150;
+        const scale = Math.min(MAX_W / img.width, MAX_H / img.height);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = MAX_W; canvas.height = MAX_H;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, MAX_W, MAX_H);
+        ctx.drawImage(img, (MAX_W - w) / 2, (MAX_H - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = logoOriginalDataUrl;
+    });
+    setLogoPreview(dataUrl);
+    setLogoWarning({ type: 'ok', msg: 'Logo ajustado a 300 × 150 px con relleno blanco. Se mostrará correctamente en el TRD.' });
+    await uploadDataUrl(dataUrl, `logo_resized_${Date.now()}.png`);
+  };
+
+  const handleCropConfirm = async (dataUrl, w, h) => {
+    setShowCropModal(false);
+    setLogoPreview(dataUrl);
+    const ratio = w / h;
+    if (h < 52) {
+      setLogoWarning({ type: 'error', msg: `Recorte muy pequeño (${w}×${h} px). Se verá pixelado en el TRD.` });
+    } else if (ratio > 4) {
+      setLogoWarning({ type: 'warn', msg: `Recorte aún muy ancho (${w}×${h} px). Considera recortar de nuevo o usar Redimensionar.` });
+    } else if (ratio < 0.5) {
+      setLogoWarning({ type: 'warn', msg: `Recorte aún muy alto (${w}×${h} px). Considera recortar de nuevo o usar Redimensionar.` });
+    } else {
+      setLogoWarning({ type: 'ok', msg: `Recorte aplicado (${w}×${h} px). Se mostrará bien en el TRD.` });
+    }
+    await uploadDataUrl(dataUrl, `logo_cropped_${Date.now()}.png`);
+  };
 
   const filteredEntities = (entities || []).map(e => {
     // Normalizar campos: priorizar camelCase si tiene contenido, sino usar snake_case
@@ -101,6 +274,9 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
       departamento: ent.departamento || "",
     });
     setLogoPreview(null);
+    setLogoOriginalDataUrl(null);
+    setLogoWarning(null);
+    setShowCropModal(false);
     setErrors({});
     setView("edit");
   };
@@ -144,17 +320,40 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onloadend = () => setLogoPreview(reader.result);
+    reader.onloadend = () => {
+      const dataUrl = reader.result;
+      setLogoPreview(dataUrl);
+      setLogoOriginalDataUrl(dataUrl);
+      const img = new Image();
+      img.onload = () => {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        const ratio = w / h;
+        if (h < 52) {
+          setLogoWarning({ type: "error", msg: `Imagen muy pequeña (${w}×${h} px). Se verá pixelada en el TRD — usa al menos 150×150 px.` });
+        } else if (ratio > 4) {
+          setLogoWarning({ type: "warn", msg: `Logo muy ancho (${w}×${h} px, proporción ${ratio.toFixed(1)}:1). Puede desbordarse en la celda del TRD.` });
+        } else if (ratio < 0.5) {
+          setLogoWarning({ type: "warn", msg: `Logo muy alto (${w}×${h} px). Se mostrará muy angosto en el TRD (celda de 52 px de altura).` });
+        } else {
+          setLogoWarning({ type: "ok", msg: `Tamaño correcto (${w}×${h} px). Se mostrará bien en el TRD.` });
+        }
+      };
+      img.src = dataUrl;
+    };
     reader.readAsDataURL(file);
 
     setIsUploading(true);
     const body = new FormData();
     body.append('file', file);
     try {
-      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, { method: 'POST', body });
+      const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
+        body,
+      });
       if (res.ok) {
         const data = await res.json();
-        setFormData({ ...formData, logoUrl: data.url });
+        setFormData(prev => ({ ...prev, logoUrl: data.url }));
       }
     } catch (err) {
       console.error("Logo upload failed", err);
@@ -219,6 +418,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
                   maxUsuarios: 10, maxDependencias: 20, maxProyectos: 5,
                 });
                 setLogoPreview(null);
+                setLogoWarning(null);
                 setErrors({});
                 setView("create");
               }}
@@ -457,7 +657,46 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
                   <input type="file" className="hidden" onChange={handleLogoChange} accept="image/*" />
                 </label>
               </div>
-              <p className="text-[10px] text-muted-foreground text-center">Carga el logo oficial de la entidad (PNG, JPG o SVG)</p>
+              <div className="w-full space-y-1.5 text-center">
+                <p className="text-[10px] text-muted-foreground">Carga el logo oficial de la entidad (PNG, JPG o SVG)</p>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Tamaño recomendado: <span className="font-semibold text-slate-500">300 × 150 px</span> · Proporción ideal: <span className="font-semibold text-slate-500">1:1 a 3:1</span><br />
+                  El logo se muestra a <span className="font-semibold text-slate-500">52 px de alto</span> en la cabecera del TRD
+                </p>
+                {logoWarning && (
+                  <div className={`mt-1 rounded-lg px-3 py-2 text-[10px] font-medium leading-snug text-left
+                    ${logoWarning.type === 'ok'    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : ''}
+                    ${logoWarning.type === 'warn'  ? 'bg-amber-50  text-amber-700  border border-amber-200'  : ''}
+                    ${logoWarning.type === 'error' ? 'bg-red-50    text-red-700    border border-red-200'    : ''}
+                  `}>
+                    <div className="flex items-start gap-1.5">
+                      <span className="mt-px text-base leading-none">
+                        {logoWarning.type === 'ok' ? '✓' : logoWarning.type === 'warn' ? '⚠' : '✕'}
+                      </span>
+                      <span>{logoWarning.msg}</span>
+                    </div>
+                    {logoWarning.type === 'warn' && (
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResize}
+                          disabled={isUploading}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-[10px] font-bold rounded-md hover:bg-amber-700 transition-colors disabled:opacity-50"
+                        >
+                          <Minimize2 className="h-3 w-3" /> Redimensionar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowCropModal(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-amber-700 border border-amber-400 text-[10px] font-bold rounded-md hover:bg-amber-50 transition-colors"
+                        >
+                          <Scissors className="h-3 w-3" /> Recortar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-4 pt-2">
@@ -572,6 +811,14 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
           <Save className="h-4 w-4" /> Guardar Organización
         </button>
       </div>
+
+      {showCropModal && logoOriginalDataUrl && (
+        <CropModal
+          src={logoOriginalDataUrl}
+          onConfirm={handleCropConfirm}
+          onCancel={() => setShowCropModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -47,6 +47,17 @@ export default function TRDGenerator({
       ? rows.filter((r) => selectedIds.has(r.id))
       : rows;
 
+  // ── Agrupación por dependencia → serie ───────────────────────────────────
+  const groupedByDep = React.useMemo(() => {
+    const g = {};
+    exportRows.forEach((row) => {
+      const k = row.dependencia || "OFICINA PRODUCTORA";
+      if (!g[k]) g[k] = { rows: [], codigoD: row.codigoD || "" };
+      g[k].rows.push(row);
+    });
+    return g;
+  }, [exportRows]);
+
   if (exportRows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] p-12 text-muted-foreground bg-white rounded-2xl border border-dashed border-slate-400">
@@ -123,17 +134,6 @@ export default function TRDGenerator({
     if (row.dispMT && r === "Ninguna") return "";
     return "";
   };
-
-  // ── Agrupación por dependencia → serie ───────────────────────────────────
-  const groupedByDep = React.useMemo(() => {
-    const g = {};
-    exportRows.forEach((row) => {
-      const k = row.dependencia || "OFICINA PRODUCTORA";
-      if (!g[k]) g[k] = { rows: [], codigoD: row.codigoD || "" };
-      g[k].rows.push(row);
-    });
-    return g;
-  }, [exportRows]);
 
   const depGroups = Object.entries(groupedByDep);
 

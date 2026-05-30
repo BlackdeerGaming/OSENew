@@ -2447,7 +2447,7 @@ function App() {
                 )}
                 {mainView === 'rag' && <DocumentcioRAGView currentUser={currentUser} currentEntity={currentEntity} />}
                 {mainView === 'users' && <UsersView searchQuery={globalSearchQuery} onSearchQueryChange={setGlobalSearchQuery} currentUser={currentUser} users={users} setUsers={setUsers} entities={entities} selectedEntityId={selectedEntityId} />}
-                {mainView === 'settings' && <SettingsView currentUser={currentUser} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
+                {mainView === 'settings' && <SettingsView currentUser={currentUser} currentEntity={currentEntity} onUpdate={handleUpdateUserProfile} onLogout={handleLogout} />}
                 {mainView === 'help' && <HelpCenterView currentUser={currentUser} />}
                 
                 {mainView === 'invitations' && (

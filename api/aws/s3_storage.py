@@ -7,7 +7,12 @@ class S3Manager:
     def __init__(self):
         self.region = os.getenv("AWS_REGION", "us-east-1")
         self.bucket_name = os.getenv("S3_BUCKET_NAME")
-        self.s3 = boto3.client("s3", region_name=self.region)
+        self.s3 = boto3.client(
+            "s3",
+            region_name=self.region,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        )
 
     async def upload_file(self, file_content: bytes, path: str, content_type: str = "application/octet-stream"):
         try:
@@ -15,7 +20,7 @@ class S3Manager:
                 Bucket=self.bucket_name,
                 Key=path,
                 Body=file_content,
-                ContentType=content_type
+                ContentType=content_type or "application/octet-stream",
             )
             return path
         except ClientError as e:

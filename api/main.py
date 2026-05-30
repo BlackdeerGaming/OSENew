@@ -2087,6 +2087,7 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
         url = await s3_client.get_download_url(storage_path)
         return {"url": url}
     except Exception as e:
+        print(f" [upload-logo] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
