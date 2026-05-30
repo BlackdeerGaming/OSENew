@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Download, Info } from "lucide-react";
+import { FileText, Download, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
 /**
  * TRDGenerator — Formato Oficial Acuerdo 001 de 2024
@@ -27,6 +27,10 @@ export default function TRDGenerator({
   onSelectDependencia = () => {},
 }) {
   const isLandscape = orientation === "landscape";
+  const [zoom, setZoom] = React.useState(100);
+  const ZOOM_STEP = 10;
+  const ZOOM_MIN  = 50;
+  const ZOOM_MAX  = 150;
 
   const handleDepChange = (e) => {
     const value = e.target.value;
@@ -203,6 +207,40 @@ export default function TRDGenerator({
             </div>
           </div>
 
+          {/* ── Zoom ── */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Zoom</span>
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+              <button
+                onClick={() => setZoom(z => Math.max(ZOOM_MIN, z - ZOOM_STEP))}
+                disabled={zoom <= ZOOM_MIN}
+                className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition-colors"
+                title="Reducir"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-10 text-center text-[11px] font-black text-slate-700 select-none">
+                {zoom}%
+              </span>
+              <button
+                onClick={() => setZoom(z => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
+                disabled={zoom >= ZOOM_MAX}
+                className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition-colors"
+                title="Ampliar"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setZoom(100)}
+                disabled={zoom === 100}
+                className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 transition-colors"
+                title="Restablecer zoom"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 self-end">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 border border-slate-300 bg-white">
               <Info className="h-3.5 w-3.5" />
@@ -225,10 +263,17 @@ export default function TRDGenerator({
       </div>
 
       {/* ── Páginas TRD ── */}
+      <div style={{ overflow: "auto" }}>
       <div
         id="trd-capture-frame"
         className="flex flex-col gap-10 print:block print:p-0 print:m-0"
-        style={{ padding: isLandscape ? "16px 12px" : "28px 20px" }}
+        style={{
+          padding: isLandscape ? "16px 12px" : "28px 20px",
+          transform: `scale(${zoom / 100})`,
+          transformOrigin: "top center",
+          transition: "transform 0.15s ease",
+          marginBottom: `${(zoom - 100) * -0.5}%`,
+        }}
       >
         {depGroups.map(([depName, depData], groupIdx) => {
           const serieGroups = groupBySerie(depData.rows);
@@ -378,7 +423,7 @@ export default function TRDGenerator({
                     <th colSpan={2} style={th()}>SOPORTE o FORMATO</th>
                     <th colSpan={2} style={th()}>RETENCIÓN</th>
                     <th colSpan={3} style={th()}>DISPOSICIÓN FINAL</th>
-                    <th rowSpan={2} style={th({ fontSize: fHd })}>
+                    <th rowSpan={2} style={th({ fontSize: isLandscape ? "5px" : "4.5px" })}>
                       REPRODUCCIÓN<br />TÉCNICA DEL<br />PAPEL (M/D)
                     </th>
                     <th rowSpan={2} style={th({ fontSize: fHd })}>
@@ -390,7 +435,7 @@ export default function TRDGenerator({
                   {/* ── Fila sub-cabeceras ── */}
                   <tr>
                     <th style={th({ fontSize: fHd })}>Papel</th>
-                    <th style={th({ fontSize: isLandscape ? "5.5px" : "5px" })}>
+                    <th style={th({ fontSize: isLandscape ? "5px" : "4.5px" })}>
                       Electrónico<br />(extensión)
                     </th>
                     <th style={th({ fontSize: isLandscape ? "5.5px" : "5px" })}>
@@ -639,6 +684,7 @@ export default function TRDGenerator({
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
