@@ -660,7 +660,7 @@ async def get_ccd_debug(entity_id: str, user: dict = Depends(get_current_user)):
             "subserie_id":    rc.get("subserie_id"),
             "acto_admo":      rc.get("acto_admo"),
             "funciones_ids":  rc.get("funciones_ids"),
-            "trd_index_key":  [rc.get("dependencia_id",""), rc.get("serie_id",""), rc.get("subserie_id") or ""],
+            "trd_index_key":  [rc.get("serie_id",""), rc.get("subserie_id") or ""],
         })
 
     funciones_summary = []
@@ -683,10 +683,10 @@ async def get_ccd_debug(entity_id: str, user: dict = Depends(get_current_user)):
             "dependencia_id": sc.get("dependencia_id"),
             "subseries":     [{"id": ss.get("id"), "nombre": ss.get("nombre")} for ss in subs],
             "expected_trd_keys": (
-                [[sc.get("dependencia_id",""), sc.get("id",""), ss.get("id","")]
+                [[sc.get("id",""), ss.get("id","")]
                  for ss in subs]
                 if subs else
-                [[sc.get("dependencia_id",""), sc.get("id",""), ""]]
+                [[sc.get("id",""), ""]]
             ),
         })
 
@@ -722,11 +722,14 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
     deps_map      = {d["id"]: _strip_keys(d) for d in deps_raw      if "id" in d}
     funciones_map = {f["id"]: _strip_keys(f) for f in funciones_raw if "id" in f}
 
-    # TRD records indexados por (dep_id, serie_id, subserie_id)
+    # TRD records indexados solo por (serie_id, subserie_id).
+    # dep_id se excluye de la clave porque puede estar vacío en la serie
+    # pero lleno en el TRD record (o viceversa), causando un falso mismatch.
+    # serie_id es un UUID único: no necesita dep_id para ser inequívoco.
     trd_idx: dict = {}
     for r in trd_raw:
         rc  = _strip_keys(r)
-        key = (rc.get("dependencia_id", ""), rc.get("serie_id", ""), rc.get("subserie_id") or "")
+        key = (rc.get("serie_id", ""), rc.get("subserie_id") or "")
         trd_idx[key] = rc
         print(f"[CCD]  trd_idx key={key} acto_admo={rc.get('acto_admo')} funciones_ids={rc.get('funciones_ids')}")
 
@@ -785,13 +788,13 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
 
         if subseries_for_serie:
             for ss in subseries_for_serie:
-                lookup_key = (dep_id, serie_id, ss.get("id", ""))
+                lookup_key = (serie_id, ss.get("id", ""))
                 trd = trd_idx.get(lookup_key, {})
                 if not trd:
                     print(f"[CCD]  MISS serie={s.get('nombre')} sub={ss.get('nombre')} key={lookup_key}")
                 rows.extend(make_rows(trd, seccion, subseccion, s, ss))
         else:
-            lookup_key = (dep_id, serie_id, "")
+            lookup_key = (serie_id, "")
             trd = trd_idx.get(lookup_key, {})
             if not trd:
                 print(f"[CCD]  MISS serie={s.get('nombre')} (sin subserie) key={lookup_key}")
