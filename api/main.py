@@ -838,6 +838,7 @@ class EntityCreate(BaseModel):
     numDependencias: str | None = ""
     numProyectos: str | None = ""
     logoUrl: str | None = ""
+    logoKey: str | None = ""   # clave S3 para regenerar la URL cuando expire
     tipoEntidad: str | None = "Persona Jurídica"
     clasificacion: str | None = "Privada"
     tipoDocumento: str | None = "NIT"
@@ -1335,13 +1336,26 @@ def _ensure_entity_id(item: dict) -> dict:
         item["id"] = _normalize_entity_id(str(item["id"]))
     return item
 
+async def _refresh_entity_logo(entity: dict) -> dict:
+    """Si la entidad tiene logoKey, regenera la URL presignada (24 h)."""
+    key = entity.get("logoKey") or entity.get("logo_key")
+    if key:
+        try:
+            entity["logoUrl"] = await s3_client.get_download_url(key, expires_in=86400)
+        except Exception as e:
+            print(f" [logo-refresh] No se pudo refrescar URL para key={key}: {e}")
+    return entity
+
 @router.get("/entities")
 async def get_entities(user: dict = Depends(get_current_user)):
     """Lista las entidades permitidas para el usuario actual."""
     try:
         if user.get("role") == SUPERADMIN_ROLE:
             items = await db.scan_table("entities")
-            return [_ensure_entity_id(i) for i in items]
+            results = [_ensure_entity_id(i) for i in items]
+            for item in results:
+                await _refresh_entity_logo(item)
+            return results
 
         # Para administradores multi-entidad, devolver todas sus entidades permitidas
         allowed_ids = user.get("allowed_entities", [])
@@ -1355,7 +1369,9 @@ async def get_entities(user: dict = Depends(get_current_user)):
             clean_eid = _normalize_entity_id(str(eid))
             item = await db.get_item("entities", f"ENTITY#{clean_eid}", "METADATA")
             if item:
-                items.append(_ensure_entity_id(item))
+                ent = _ensure_entity_id(item)
+                await _refresh_entity_logo(ent)
+                items.append(ent)
         return items
     except Exception as e:
         print(f"Error listing entities: {e}")
@@ -2078,14 +2094,15 @@ async def delete_entity(entity_id: str, user: dict = Depends(require_super_admin
 
 @router.post("/entities/upload-logo")
 async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Sube un logo a S3."""
+    """Sube un logo a S3 y devuelve URL fresca + clave para regenerarla."""
     try:
         content = await file.read()
         clean_filename = f"logo_{int(time.time())}_{file.filename.replace(' ', '_')}"
         storage_path = f"assets/logos/{clean_filename}"
         await s3_client.upload_file(content, storage_path, file.content_type)
-        url = await s3_client.get_download_url(storage_path)
-        return {"url": url}
+        # 86 400 s = 24 h — suficiente para la sesión; la clave permite regenerar
+        url = await s3_client.get_download_url(storage_path, expires_in=86400)
+        return {"url": url, "key": storage_path}
     except Exception as e:
         print(f" [upload-logo] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -175,7 +175,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
       });
       if (res.ok) {
         const data = await res.json();
-        setFormData(prev => ({ ...prev, logoUrl: data.url }));
+        setFormData(prev => ({ ...prev, logoUrl: data.url, logoKey: data.key || "" }));
       }
     } catch (err) {
       console.error("Logo upload failed", err);
@@ -353,7 +353,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
       });
       if (res.ok) {
         const data = await res.json();
-        setFormData(prev => ({ ...prev, logoUrl: data.url }));
+        setFormData(prev => ({ ...prev, logoUrl: data.url, logoKey: data.key || "" }));
       }
     } catch (err) {
       console.error("Logo upload failed", err);
