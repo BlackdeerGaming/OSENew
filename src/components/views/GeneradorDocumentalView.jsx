@@ -633,7 +633,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         </div>
 
         {/* ── Panel Derecho: Visor ─────────────────────────────────────── */}
-        <div className="flex-1 bg-secondary/30 rounded-xl border border-border shadow-inner p-2 md:p-4 flex flex-col items-start overflow-y-auto">
+        <div className="flex-1 bg-secondary/30 rounded-xl border border-border shadow-inner p-2 md:p-4 flex flex-col items-start overflow-auto">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 animate-pulse w-full">
               <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -686,8 +686,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               {activeTab === "ccd" && ccdData ? (
                 <div
                   id="documento-generado"
-                  className="w-full bg-white text-black shadow-xl rounded-sm overflow-x-auto"
-                  style={{ minWidth: "900px" }}
+                  className="bg-white text-black shadow-xl rounded-sm"
+                  style={{ width: "max-content", minWidth: "1050px" }}
                 >
                   <CCDTable
                     data={ccdData}
