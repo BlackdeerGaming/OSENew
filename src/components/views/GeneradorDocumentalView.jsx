@@ -39,14 +39,20 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [error, setError] = useState(null);
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [ccdData, setCcdData] = useState(null);       // datos estructurados CCD (AGN format)
-  const [ccdFlatMode, setCcdFlatMode] = useState(false);       // false = jerárquico, true = plano
+  const [ccdFlatMode, setCcdFlatMode] = useState(false);            // false = jerárquico, true = plano
   const [ccdOrientation, setCcdOrientation] = useState("landscape"); // landscape | portrait
   const [ccdPageSize,    setCcdPageSize]    = useState("a4");        // a4 | carta | oficio
+  const [ccdZoom,        setCcdZoom]        = useState(75);          // % zoom visual pantalla
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
 
   const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
+
+  // Ajustar zoom automáticamente al cambiar orientación
+  useEffect(() => {
+    setCcdZoom(ccdOrientation === "landscape" ? 75 : 95);
+  }, [ccdOrientation]);
 
 
   useEffect(() => {
@@ -223,7 +229,9 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         ? `Manual_Funciones_${selectedCargos.join("_")}`
         : `Manual_Funciones_${manualEntries.map(e => e.cargo).filter(Boolean).join("_") || "cargos"}`;
     const orientation = activeTab === "ccd" ? ccdOrientation : "portrait";
-    const paperSize   = activeTab === "ccd" ? ccdPageSize   : "a4";
+    // exportUtils usa "letter"/"legal"/"a4" — mapeamos los nombres de pantalla
+    const paperMap  = { a4: "a4", carta: "letter", oficio: "legal" };
+    const paperSize = paperMap[activeTab === "ccd" ? ccdPageSize : "a4"] || "a4";
     handleExportPDFGeneral("documento-generado", label, orientation, paperSize);
   };
 
@@ -706,6 +714,15 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                         <RotateCcw className="h-3.5 w-3.5" />
                         {ccdOrientation === "landscape" ? "Horizontal" : "Vertical"}
                       </button>
+                      {/* Zoom */}
+                      <div className="flex items-center gap-0 border border-slate-300 rounded-md overflow-hidden shadow-sm text-xs font-bold">
+                        <button onClick={() => setCcdZoom(z => Math.max(40, z - 5))} className="px-2.5 py-2 bg-white text-slate-600 hover:bg-slate-100 transition">−</button>
+                        <span className="px-2 py-2 bg-white text-slate-700 select-none min-w-[44px] text-center">{ccdZoom}%</span>
+                        <button onClick={() => setCcdZoom(z => Math.min(150, z + 5))} className="px-2.5 py-2 bg-white text-slate-600 hover:bg-slate-100 transition">+</button>
+                        <button onClick={() => setCcdZoom(100)} title="Restablecer zoom" className="px-2.5 py-2 bg-white text-slate-500 hover:bg-slate-100 transition border-l border-slate-300">
+                          <RotateCcw className="h-3 w-3" />
+                        </button>
+                      </div>
                       {/* Selector tamaño de papel */}
                       <div className="flex items-center gap-1 border border-slate-300 rounded-md overflow-hidden shadow-sm text-xs font-bold">
                         {["a4", "carta", "oficio"].map(sz => (
@@ -737,17 +754,24 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
               {/* ── CCD estructurado (formato AGN) ─────────────────────── */}
               {activeTab === "ccd" && ccdData ? (
-                <div
-                  id="documento-generado"
-                  className="w-full bg-slate-100 overflow-x-auto"
-                >
-                  <CCDTable
-                    data={ccdData}
-                    entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
-                    flatMode={ccdFlatMode}
-                    orientation={ccdOrientation}
-                    pageSize={ccdPageSize}
-                  />
+                /* Zoom wrapper — fuera de documento-generado → PDF no se ve afectado */
+                <div style={{ width: "100%", overflow: "auto" }}>
+                  <div style={{
+                    transform:       `scale(${ccdZoom / 100})`,
+                    transformOrigin: "top center",
+                    marginBottom:    `${(ccdZoom - 100) * -0.5}%`,
+                    transition:      "transform 0.15s ease",
+                  }}>
+                    <div id="documento-generado">
+                      <CCDTable
+                        data={ccdData}
+                        entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
+                        flatMode={ccdFlatMode}
+                        orientation={ccdOrientation}
+                        pageSize={ccdPageSize}
+                      />
+                    </div>
+                  </div>
                 </div>
               ) : (
                 /* ── Manual / HTML generado por IA ──────────────────────── */
