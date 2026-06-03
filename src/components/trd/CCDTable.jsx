@@ -46,6 +46,8 @@ const HEADER = {
   verticalAlign:   "middle",
   fontSize:        "7.5px",
   padding:         "3px 2px",
+  wordBreak:       "break-word",
+  overflowWrap:    "break-word",
 };
 const DATA        = { ...BASE, minHeight: "16px", height: "16px" };
 const DATA_CENTER = { ...DATA, textAlign: "center" };
@@ -124,7 +126,8 @@ function buildFlatRows(rawRows) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function CCDTable({ data, entityName, flatMode = false }) {
-  const rawRows = data?.rows || [];
+  // Solo mostrar filas que tengan nombre de sección definido
+  const rawRows = (data?.rows || []).filter(r => r.nombre_seccion);
 
   // En vista plana transformamos las filas; en jerárquica usamos los datos directos
   const displayRows = flatMode ? buildFlatRows(rawRows) : [...rawRows];
