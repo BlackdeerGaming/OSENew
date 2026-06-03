@@ -783,6 +783,10 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
             seccion    = dep
             subseccion = {}
 
+        # Omitir series cuya sección no tenga nombre (dependencia no vinculada o sin jerarquía)
+        if not seccion.get("nombre"):
+            continue
+
         serie_id            = s.get("id", "")
         subseries_for_serie = subs_by_serie.get(serie_id, [])
 
