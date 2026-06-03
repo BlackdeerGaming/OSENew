@@ -176,9 +176,16 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
       if (res.ok) {
         const data = await res.json();
         setFormData(prev => ({ ...prev, logoUrl: data.url, logoKey: data.key || "" }));
+        setLogoWarning(prev => ({ ...prev, msg: (prev?.msg || "") + " ✓ Subida exitosa." }));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setLogoWarning({ type: "error", msg: `Error al subir el logo: ${err.detail || res.status}. El logo no se guardará.` });
+        setLogoPreview(null); // limpiar preview para que el usuario sepa que falló
       }
     } catch (err) {
       console.error("Logo upload failed", err);
+      setLogoWarning({ type: "error", msg: "Error de conexión al subir el logo." });
+      setLogoPreview(null);
     } finally {
       setIsUploading(false);
     }
@@ -269,11 +276,12 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
       celular: ent.celular || "",
       paginaWeb: ent.paginaWeb,
       dv: ent.dv || "",
-      logoUrl: ent.logoUrl,
+      logoUrl: ent.logoUrl || "",
+      logoKey: ent.logoKey || "",   // preservar clave S3 para refrescar URL
       pais: ent.pais || "Colombia",
       departamento: ent.departamento || "",
     });
-    setLogoPreview(null);
+    setLogoPreview(ent.logoUrl || null);  // mostrar logo actual en el preview
     setLogoOriginalDataUrl(null);
     setLogoWarning(null);
     setShowCropModal(false);
