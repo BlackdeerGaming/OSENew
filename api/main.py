@@ -2094,17 +2094,21 @@ async def delete_entity(entity_id: str, user: dict = Depends(require_super_admin
 
 @router.post("/entities/upload-logo")
 async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Sube un logo a S3 y devuelve URL fresca + clave para regenerarla."""
+    """Sube un logo a Supabase Storage y devuelve URL pública permanente."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase no disponible")
     try:
         content = await file.read()
-        clean_filename = f"logo_{int(time.time())}_{file.filename.replace(' ', '_')}"
-        storage_path = f"assets/logos/{clean_filename}"
-        await s3_client.upload_file(content, storage_path, file.content_type)
-        # 86 400 s = 24 h — suficiente para la sesión; la clave permite regenerar
-        url = await s3_client.get_download_url(storage_path, expires_in=86400)
-        return {"url": url, "key": storage_path}
+        ext = (file.filename or "logo.png").rsplit(".", 1)[-1].lower()
+        filename = f"logo_{int(time.time())}.{ext}"
+        supabase_client.storage.from_("logos").upload(
+            filename, content, {"content-type": file.content_type or "image/png"}
+        )
+        url = supabase_client.storage.from_("logos").get_public_url(filename)
+        # URL pública permanente — no expira, no se necesita logoKey
+        return {"url": url, "key": ""}
     except Exception as e:
-        print(f" [upload-logo] Error: {e}")
+        print(f" [upload-logo] Error Supabase: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
