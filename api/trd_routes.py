@@ -669,16 +669,32 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         if sid:
             subs_by_serie.setdefault(sid, []).append(sc)
 
-    def funcion_str(trd: dict, dep_id: str) -> str:
-        """Retorna la descripción de las funciones cuya dependencia coincide con dep_id.
-        Solo conecta TRD y Función cuando comparten el mismo nombre de dependencia."""
-        names = []
+    def get_funciones(trd: dict, dep_id: str) -> list:
+        """Retorna lista de descripciones de funciones cuya dependencia coincide con dep_id.
+        Solo conecta TRD y Función cuando comparten la misma dependencia.
+        Cada descripción genera su propia fila en el CCD (una fila por función)."""
+        result = []
         for fid in (trd.get("funciones_ids") or []):
             f = funciones_map.get(fid, {})
-            # Validar que la función pertenece a la misma dependencia que el TRD
             if f.get("dependencia_id") == dep_id and f.get("descripcion"):
-                names.append(f["descripcion"])
-        return "; ".join(names)
+                result.append(f["descripcion"])
+        return result or [""]   # Al menos una fila con función vacía si no hay funciones
+
+    def make_rows(trd: dict, dep_id: str, seccion: dict, subseccion: dict,
+                  serie: dict, subserie: dict) -> list:
+        """Crea una fila por función para el par (TRD, serie/subserie) dado."""
+        base = {
+            "acto_administrativo": trd.get("acto_admo", ""),
+            "codigo_seccion":      seccion.get("codigo", ""),
+            "nombre_seccion":      seccion.get("nombre", ""),
+            "codigo_subseccion":   subseccion.get("codigo", ""),
+            "nombre_subseccion":   subseccion.get("nombre", ""),
+            "codigo_serie":        serie.get("codigo", ""),
+            "nombre_serie":        serie.get("nombre", ""),
+            "codigo_subserie":     subserie.get("codigo", ""),
+            "nombre_subserie":     subserie.get("nombre", ""),
+        }
+        return [{**base, "funcion": desc} for desc in get_funciones(trd, dep_id)]
 
     rows = []
     for serie_item in series_raw:
@@ -700,32 +716,10 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         if subseries_for_serie:
             for ss in subseries_for_serie:
                 trd = trd_idx.get((dep_id, serie_id, ss.get("id", "")), {})
-                rows.append({
-                    "acto_administrativo": trd.get("acto_admo", ""),
-                    "funcion":             funcion_str(trd, dep_id),
-                    "codigo_seccion":      seccion.get("codigo", ""),
-                    "nombre_seccion":      seccion.get("nombre", ""),
-                    "codigo_subseccion":   subseccion.get("codigo", ""),
-                    "nombre_subseccion":   subseccion.get("nombre", ""),
-                    "codigo_serie":        s.get("codigo", ""),
-                    "nombre_serie":        s.get("nombre", ""),
-                    "codigo_subserie":     ss.get("codigo", ""),
-                    "nombre_subserie":     ss.get("nombre", ""),
-                })
+                rows.extend(make_rows(trd, dep_id, seccion, subseccion, s, ss))
         else:
             trd = trd_idx.get((dep_id, serie_id, ""), {})
-            rows.append({
-                "acto_administrativo": trd.get("acto_admo", ""),
-                "funcion":             funcion_str(trd, dep_id),
-                "codigo_seccion":      seccion.get("codigo", ""),
-                "nombre_seccion":      seccion.get("nombre", ""),
-                "codigo_subseccion":   subseccion.get("codigo", ""),
-                "nombre_subseccion":   subseccion.get("nombre", ""),
-                "codigo_serie":        s.get("codigo", ""),
-                "nombre_serie":        s.get("nombre", ""),
-                "codigo_subserie":     "",
-                "nombre_subserie":     "",
-            })
+            rows.extend(make_rows(trd, dep_id, seccion, subseccion, s, {}))
 
     rows.sort(key=lambda r: (
         r["codigo_seccion"],    r["codigo_subseccion"],

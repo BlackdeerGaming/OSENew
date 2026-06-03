@@ -5,25 +5,27 @@
  * Props:
  *   data        – { rows: [...] }  datos del endpoint /ccd-data
  *   entityName  – nombre de la entidad productora
- *   flatMode    – boolean: false = vista jerárquica (10 col) | true = vista plana (8 col)
+ *   flatMode    – false (default) = vista jerárquica 10 col
+ *                 true            = vista plana 8 col
  *
- * Columnas modo jerárquico (10):
- *   ACTO ADMINISTRATIVO | FUNCIÓN |
- *   CÓDIGO SECCIÓN | NOMBRE SECCIÓN |
- *   CÓDIGO SUBSECCIÓN | NOMBRE SUBSECCIÓN |
- *   CÓDIGO SERIE O ASUNTO | SERIE O ASUNTO |
- *   CÓDIGO SUBSERIE | SUBSERIE
+ * ── Vista Jerárquica (10 col) ─────────────────────────────────────────────────
+ *   ACTO ADMIN | FUNCIÓN | CÓD SECC | NOM SECC | CÓD SUBSECC | NOM SUBSECC |
+ *   CÓD SERIE | SERIE | CÓD SUBSERIE | SUBSERIE
  *
- * Columnas modo plano (8):
- *   ACTO ADMINISTRATIVO | FUNCIÓN |
- *   CÓDIGO SECCIÓN | NOMBRE SECCIÓN |          ← subsección promovida a sección
- *   CÓDIGO SERIE O ASUNTO | SERIE O ASUNTO |
- *   CÓDIGO SUBSERIE | SUBSERIE
+ * ── Vista Plana (8 col) ──────────────────────────────────────────────────────
+ *   ACTO ADMIN | FUNCIÓN | CÓD SECC | NOM SECC |
+ *   CÓD SERIE | SERIE | CÓD SUBSERIE | SUBSERIE
+ *
+ *   En vista plana, TODA dependencia (padre e hijo) aparece como fila independiente
+ *   en las columnas de sección:
+ *     - La dependencia padre genera una fila de cabecera (una sola vez por sección)
+ *     - Cada dependencia hija se promueve a nivel de sección con sus datos de serie
+ *     - Las filas sin subsección aparecen tal cual
  */
 
 import React from "react";
 
-// ─── Estilos base ──────────────────────────────────────────────────────────────
+// ─── Estilos ──────────────────────────────────────────────────────────────────
 const FONT   = "'Arial', 'Helvetica', sans-serif";
 const BORDER = "1px solid #000";
 
@@ -45,7 +47,7 @@ const HEADER = {
   fontSize:        "7.5px",
   padding:         "3px 2px",
 };
-const DATA = { ...BASE, minHeight: "16px", height: "16px" };
+const DATA        = { ...BASE, minHeight: "16px", height: "16px" };
 const DATA_CENTER = { ...DATA, textAlign: "center" };
 
 const MIN_ROWS = 12;
@@ -58,22 +60,79 @@ const EMPTY_ROW = {
   codigo_subserie: "",     nombre_subserie: "",
 };
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// ─── Vista plana: expande filas para mostrar padre e hijos como secciones ─────
+function buildFlatRows(rawRows) {
+  const result     = [];
+  const seenParent = new Set(); // evita duplicar la cabecera del padre
+
+  // Ordenar: sección → subsección → serie → subserie
+  const sorted = [...rawRows].sort((a, b) => {
+    const s1 = (a.codigo_seccion    || "").localeCompare(b.codigo_seccion    || "");
+    if (s1 !== 0) return s1;
+    const s2 = (a.codigo_subseccion || "").localeCompare(b.codigo_subseccion || "");
+    if (s2 !== 0) return s2;
+    const s3 = (a.codigo_serie      || "").localeCompare(b.codigo_serie      || "");
+    if (s3 !== 0) return s3;
+    return       (a.codigo_subserie  || "").localeCompare(b.codigo_subserie  || "");
+  });
+
+  for (const row of sorted) {
+    if (row.codigo_subseccion) {
+      // ── La fila tiene subsección ───────────────────────────────────────────
+      // 1. Fila cabecera para la sección padre (solo una vez por código de sección)
+      if (!seenParent.has(row.codigo_seccion)) {
+        seenParent.add(row.codigo_seccion);
+        result.push({
+          ...EMPTY_ROW,
+          codigo_seccion: row.codigo_seccion,
+          nombre_seccion: row.nombre_seccion,
+          // Sin datos de serie/función: es solo la cabecera del grupo padre
+        });
+      }
+      // 2. Fila de la subsección promovida a nivel de sección, con sus datos de serie
+      result.push({
+        acto_administrativo: row.acto_administrativo,
+        funcion:             row.funcion,
+        codigo_seccion:      row.codigo_subseccion,   // promovida
+        nombre_seccion:      row.nombre_subseccion,   // promovida
+        codigo_subseccion:   "",
+        nombre_subseccion:   "",
+        codigo_serie:        row.codigo_serie,
+        nombre_serie:        row.nombre_serie,
+        codigo_subserie:     row.codigo_subserie,
+        nombre_subserie:     row.nombre_subserie,
+      });
+    } else {
+      // ── Sin subsección: aparece como sección directamente ─────────────────
+      result.push({
+        acto_administrativo: row.acto_administrativo,
+        funcion:             row.funcion,
+        codigo_seccion:      row.codigo_seccion,
+        nombre_seccion:      row.nombre_seccion,
+        codigo_subseccion:   "",
+        nombre_subseccion:   "",
+        codigo_serie:        row.codigo_serie,
+        nombre_serie:        row.nombre_serie,
+        codigo_subserie:     row.codigo_subserie,
+        nombre_subserie:     row.nombre_subserie,
+      });
+    }
+  }
+
+  return result;
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 export default function CCDTable({ data, entityName, flatMode = false }) {
   const rawRows = data?.rows || [];
 
-  // Rellenar hasta MIN_ROWS
-  const rows = [...rawRows];
-  while (rows.length < MIN_ROWS) rows.push({ ...EMPTY_ROW });
+  // En vista plana transformamos las filas; en jerárquica usamos los datos directos
+  const displayRows = flatMode ? buildFlatRows(rawRows) : [...rawRows];
+
+  // Rellenar hasta MIN_ROWS con filas vacías para mantener el aspecto de plantilla
+  while (displayRows.length < MIN_ROWS) displayRows.push({ ...EMPTY_ROW });
 
   const producer = entityName || "";
-
-  // En modo plano, el "código/nombre sección" es la dependencia efectiva:
-  // subsección cuando existe, sección cuando no hay subsección.
-  const effectiveSection = (row) => ({
-    codigo: row.codigo_subseccion || row.codigo_seccion,
-    nombre: row.nombre_subseccion || row.nombre_seccion,
-  });
 
   return (
     <div
@@ -91,49 +150,30 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
         <div style={{ fontSize: "9px", fontStyle: "italic" }}>
           Colombia. Archivo General de la Nación
         </div>
-        <div
-          style={{
-            fontSize:        "12px",
-            fontWeight:      "bold",
-            textTransform:   "uppercase",
-            letterSpacing:   "0.5px",
-            margin:          "3px 0 2px",
-          }}
-        >
+        <div style={{ fontSize: "12px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.5px", margin: "3px 0 2px" }}>
           FORMATO CUADRO DE CLASIFICACIÓN DOCUMENTAL – CCD
         </div>
       </div>
 
       {/* ── Entidad productora ────────────────────────────────────── */}
-      <div
-        style={{
-          borderTop:    BORDER,
-          borderBottom: BORDER,
-          padding:      "3px 4px",
-          fontSize:     "9px",
-          marginBottom: "0",
-        }}
-      >
+      <div style={{ borderTop: BORDER, borderBottom: BORDER, padding: "3px 4px", fontSize: "9px", marginBottom: "0" }}>
         <span style={{ fontWeight: "bold" }}>ENTIDAD PRODUCTORA:</span>{" "}
-        {producer}
-        {"_".repeat(Math.max(0, 90 - producer.length))}.
+        {producer}{"_".repeat(Math.max(0, 90 - producer.length))}.
       </div>
 
       {/* ── Tabla principal ───────────────────────────────────────── */}
       {flatMode ? (
-        // ════════════════════════════════════════════════════════════
-        // MODO PLANO — 8 columnas
-        // ════════════════════════════════════════════════════════════
+        // ════════════ MODO PLANO — 8 columnas ════════════════════════
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", borderTop: "none" }}>
           <colgroup>
             <col style={{ width: "9%"  }} /> {/* ACTO ADMIN */}
-            <col style={{ width: "17%" }} /> {/* FUNCIÓN */}
+            <col style={{ width: "22%" }} /> {/* FUNCIÓN */}
             <col style={{ width: "6%"  }} /> {/* CÓD SECCIÓN */}
             <col style={{ width: "18%" }} /> {/* NOM SECCIÓN */}
-            <col style={{ width: "9%"  }} /> {/* CÓD SERIE */}
+            <col style={{ width: "8%"  }} /> {/* CÓD SERIE */}
             <col style={{ width: "18%" }} /> {/* SERIE */}
-            <col style={{ width: "9%"  }} /> {/* CÓD SUBSERIE */}
-            <col style={{ width: "14%" }} /> {/* SUBSERIE */}
+            <col style={{ width: "8%"  }} /> {/* CÓD SUBSERIE */}
+            <col style={{ width: "11%" }} /> {/* SUBSERIE */}
           </colgroup>
           <thead>
             <tr>
@@ -148,39 +188,34 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => {
-              const sec = effectiveSection(row);
-              return (
-                <tr key={i}>
-                  <td style={DATA}>{row.acto_administrativo}</td>
-                  <td style={DATA}>{row.funcion}</td>
-                  <td style={DATA_CENTER}>{sec.codigo}</td>
-                  <td style={DATA}>{sec.nombre}</td>
-                  <td style={DATA_CENTER}>{row.codigo_serie}</td>
-                  <td style={DATA}>{row.nombre_serie}</td>
-                  <td style={DATA_CENTER}>{row.codigo_subserie}</td>
-                  <td style={DATA}>{row.nombre_subserie}</td>
-                </tr>
-              );
-            })}
+            {displayRows.map((row, i) => (
+              <tr key={i}>
+                <td style={DATA}>{row.acto_administrativo}</td>
+                <td style={DATA}>{row.funcion}</td>
+                <td style={DATA_CENTER}>{row.codigo_seccion}</td>
+                <td style={DATA}>{row.nombre_seccion}</td>
+                <td style={DATA_CENTER}>{row.codigo_serie}</td>
+                <td style={DATA}>{row.nombre_serie}</td>
+                <td style={DATA_CENTER}>{row.codigo_subserie}</td>
+                <td style={DATA}>{row.nombre_subserie}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       ) : (
-        // ════════════════════════════════════════════════════════════
-        // MODO JERÁRQUICO — 10 columnas
-        // ════════════════════════════════════════════════════════════
+        // ════════════ MODO JERÁRQUICO — 10 columnas ══════════════════
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", borderTop: "none" }}>
           <colgroup>
             <col style={{ width: "8%"  }} /> {/* ACTO ADMIN */}
-            <col style={{ width: "14%" }} /> {/* FUNCIÓN */}
+            <col style={{ width: "16%" }} /> {/* FUNCIÓN */}
             <col style={{ width: "5%"  }} /> {/* CÓD SECC */}
-            <col style={{ width: "11%" }} /> {/* NOM SECC */}
+            <col style={{ width: "10%" }} /> {/* NOM SECC */}
             <col style={{ width: "5%"  }} /> {/* CÓD SUBSECC */}
-            <col style={{ width: "11%" }} /> {/* NOM SUBSECC */}
-            <col style={{ width: "8%"  }} /> {/* CÓD SERIE */}
-            <col style={{ width: "15%" }} /> {/* SERIE */}
-            <col style={{ width: "8%"  }} /> {/* CÓD SUBSER */}
-            <col style={{ width: "15%" }} /> {/* SUBSERIE */}
+            <col style={{ width: "10%" }} /> {/* NOM SUBSECC */}
+            <col style={{ width: "7%"  }} /> {/* CÓD SERIE */}
+            <col style={{ width: "14%" }} /> {/* SERIE */}
+            <col style={{ width: "7%"  }} /> {/* CÓD SUBSER */}
+            <col style={{ width: "18%" }} /> {/* SUBSERIE */}
           </colgroup>
           <thead>
             <tr>
@@ -197,7 +232,7 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {displayRows.map((row, i) => (
               <tr key={i}>
                 <td style={DATA}>{row.acto_administrativo}</td>
                 <td style={DATA}>{row.funcion}</td>
