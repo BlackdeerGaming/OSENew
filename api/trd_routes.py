@@ -638,6 +638,99 @@ async def admin_list_trd(user: dict = Depends(get_current_user)):
     return [_strip_keys(i) for i in items]
 
 
+# ---------- CCD Estructurado (formato AGN Acuerdo 001 / 2024) ----------
+@router.get("/entity/{entity_id}/ccd-data", response_model=dict)
+async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
+    """Retorna los datos jerárquicos para el Cuadro de Clasificación Documental (CCD)
+    en el formato exacto del AGN — 10 columnas: acto administrativo, función,
+    código/nombre de sección, código/nombre de subsección, código/nombre de serie,
+    código/nombre de subserie."""
+    deps_raw      = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+    series_raw    = await db.query_by_entity("series",       entity_id, sk_prefix="SER#")
+    subseries_raw = await db.query_by_entity("subseries",    entity_id, sk_prefix="SUB#")
+    trd_raw       = await db.query_by_entity("trd_records",  entity_id, sk_prefix="TRD#")
+    funciones_raw = await db.query_by_entity("funciones",    entity_id, sk_prefix="FUN#")
+
+    deps_map      = {d["id"]: _strip_keys(d) for d in deps_raw      if "id" in d}
+    funciones_map = {f["id"]: _strip_keys(f) for f in funciones_raw if "id" in f}
+
+    # TRD records indexados por (dep_id, serie_id, subserie_id)
+    trd_idx: dict = {}
+    for r in trd_raw:
+        rc  = _strip_keys(r)
+        key = (rc.get("dependencia_id", ""), rc.get("serie_id", ""), rc.get("subserie_id") or "")
+        trd_idx[key] = rc
+
+    # Subseries agrupadas por serie_id
+    subs_by_serie: dict = {}
+    for ss in subseries_raw:
+        sc  = _strip_keys(ss)
+        sid = sc.get("serie_id")
+        if sid:
+            subs_by_serie.setdefault(sid, []).append(sc)
+
+    def funcion_str(trd: dict) -> str:
+        names = []
+        for fid in (trd.get("funciones_ids") or []):
+            f = funciones_map.get(fid, {})
+            if f.get("titulo"):
+                names.append(f["titulo"])
+        return "; ".join(names)
+
+    rows = []
+    for serie_item in series_raw:
+        s      = _strip_keys(serie_item)
+        dep_id = s.get("dependencia_id", "")
+        dep    = deps_map.get(dep_id, {})
+
+        # Determinar sección (top-level) vs subsección (tiene depende_de)
+        if dep.get("depende_de"):
+            seccion    = deps_map.get(dep["depende_de"], {})
+            subseccion = dep
+        else:
+            seccion    = dep
+            subseccion = {}
+
+        serie_id            = s.get("id", "")
+        subseries_for_serie = subs_by_serie.get(serie_id, [])
+
+        if subseries_for_serie:
+            for ss in subseries_for_serie:
+                trd = trd_idx.get((dep_id, serie_id, ss.get("id", "")), {})
+                rows.append({
+                    "acto_administrativo": trd.get("acto_admo", ""),
+                    "funcion":             funcion_str(trd),
+                    "codigo_seccion":      seccion.get("codigo", ""),
+                    "nombre_seccion":      seccion.get("nombre", ""),
+                    "codigo_subseccion":   subseccion.get("codigo", ""),
+                    "nombre_subseccion":   subseccion.get("nombre", ""),
+                    "codigo_serie":        s.get("codigo", ""),
+                    "nombre_serie":        s.get("nombre", ""),
+                    "codigo_subserie":     ss.get("codigo", ""),
+                    "nombre_subserie":     ss.get("nombre", ""),
+                })
+        else:
+            trd = trd_idx.get((dep_id, serie_id, ""), {})
+            rows.append({
+                "acto_administrativo": trd.get("acto_admo", ""),
+                "funcion":             funcion_str(trd),
+                "codigo_seccion":      seccion.get("codigo", ""),
+                "nombre_seccion":      seccion.get("nombre", ""),
+                "codigo_subseccion":   subseccion.get("codigo", ""),
+                "nombre_subseccion":   subseccion.get("nombre", ""),
+                "codigo_serie":        s.get("codigo", ""),
+                "nombre_serie":        s.get("nombre", ""),
+                "codigo_subserie":     "",
+                "nombre_subserie":     "",
+            })
+
+    rows.sort(key=lambda r: (
+        r["codigo_seccion"],    r["codigo_subseccion"],
+        r["codigo_serie"],      r["codigo_subserie"],
+    ))
+    return {"rows": rows, "total": len(rows)}
+
+
 # ---------- Generación Documental con LLM ----------
 @router.post("/entity/{entity_id}/generate/ccd")
 async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):

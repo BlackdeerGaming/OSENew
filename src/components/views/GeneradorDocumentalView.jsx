@@ -4,6 +4,7 @@ import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
 import ViewHeader from "../ui/ViewHeader";
+import CCDTable from "../trd/CCDTable";
 
 // ── Small chip component ────────────────────────────────────────────────────
 function Chip({ label, onRemove }) {
@@ -37,6 +38,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [generatedHtml, setGeneratedHtml] = useState("");
+  const [ccdData, setCcdData] = useState(null);       // datos estructurados CCD (AGN format)
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
@@ -188,9 +190,26 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
 
   // ── Handlers ────────────────────────────────────────────────────────────
+
+  /** Carga el CCD estructurado en formato AGN (10 columnas, sin IA). */
+  const handleLoadCCD = async () => {
+    if (!activeEntityId) return;
+    setLoading(true); setError(null); setCcdData(null); setGeneratedHtml("");
+    try {
+      const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/ccd-data`, {
+        headers: { "Authorization": `Bearer ${currentUser?.token || ""}` }
+      });
+      if (!resp.ok) throw new Error("Error cargando CCD");
+      const data = await resp.json();
+      setCcdData(data);
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  /** Genera el CCD usando IA (mantiene compatibilidad para modo AI avanzado). */
   const handleGenerateCCD = async () => {
     if (!activeEntityId) return;
-    setLoading(true); setError(null); setGeneratedHtml("");
+    setLoading(true); setError(null); setGeneratedHtml(""); setCcdData(null);
     try {
       const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/generate/ccd`, {
         method: "POST",
@@ -231,12 +250,24 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
       : selectedCargos.length > 0
         ? `Manual_Funciones_${selectedCargos.join("_")}`
         : `Manual_Funciones_${manualEntries.map(e => e.cargo).filter(Boolean).join("_") || "cargos"}`;
-    handleExportPDFGeneral("documento-generado", label);
+    // CCD usa landscape (10 columnas anchas), Manual usa portrait
+    const orientation = activeTab === "ccd" ? "landscape" : "portrait";
+    handleExportPDFGeneral("documento-generado", label, orientation, "a4");
   };
 
   const handleSaveOfficial = async () => {
-    if (!generatedHtml || !activeEntityId) return;
+    const hasCcdContent = activeTab === "ccd" && ccdData;
+    if (!hasCcdContent && !generatedHtml) return;
+    if (!activeEntityId) return;
     setIsSavingOfficial(true);
+
+    // Para el CCD estructurado, capturamos el HTML renderizado del DOM
+    let contenidoToSave = generatedHtml;
+    if (hasCcdContent) {
+      const el = document.getElementById("documento-generado");
+      contenidoToSave = el ? el.outerHTML : "";
+    }
+
     try {
       const tipo = activeTab === "ccd" ? "ccd" : "manual_funciones";
       const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/documentos-oficiales`, {
@@ -245,7 +276,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
           "Authorization": `Bearer ${currentUser?.token || ""}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ tipo, contenido: generatedHtml })
+        body: JSON.stringify({ tipo, contenido: contenidoToSave })
       });
       if (!resp.ok) throw new Error("Error al guardar el documento oficial");
       await fetchOfficialDocs();
@@ -343,7 +374,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
           <div className="bg-card border border-border shadow-sm rounded-xl p-4 flex flex-col gap-2">
             <div className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-1">Seleccione el Reporte</div>
             <button
-              onClick={() => { setActiveTab("ccd"); setGeneratedHtml(""); setError(null); }}
+              onClick={() => { setActiveTab("ccd"); setGeneratedHtml(""); setCcdData(null); setError(null); }}
               className={cn("w-full text-left px-4 py-3 rounded-lg border transition-all flex items-center gap-3",
                 activeTab === "ccd" ? "bg-primary/10 border-primary text-primary shadow-sm" : "bg-background border-border text-foreground hover:bg-secondary")}
             >
@@ -356,7 +387,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             </button>
 
             <button
-              onClick={() => { setActiveTab("manual"); setGeneratedHtml(""); setError(null); }}
+              onClick={() => { setActiveTab("manual"); setGeneratedHtml(""); setCcdData(null); setError(null); }}
               className={cn("w-full text-left px-4 py-3 rounded-lg border transition-all flex items-center gap-3",
                 activeTab === "manual" ? "bg-primary/10 border-primary text-primary shadow-sm" : "bg-background border-border text-foreground hover:bg-secondary")}
             >
@@ -374,12 +405,14 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             {generationMode === "ai" ? (
               activeTab === "ccd" ? (
                 <>
-                  <div className="text-sm font-semibold text-foreground">Generación Global</div>
-                  <p className="text-xs text-muted-foreground -mt-2">La IA leerá todo el fondo estructurado para ensamblar el cuadro normativo.</p>
-                  <button onClick={handleGenerateCCD} disabled={loading}
+                  <div className="text-sm font-semibold text-foreground">Formato AGN — Acuerdo 001 / 2024</div>
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    Genera el CCD en el formato oficial del Archivo General de la Nación (10 columnas, pie de firmas).
+                  </p>
+                  <button onClick={handleLoadCCD} disabled={loading}
                     className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2.5 rounded-lg font-bold text-sm shadow transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    {loading ? "Generando..." : "Generar CCD Automático"}
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
+                    {loading ? "Cargando..." : "Generar CCD"}
                   </button>
                 </>
               ) : (
@@ -461,8 +494,15 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             ) : (
               activeTab === "ccd" ? (
                 <>
-                  <div className="text-sm font-semibold text-foreground">Herencia de Funciones (Automática)</div>
-                  <p className="text-xs text-muted-foreground">El sistema sincroniza automáticamente las funciones creadas en el módulo de Funciones con sus dependencias correspondientes.</p>
+                  <div className="text-sm font-semibold text-foreground">Formato AGN — Acuerdo 001 / 2024</div>
+                  <p className="text-xs text-muted-foreground">
+                    Genera el CCD en el formato oficial del Archivo General de la Nación (10 columnas, pie de firmas).
+                  </p>
+                  <button onClick={handleLoadCCD} disabled={loading}
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2.5 rounded-lg font-bold text-sm shadow transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
+                    {loading ? "Cargando..." : "Generar CCD"}
+                  </button>
                 </>
 
               ) : (
@@ -641,7 +681,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               <h3 className="text-xl font-bold text-foreground">Ocurrió un error</h3>
               <p className="text-muted-foreground">{error}</p>
             </div>
-          ) : !generatedHtml ? (
+          ) : (!generatedHtml && !ccdData) ? (
             <div className="flex flex-col items-center justify-center h-full max-w-md text-center gap-4 opacity-50 w-full">
               <FileText className="h-16 w-16 text-muted-foreground" />
               <h3 className="text-xl font-bold text-foreground">Vista Previa del Documento</h3>
@@ -649,9 +689,10 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
             </div>
           ) : (
             <div className="w-full flex flex-col gap-6 items-center">
-              <div className="w-full max-w-4xl flex justify-between items-center">
+              {/* Botones de acción */}
+              <div className="w-full max-w-5xl flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <button 
+                  <button
                     onClick={() => setShowConfirmSave(true)}
                     className="bg-emerald-600 text-white hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition active:scale-95"
                   >
@@ -663,39 +704,61 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                     </div>
                   )}
                 </div>
-                
-                <button onClick={handleExportPDF}
-                  className="bg-slate-800 text-white hover:bg-slate-700 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition">
+
+                <button
+                  onClick={handleExportPDF}
+                  className="bg-slate-800 text-white hover:bg-slate-700 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition"
+                >
                   <Download className="h-4 w-4" /> Exportar PDF
                 </button>
               </div>
 
-              {/* Hoja A4 */}
-              <div
-                id="documento-generado"
-                className="w-full bg-white text-black shadow-xl rounded-sm print-content"
-                style={{ minHeight: "297mm", width: "210mm", fontFamily: "'Inter', 'Roboto', sans-serif", padding: "25mm 25mm 25mm 20px", boxSizing: "border-box" }}
-              >
-                <style>{`
-                  @media print { #documento-generado { padding: 10px !important; } }
-                  #documento-generado h1 { font-size: 24px; font-weight: 800; text-transform: uppercase; margin-bottom: 24px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-                  #documento-generado h2 { font-size: 18px; font-weight: 700; margin-top: 30px; margin-bottom: 12px; color: #333; }
-                  #documento-generado h3 { font-size: 16px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-                  #documento-generado p { font-size: 14px; line-height: 1.6; margin-bottom: 12px; text-align: justify; outline: none; }
-                  #documento-generado ul, #documento-generado ol { font-size: 14px; margin-bottom: 16px; padding-left: 24px; }
-                  #documento-generado li { margin-bottom: 8px; line-height: 1.5; }
-                  #documento-generado table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; font-size: 13px; }
-                  #documento-generado th, #documento-generado td { border: 1px solid #ccc; padding: 10px 12px; text-align: left; }
-                  #documento-generado th { background-color: #f2f2f2; font-weight: bold; }
-                  #documento-generado hr { border: 0; border-top: 2px dashed #ccc; margin: 32px 0; }
-                `}</style>
+              {/* ── CCD estructurado (formato AGN) ─────────────────────── */}
+              {activeTab === "ccd" && ccdData ? (
                 <div
-                  contentEditable
-                  suppressContentEditableWarning
-                  dangerouslySetInnerHTML={{ __html: generatedHtml }}
-                  className="prose max-w-none prose-sm outline-none focus:outline-none"
-                />
-              </div>
+                  id="documento-generado"
+                  className="w-full bg-white text-black shadow-xl rounded-sm overflow-x-auto"
+                  style={{ minWidth: "900px" }}
+                >
+                  <CCDTable
+                    data={ccdData}
+                    entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
+                  />
+                </div>
+              ) : (
+                /* ── Manual / HTML generado por IA ──────────────────────── */
+                <div
+                  id="documento-generado"
+                  className="w-full bg-white text-black shadow-xl rounded-sm print-content"
+                  style={{
+                    minHeight: "297mm",
+                    width: "210mm",
+                    fontFamily: "'Inter', 'Roboto', sans-serif",
+                    padding: "25mm 25mm 25mm 20px",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <style>{`
+                    @media print { #documento-generado { padding: 10px !important; } }
+                    #documento-generado h1 { font-size: 24px; font-weight: 800; text-transform: uppercase; margin-bottom: 24px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+                    #documento-generado h2 { font-size: 18px; font-weight: 700; margin-top: 30px; margin-bottom: 12px; color: #333; }
+                    #documento-generado h3 { font-size: 16px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
+                    #documento-generado p { font-size: 14px; line-height: 1.6; margin-bottom: 12px; text-align: justify; outline: none; }
+                    #documento-generado ul, #documento-generado ol { font-size: 14px; margin-bottom: 16px; padding-left: 24px; }
+                    #documento-generado li { margin-bottom: 8px; line-height: 1.5; }
+                    #documento-generado table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; font-size: 13px; }
+                    #documento-generado th, #documento-generado td { border: 1px solid #ccc; padding: 10px 12px; text-align: left; }
+                    #documento-generado th { background-color: #f2f2f2; font-weight: bold; }
+                    #documento-generado hr { border: 0; border-top: 2px dashed #ccc; margin: 32px 0; }
+                  `}</style>
+                  <div
+                    contentEditable
+                    suppressContentEditableWarning
+                    dangerouslySetInnerHTML={{ __html: generatedHtml }}
+                    className="prose max-w-none prose-sm outline-none focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
