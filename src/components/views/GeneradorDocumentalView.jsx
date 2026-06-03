@@ -62,8 +62,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
     if (!ccdContainerRef.current) return;
     const available = ccdContainerRef.current.clientWidth - 8; // 4px padding c/lado
     const paperW    = PAPER_PX[ccdPageSize]?.[ccdOrientation] ?? 1123;
-    // Mínimo 80% para que siempre sea legible; si no cabe, scroll horizontal
-    setCcdZoom(Math.min(100, Math.max(80, Math.floor((available / paperW) * 100))));
+    // Sin mínimo: el zoom encoge hasta que el papel quepa exacto en el contenedor
+    setCcdZoom(Math.min(100, Math.floor((available / paperW) * 100)));
   }, [ccdPageSize, ccdOrientation]);
 
   // Re-calcular cuando cambia orientación o tamaño de papel
@@ -779,7 +779,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               {/* ── CCD estructurado (formato AGN) ─────────────────────── */}
               {activeTab === "ccd" && ccdData ? (
                 /* Zoom wrapper — fuera de documento-generado → PDF no se ve afectado */
-                <div ref={ccdContainerRef} style={{ width: "100%", overflow: "auto" }}>
+                <div ref={ccdContainerRef} style={{ width: "100%", overflow: "hidden" }}>
                   <div style={{
                     transform:       `scale(${ccdZoom / 100})`,
                     transformOrigin: "top left",
