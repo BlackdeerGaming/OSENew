@@ -39,8 +39,9 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [error, setError] = useState(null);
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [ccdData, setCcdData] = useState(null);       // datos estructurados CCD (AGN format)
-  const [ccdFlatMode, setCcdFlatMode] = useState(false); // false = jerárquico, true = plano
+  const [ccdFlatMode, setCcdFlatMode] = useState(false);       // false = jerárquico, true = plano
   const [ccdOrientation, setCcdOrientation] = useState("landscape"); // landscape | portrait
+  const [ccdPageSize,    setCcdPageSize]    = useState("a4");        // a4 | carta | oficio
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
@@ -222,7 +223,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         ? `Manual_Funciones_${selectedCargos.join("_")}`
         : `Manual_Funciones_${manualEntries.map(e => e.cargo).filter(Boolean).join("_") || "cargos"}`;
     const orientation = activeTab === "ccd" ? ccdOrientation : "portrait";
-    handleExportPDFGeneral("documento-generado", label, orientation, "a4");
+    const paperSize   = activeTab === "ccd" ? ccdPageSize   : "a4";
+    handleExportPDFGeneral("documento-generado", label, orientation, paperSize);
   };
 
   const handleSaveOfficial = async () => {
@@ -704,6 +706,23 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                         <RotateCcw className="h-3.5 w-3.5" />
                         {ccdOrientation === "landscape" ? "Horizontal" : "Vertical"}
                       </button>
+                      {/* Selector tamaño de papel */}
+                      <div className="flex items-center gap-1 border border-slate-300 rounded-md overflow-hidden shadow-sm text-xs font-bold">
+                        {["a4", "carta", "oficio"].map(sz => (
+                          <button
+                            key={sz}
+                            onClick={() => setCcdPageSize(sz)}
+                            className={cn(
+                              "px-2.5 py-2 transition uppercase tracking-wide",
+                              ccdPageSize === sz
+                                ? "bg-slate-700 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                            )}
+                          >
+                            {sz === "a4" ? "A4" : sz === "carta" ? "Carta" : "Oficio"}
+                          </button>
+                        ))}
+                      </div>
                     </>
                   )}
                 </div>
@@ -720,14 +739,14 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               {activeTab === "ccd" && ccdData ? (
                 <div
                   id="documento-generado"
-                  className="w-full bg-white text-black shadow-xl rounded-sm overflow-x-auto"
-                  style={{ minWidth: "900px" }}
+                  className="w-full bg-slate-100 overflow-x-auto"
                 >
                   <CCDTable
                     data={ccdData}
                     entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
                     flatMode={ccdFlatMode}
                     orientation={ccdOrientation}
+                    pageSize={ccdPageSize}
                   />
                 </div>
               ) : (

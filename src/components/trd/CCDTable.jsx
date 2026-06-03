@@ -124,8 +124,16 @@ function buildFlatRows(rawRows) {
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
-export default function CCDTable({ data, entityName, flatMode = false, orientation = "landscape" }) {
+// ── Dimensiones de página por tamaño y orientación ───────────────────────────
+const PAGE_W = {
+  a4:    { landscape: "297mm", portrait: "210mm" },
+  carta: { landscape: "279mm", portrait: "216mm" },
+  oficio:{ landscape: "356mm", portrait: "216mm" },
+};
+
+export default function CCDTable({ data, entityName, flatMode = false, orientation = "landscape", pageSize = "a4" }) {
   const isLandscape = orientation === "landscape";
+  const pageWidth   = PAGE_W[pageSize]?.[orientation] ?? PAGE_W.a4[orientation];
 
   // Solo mostrar filas que tengan nombre de sección definido
   const rawRows = (data?.rows || []).filter(r => r.nombre_seccion);
@@ -136,8 +144,9 @@ export default function CCDTable({ data, entityName, flatMode = false, orientati
   // Rellenar hasta MIN_ROWS con filas vacías para mantener el aspecto de plantilla
   while (displayRows.length < MIN_ROWS) displayRows.push({ ...EMPTY_ROW });
 
-  const fData   = isLandscape ? "8px"   : "6.5px";
-  const fHeader = isLandscape ? "7.5px" : "6px";
+  // Fuentes: landscape más grandes, portrait ajustadas al ancho reducido
+  const fData   = isLandscape ? "8px"  : "7px";
+  const fHeader = isLandscape ? "7.5px": "6.5px";
 
   // Estilos dinámicos por orientación
   const DATA_DYN        = { ...BASE, fontSize: fData,   minHeight: "16px", height: "16px" };
@@ -151,10 +160,11 @@ export default function CCDTable({ data, entityName, flatMode = false, orientati
       style={{
         fontFamily:      FONT,
         color:           "#000",
-        width:           "100%",
-        padding:         "6mm 8mm",
+        width:           pageWidth,
+        padding:         isLandscape ? "6mm 10mm" : "8mm 12mm",
         boxSizing:       "border-box",
         backgroundColor: "#fff",
+        margin:          "0 auto",
       }}
     >
       {/* ── Encabezado institucional ──────────────────────────────── */}
