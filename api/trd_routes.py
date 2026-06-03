@@ -669,12 +669,15 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         if sid:
             subs_by_serie.setdefault(sid, []).append(sc)
 
-    def funcion_str(trd: dict) -> str:
+    def funcion_str(trd: dict, dep_id: str) -> str:
+        """Retorna la descripción de las funciones cuya dependencia coincide con dep_id.
+        Solo conecta TRD y Función cuando comparten el mismo nombre de dependencia."""
         names = []
         for fid in (trd.get("funciones_ids") or []):
             f = funciones_map.get(fid, {})
-            if f.get("titulo"):
-                names.append(f["titulo"])
+            # Validar que la función pertenece a la misma dependencia que el TRD
+            if f.get("dependencia_id") == dep_id and f.get("descripcion"):
+                names.append(f["descripcion"])
         return "; ".join(names)
 
     rows = []
@@ -699,7 +702,7 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
                 trd = trd_idx.get((dep_id, serie_id, ss.get("id", "")), {})
                 rows.append({
                     "acto_administrativo": trd.get("acto_admo", ""),
-                    "funcion":             funcion_str(trd),
+                    "funcion":             funcion_str(trd, dep_id),
                     "codigo_seccion":      seccion.get("codigo", ""),
                     "nombre_seccion":      seccion.get("nombre", ""),
                     "codigo_subseccion":   subseccion.get("codigo", ""),
@@ -713,7 +716,7 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
             trd = trd_idx.get((dep_id, serie_id, ""), {})
             rows.append({
                 "acto_administrativo": trd.get("acto_admo", ""),
-                "funcion":             funcion_str(trd),
+                "funcion":             funcion_str(trd, dep_id),
                 "codigo_seccion":      seccion.get("codigo", ""),
                 "nombre_seccion":      seccion.get("nombre", ""),
                 "codigo_subseccion":   subseccion.get("codigo", ""),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown, Save, History, CheckCircle2, RotateCcw } from "lucide-react";
+import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown, Save, History, CheckCircle2, RotateCcw, Layers, GitBranch } from "lucide-react";
 import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import { cn } from "@/lib/utils";
 import API_BASE_URL from "../../config/api";
@@ -39,6 +39,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [error, setError] = useState(null);
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [ccdData, setCcdData] = useState(null);       // datos estructurados CCD (AGN format)
+  const [ccdFlatMode, setCcdFlatMode] = useState(false); // false = jerárquico, true = plano
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
@@ -659,8 +660,8 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
           ) : (
             <div className="w-full flex flex-col gap-6 items-center">
               {/* Botones de acción */}
-              <div className="w-full max-w-5xl flex justify-between items-center">
-                <div className="flex items-center gap-3">
+              <div className="w-full max-w-5xl flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button
                     onClick={() => setShowConfirmSave(true)}
                     className="bg-emerald-600 text-white hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm shadow inline-flex items-center gap-2 transition active:scale-95"
@@ -671,6 +672,24 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                     <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase">
                       <CheckCircle2 size={12} /> Documento Activo
                     </div>
+                  )}
+                  {/* Toggle modo de vista — solo en tab CCD */}
+                  {activeTab === "ccd" && ccdData && (
+                    <button
+                      onClick={() => setCcdFlatMode(m => !m)}
+                      title={ccdFlatMode ? "Cambiar a vista jerárquica (sección + subsección)" : "Cambiar a vista plana (unificar secciones)"}
+                      className={cn(
+                        "px-3 py-2 rounded-md font-bold text-xs shadow inline-flex items-center gap-2 transition border",
+                        ccdFlatMode
+                          ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-500"
+                          : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"
+                      )}
+                    >
+                      {ccdFlatMode
+                        ? <><GitBranch className="h-3.5 w-3.5" /> Vista Jerárquica</>
+                        : <><Layers      className="h-3.5 w-3.5" /> Vista Plana</>
+                      }
+                    </button>
                   )}
                 </div>
 
@@ -692,6 +711,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                   <CCDTable
                     data={ccdData}
                     entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
+                    flatMode={ccdFlatMode}
                   />
                 </div>
               ) : (
