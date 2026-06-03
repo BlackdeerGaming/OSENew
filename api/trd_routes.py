@@ -448,7 +448,8 @@ async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDR
         raise HTTPException(status_code=404, detail="TRD Record not found")
 
     updates = payload.dict(exclude_unset=True)
-    if "funciones_ids" in updates and not updates.get("funciones_ids"):
+    # Allow funciones_ids=[] to clear existing selections; only skip when absent (None)
+    if "funciones_ids" in updates and updates["funciones_ids"] is None:
         updates.pop("funciones_ids", None)
     updates["updated_at"] = datetime.now().isoformat()
 
@@ -638,6 +639,71 @@ async def admin_list_trd(user: dict = Depends(get_current_user)):
     return [_strip_keys(i) for i in items]
 
 
+# ---------- CCD Debug — diagnóstico de datos en DynamoDB ----------
+@router.get("/entity/{entity_id}/ccd-debug", response_model=dict)
+async def get_ccd_debug(entity_id: str, user: dict = Depends(get_current_user)):
+    """Endpoint de diagnóstico: muestra qué hay en DynamoDB para CCD.
+    Devuelve TRD records con sus campos clave, funciones con descripcion,
+    y el estado del índice de cruces."""
+    trd_raw       = await db.query_by_entity("trd_records",  entity_id, sk_prefix="TRD#")
+    funciones_raw = await db.query_by_entity("funciones",    entity_id, sk_prefix="FUN#")
+    series_raw    = await db.query_by_entity("series",       entity_id, sk_prefix="SER#")
+    subseries_raw = await db.query_by_entity("subseries",    entity_id, sk_prefix="SUB#")
+
+    trd_summary = []
+    for r in trd_raw:
+        rc = _strip_keys(r)
+        trd_summary.append({
+            "id":            rc.get("id"),
+            "dependencia_id": rc.get("dependencia_id"),
+            "serie_id":       rc.get("serie_id"),
+            "subserie_id":    rc.get("subserie_id"),
+            "acto_admo":      rc.get("acto_admo"),
+            "funciones_ids":  rc.get("funciones_ids"),
+            "trd_index_key":  [rc.get("dependencia_id",""), rc.get("serie_id",""), rc.get("subserie_id") or ""],
+        })
+
+    funciones_summary = []
+    for f in funciones_raw:
+        fc = _strip_keys(f)
+        funciones_summary.append({
+            "id":            fc.get("id"),
+            "titulo":        fc.get("titulo"),
+            "descripcion":   fc.get("descripcion"),
+            "dependencia_id": fc.get("dependencia_id"),
+        })
+
+    series_summary = []
+    for s in series_raw:
+        sc = _strip_keys(s)
+        subs = [_strip_keys(ss) for ss in subseries_raw if _strip_keys(ss).get("serie_id") == sc.get("id")]
+        series_summary.append({
+            "id":            sc.get("id"),
+            "nombre":        sc.get("nombre"),
+            "dependencia_id": sc.get("dependencia_id"),
+            "subseries":     [{"id": ss.get("id"), "nombre": ss.get("nombre")} for ss in subs],
+            "expected_trd_keys": (
+                [[sc.get("dependencia_id",""), sc.get("id",""), ss.get("id","")]
+                 for ss in subs]
+                if subs else
+                [[sc.get("dependencia_id",""), sc.get("id",""), ""]]
+            ),
+        })
+
+    return {
+        "entity_id": entity_id,
+        "counts": {
+            "trd_records":  len(trd_raw),
+            "funciones":    len(funciones_raw),
+            "series":       len(series_raw),
+            "subseries":    len(subseries_raw),
+        },
+        "trd_records":  trd_summary,
+        "funciones":    funciones_summary,
+        "series":       series_summary,
+    }
+
+
 # ---------- CCD Estructurado (formato AGN Acuerdo 001 / 2024) ----------
 @router.get("/entity/{entity_id}/ccd-data", response_model=dict)
 async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
@@ -651,6 +717,8 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
     trd_raw       = await db.query_by_entity("trd_records",  entity_id, sk_prefix="TRD#")
     funciones_raw = await db.query_by_entity("funciones",    entity_id, sk_prefix="FUN#")
 
+    print(f"[CCD] entity={entity_id} → deps={len(deps_raw)} series={len(series_raw)} subs={len(subseries_raw)} trds={len(trd_raw)} funs={len(funciones_raw)}")
+
     deps_map      = {d["id"]: _strip_keys(d) for d in deps_raw      if "id" in d}
     funciones_map = {f["id"]: _strip_keys(f) for f in funciones_raw if "id" in f}
 
@@ -660,6 +728,7 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         rc  = _strip_keys(r)
         key = (rc.get("dependencia_id", ""), rc.get("serie_id", ""), rc.get("subserie_id") or "")
         trd_idx[key] = rc
+        print(f"[CCD]  trd_idx key={key} acto_admo={rc.get('acto_admo')} funciones_ids={rc.get('funciones_ids')}")
 
     # Subseries agrupadas por serie_id
     subs_by_serie: dict = {}
@@ -669,22 +738,23 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         if sid:
             subs_by_serie.setdefault(sid, []).append(sc)
 
-    def get_funciones(trd: dict, dep_id: str) -> list:
-        """Retorna lista de descripciones de funciones cuya dependencia coincide con dep_id.
-        Solo conecta TRD y Función cuando comparten la misma dependencia.
-        Cada descripción genera su propia fila en el CCD (una fila por función)."""
+    def get_funciones(trd: dict) -> list:
+        """Retorna la descripción de cada función seleccionada en el registro TRD.
+        La relación es directa: trd.funciones_ids → función.descripcion.
+        No se filtra por dependencia; si el ID está en funciones_ids es porque
+        fue seleccionado explícitamente en ese formulario de valoración."""
         result = []
         for fid in (trd.get("funciones_ids") or []):
-            f = funciones_map.get(fid, {})
-            if f.get("dependencia_id") == dep_id and f.get("descripcion"):
+            f = funciones_map.get(fid)
+            if f and f.get("descripcion"):
                 result.append(f["descripcion"])
         return result or [""]   # Al menos una fila con función vacía si no hay funciones
 
-    def make_rows(trd: dict, dep_id: str, seccion: dict, subseccion: dict,
+    def make_rows(trd: dict, seccion: dict, subseccion: dict,
                   serie: dict, subserie: dict) -> list:
         """Crea una fila por función para el par (TRD, serie/subserie) dado."""
         base = {
-            "acto_administrativo": trd.get("acto_admo", ""),
+            "acto_administrativo": trd.get("acto_admo") or "",
             "codigo_seccion":      seccion.get("codigo", ""),
             "nombre_seccion":      seccion.get("nombre", ""),
             "codigo_subseccion":   subseccion.get("codigo", ""),
@@ -694,7 +764,7 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
             "codigo_subserie":     subserie.get("codigo", ""),
             "nombre_subserie":     subserie.get("nombre", ""),
         }
-        return [{**base, "funcion": desc} for desc in get_funciones(trd, dep_id)]
+        return [{**base, "funcion": desc} for desc in get_funciones(trd)]
 
     rows = []
     for serie_item in series_raw:
@@ -715,11 +785,17 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
 
         if subseries_for_serie:
             for ss in subseries_for_serie:
-                trd = trd_idx.get((dep_id, serie_id, ss.get("id", "")), {})
-                rows.extend(make_rows(trd, dep_id, seccion, subseccion, s, ss))
+                lookup_key = (dep_id, serie_id, ss.get("id", ""))
+                trd = trd_idx.get(lookup_key, {})
+                if not trd:
+                    print(f"[CCD]  MISS serie={s.get('nombre')} sub={ss.get('nombre')} key={lookup_key}")
+                rows.extend(make_rows(trd, seccion, subseccion, s, ss))
         else:
-            trd = trd_idx.get((dep_id, serie_id, ""), {})
-            rows.extend(make_rows(trd, dep_id, seccion, subseccion, s, {}))
+            lookup_key = (dep_id, serie_id, "")
+            trd = trd_idx.get(lookup_key, {})
+            if not trd:
+                print(f"[CCD]  MISS serie={s.get('nombre')} (sin subserie) key={lookup_key}")
+            rows.extend(make_rows(trd, seccion, subseccion, s, {}))
 
     rows.sort(key=lambda r: (
         r["codigo_seccion"],    r["codigo_subseccion"],
