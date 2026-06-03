@@ -144,9 +144,9 @@ export default function CCDTable({ data, entityName, flatMode = false, orientati
   // Rellenar hasta MIN_ROWS con filas vacías para mantener el aspecto de plantilla
   while (displayRows.length < MIN_ROWS) displayRows.push({ ...EMPTY_ROW });
 
-  // Fuentes: landscape más grandes, portrait ajustadas al ancho reducido
-  const fData   = isLandscape ? "8px"  : "7px";
-  const fHeader = isLandscape ? "7.5px": "6.5px";
+  // Fuentes: landscape y portrait usan tamaños similares para legibilidad
+  const fData   = isLandscape ? "8px"  : "8px";
+  const fHeader = isLandscape ? "7.5px": "7px";
 
   // Estilos dinámicos por orientación
   const DATA_DYN        = { ...BASE, fontSize: fData,   minHeight: "16px", height: "16px" };
