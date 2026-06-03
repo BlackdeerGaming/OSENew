@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown, Save, History, CheckCircle2, RotateCcw, Layers, GitBranch } from "lucide-react";
 import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import { cn } from "@/lib/utils";
@@ -42,41 +42,12 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [ccdFlatMode, setCcdFlatMode] = useState(false);            // false = jerárquico, true = plano
   const [ccdOrientation, setCcdOrientation] = useState("landscape"); // landscape | portrait
   const [ccdPageSize,    setCcdPageSize]    = useState("a4");        // a4 | carta | oficio
-  const [ccdZoom,        setCcdZoom]        = useState(75);          // % zoom visual pantalla
-  const ccdContainerRef = useRef(null);
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
 
   const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
 
-  // Ancho del papel en px a 96 dpi (25.4 mm = 1 inch = 96 px)
-  const PAPER_PX = {
-    a4:    { landscape: 1123, portrait: 794  },
-    carta: { landscape: 1054, portrait: 816  },
-    oficio:{ landscape: 1345, portrait: 816  },
-  };
-
-  // Calcula el zoom para que el papel quepa exacto en el contenedor
-  const calcAutoZoom = useCallback(() => {
-    if (!ccdContainerRef.current) return;
-    const available = ccdContainerRef.current.clientWidth - 8; // 4px padding c/lado
-    const paperW    = PAPER_PX[ccdPageSize]?.[ccdOrientation] ?? 1123;
-    // Sin mínimo: el zoom encoge hasta que el papel quepa exacto en el contenedor
-    setCcdZoom(Math.min(100, Math.floor((available / paperW) * 100)));
-  }, [ccdPageSize, ccdOrientation]);
-
-  // Re-calcular cuando cambia orientación o tamaño de papel
-  useEffect(() => { calcAutoZoom(); }, [calcAutoZoom]);
-
-  // Re-calcular cuando el contenedor cambia de tamaño (panel Orianna abierto/cerrado)
-  useEffect(() => {
-    const el = ccdContainerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(calcAutoZoom);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [calcAutoZoom, ccdData]);
 
 
   useEffect(() => {
@@ -738,15 +709,6 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                         <RotateCcw className="h-3.5 w-3.5" />
                         {ccdOrientation === "landscape" ? "Horizontal" : "Vertical"}
                       </button>
-                      {/* Zoom */}
-                      <div className="flex items-center gap-0 border border-slate-300 rounded-md overflow-hidden shadow-sm text-xs font-bold">
-                        <button onClick={() => setCcdZoom(z => Math.max(40, z - 5))} className="px-2.5 py-2 bg-white text-slate-600 hover:bg-slate-100 transition">−</button>
-                        <span className="px-2 py-2 bg-white text-slate-700 select-none min-w-[44px] text-center">{ccdZoom}%</span>
-                        <button onClick={() => setCcdZoom(z => Math.min(150, z + 5))} className="px-2.5 py-2 bg-white text-slate-600 hover:bg-slate-100 transition">+</button>
-                        <button onClick={() => setCcdZoom(100)} title="Restablecer zoom" className="px-2.5 py-2 bg-white text-slate-500 hover:bg-slate-100 transition border-l border-slate-300">
-                          <RotateCcw className="h-3 w-3" />
-                        </button>
-                      </div>
                       {/* Selector tamaño de papel */}
                       <div className="flex items-center gap-1 border border-slate-300 rounded-md overflow-hidden shadow-sm text-xs font-bold">
                         {["a4", "carta", "oficio"].map(sz => (
@@ -778,24 +740,14 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
               {/* ── CCD estructurado (formato AGN) ─────────────────────── */}
               {activeTab === "ccd" && ccdData ? (
-                /* Zoom wrapper — fuera de documento-generado → PDF no se ve afectado */
-                <div ref={ccdContainerRef} style={{ width: "100%", overflow: "hidden" }}>
-                  <div style={{
-                    transform:       `scale(${ccdZoom / 100})`,
-                    transformOrigin: "top left",
-                    marginBottom:    `${(ccdZoom - 100) * -0.5}%`,
-                    transition:      "transform 0.15s ease",
-                  }}>
-                    <div id="documento-generado">
-                      <CCDTable
-                        data={ccdData}
-                        entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
-                        flatMode={ccdFlatMode}
-                        orientation={ccdOrientation}
-                        pageSize={ccdPageSize}
-                      />
-                    </div>
-                  </div>
+                <div id="documento-generado" style={{ width: "100%" }}>
+                  <CCDTable
+                    data={ccdData}
+                    entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
+                    flatMode={ccdFlatMode}
+                    orientation={ccdOrientation}
+                    pageSize={ccdPageSize}
+                  />
                 </div>
               ) : (
                 /* ── Manual / HTML generado por IA ──────────────────────── */

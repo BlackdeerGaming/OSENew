@@ -160,7 +160,8 @@ export default function CCDTable({ data, entityName, flatMode = false, orientati
       style={{
         fontFamily:      FONT,
         color:           "#000",
-        width:           pageWidth,
+        width:           "100%",       /* se adapta al contenedor en pantalla */
+        maxWidth:        pageWidth,    /* no supera el ancho del papel al exportar */
         padding:         isLandscape ? "6mm 10mm" : "8mm 12mm",
         boxSizing:       "border-box",
         backgroundColor: "#fff",
