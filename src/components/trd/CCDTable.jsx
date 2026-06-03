@@ -46,9 +46,7 @@ const HEADER = {
   verticalAlign:   "middle",
   fontSize:        "7.5px",
   padding:         "3px 2px",
-  wordBreak:       "break-all",
-  overflowWrap:    "anywhere",
-  overflow:        "hidden",
+  overflowWrap:    "break-word",
 };
 const DATA        = { ...BASE, minHeight: "16px", height: "16px" };
 const DATA_CENTER = { ...DATA, textAlign: "center" };
@@ -211,11 +209,11 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", borderTop: "none" }}>
           <colgroup>
             <col style={{ width: "8%"  }} /> {/* ACTO ADMIN */}
-            <col style={{ width: "16%" }} /> {/* FUNCIÓN */}
+            <col style={{ width: "15%" }} /> {/* FUNCIÓN */}
             <col style={{ width: "5%"  }} /> {/* CÓD SECC */}
             <col style={{ width: "10%" }} /> {/* NOM SECC */}
-            <col style={{ width: "5%"  }} /> {/* CÓD SUBSECC */}
-            <col style={{ width: "10%" }} /> {/* NOM SUBSECC */}
+            <col style={{ width: "7%"  }} /> {/* CÓD SUBSECC — ampliado para "SUBSECCIÓN" */}
+            <col style={{ width: "9%"  }} /> {/* NOM SUBSECC */}
             <col style={{ width: "7%"  }} /> {/* CÓD SERIE */}
             <col style={{ width: "14%" }} /> {/* SERIE */}
             <col style={{ width: "7%"  }} /> {/* CÓD SUBSER */}
