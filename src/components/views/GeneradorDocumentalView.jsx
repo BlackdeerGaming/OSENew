@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { FileText, Download, Loader2, Wand2, Briefcase, Building2, AlertCircle, Plus, X, ChevronDown, Save, History, CheckCircle2, RotateCcw, Layers, GitBranch } from "lucide-react";
 import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import { cn } from "@/lib/utils";
@@ -43,16 +43,39 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [ccdOrientation, setCcdOrientation] = useState("landscape"); // landscape | portrait
   const [ccdPageSize,    setCcdPageSize]    = useState("a4");        // a4 | carta | oficio
   const [ccdZoom,        setCcdZoom]        = useState(75);          // % zoom visual pantalla
+  const ccdContainerRef = useRef(null);
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
 
   const activeEntityId = selectedEntityId || entities?.[0]?.id || currentUser?.entidadId || currentUser?.entity_id;
 
-  // Ajustar zoom automáticamente al cambiar orientación
+  // Ancho del papel en px a 96 dpi (25.4 mm = 1 inch = 96 px)
+  const PAPER_PX = {
+    a4:    { landscape: 1123, portrait: 794  },
+    carta: { landscape: 1054, portrait: 816  },
+    oficio:{ landscape: 1345, portrait: 816  },
+  };
+
+  // Calcula el zoom para que el papel quepa exacto en el contenedor
+  const calcAutoZoom = useCallback(() => {
+    if (!ccdContainerRef.current) return;
+    const available = ccdContainerRef.current.clientWidth - 8; // 4px padding c/lado
+    const paperW    = PAPER_PX[ccdPageSize]?.[ccdOrientation] ?? 1123;
+    setCcdZoom(Math.min(100, Math.max(40, Math.floor((available / paperW) * 100))));
+  }, [ccdPageSize, ccdOrientation]);
+
+  // Re-calcular cuando cambia orientación o tamaño de papel
+  useEffect(() => { calcAutoZoom(); }, [calcAutoZoom]);
+
+  // Re-calcular cuando el contenedor cambia de tamaño (panel Orianna abierto/cerrado)
   useEffect(() => {
-    setCcdZoom(ccdOrientation === "landscape" ? 75 : 95);
-  }, [ccdOrientation]);
+    const el = ccdContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(calcAutoZoom);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [calcAutoZoom, ccdData]);
 
 
   useEffect(() => {
@@ -755,10 +778,10 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
               {/* ── CCD estructurado (formato AGN) ─────────────────────── */}
               {activeTab === "ccd" && ccdData ? (
                 /* Zoom wrapper — fuera de documento-generado → PDF no se ve afectado */
-                <div style={{ width: "100%", overflow: "auto" }}>
+                <div ref={ccdContainerRef} style={{ width: "100%", overflow: "hidden" }}>
                   <div style={{
                     transform:       `scale(${ccdZoom / 100})`,
-                    transformOrigin: "top center",
+                    transformOrigin: "top left",
                     marginBottom:    `${(ccdZoom - 100) * -0.5}%`,
                     transition:      "transform 0.15s ease",
                   }}>
