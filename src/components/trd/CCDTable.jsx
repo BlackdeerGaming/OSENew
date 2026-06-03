@@ -46,8 +46,9 @@ const HEADER = {
   verticalAlign:   "middle",
   fontSize:        "7.5px",
   padding:         "3px 2px",
-  wordBreak:       "break-word",
-  overflowWrap:    "break-word",
+  wordBreak:       "break-all",
+  overflowWrap:    "anywhere",
+  overflow:        "hidden",
 };
 const DATA        = { ...BASE, minHeight: "16px", height: "16px" };
 const DATA_CENTER = { ...DATA, textAlign: "center" };
