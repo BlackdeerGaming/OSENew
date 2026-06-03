@@ -40,6 +40,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [ccdData, setCcdData] = useState(null);       // datos estructurados CCD (AGN format)
   const [ccdFlatMode, setCcdFlatMode] = useState(false); // false = jerárquico, true = plano
+  const [ccdOrientation, setCcdOrientation] = useState("landscape"); // landscape | portrait
   const [officialDocs, setOfficialDocs] = useState([]);
   const [showConfirmSave, setShowConfirmSave] = useState(false);
   const [isSavingOfficial, setIsSavingOfficial] = useState(false);
@@ -220,8 +221,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
       : selectedCargos.length > 0
         ? `Manual_Funciones_${selectedCargos.join("_")}`
         : `Manual_Funciones_${manualEntries.map(e => e.cargo).filter(Boolean).join("_") || "cargos"}`;
-    // CCD usa landscape (10 columnas anchas), Manual usa portrait
-    const orientation = activeTab === "ccd" ? "landscape" : "portrait";
+    const orientation = activeTab === "ccd" ? ccdOrientation : "portrait";
     handleExportPDFGeneral("documento-generado", label, orientation, "a4");
   };
 
@@ -673,23 +673,38 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                       <CheckCircle2 size={12} /> Documento Activo
                     </div>
                   )}
-                  {/* Toggle modo de vista — solo en tab CCD */}
+                  {/* Toggles de vista — solo en tab CCD */}
                   {activeTab === "ccd" && ccdData && (
-                    <button
-                      onClick={() => setCcdFlatMode(m => !m)}
-                      title={ccdFlatMode ? "Cambiar a vista jerárquica (sección + subsección)" : "Cambiar a vista plana (unificar secciones)"}
-                      className={cn(
-                        "px-3 py-2 rounded-md font-bold text-xs shadow inline-flex items-center gap-2 transition border",
-                        ccdFlatMode
-                          ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-500"
-                          : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"
-                      )}
-                    >
-                      {ccdFlatMode
-                        ? <><GitBranch className="h-3.5 w-3.5" /> Vista Jerárquica</>
-                        : <><Layers      className="h-3.5 w-3.5" /> Vista Plana</>
-                      }
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setCcdFlatMode(m => !m)}
+                        title={ccdFlatMode ? "Cambiar a vista jerárquica" : "Cambiar a vista plana"}
+                        className={cn(
+                          "px-3 py-2 rounded-md font-bold text-xs shadow inline-flex items-center gap-2 transition border",
+                          ccdFlatMode
+                            ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-500"
+                            : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"
+                        )}
+                      >
+                        {ccdFlatMode
+                          ? <><GitBranch className="h-3.5 w-3.5" /> Vista Jerárquica</>
+                          : <><Layers className="h-3.5 w-3.5" /> Vista Plana</>
+                        }
+                      </button>
+                      <button
+                        onClick={() => setCcdOrientation(o => o === "landscape" ? "portrait" : "landscape")}
+                        title={ccdOrientation === "landscape" ? "Cambiar a orientación vertical" : "Cambiar a orientación horizontal"}
+                        className={cn(
+                          "px-3 py-2 rounded-md font-bold text-xs shadow inline-flex items-center gap-2 transition border",
+                          ccdOrientation === "portrait"
+                            ? "bg-amber-600 text-white border-amber-700 hover:bg-amber-500"
+                            : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
+                        )}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {ccdOrientation === "landscape" ? "Horizontal" : "Vertical"}
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -712,6 +727,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                     data={ccdData}
                     entityName={entities?.find(e => e.id === activeEntityId)?.razonSocial || ""}
                     flatMode={ccdFlatMode}
+                    orientation={ccdOrientation}
                   />
                 </div>
               ) : (

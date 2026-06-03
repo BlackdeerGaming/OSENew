@@ -124,7 +124,9 @@ function buildFlatRows(rawRows) {
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
-export default function CCDTable({ data, entityName, flatMode = false }) {
+export default function CCDTable({ data, entityName, flatMode = false, orientation = "landscape" }) {
+  const isLandscape = orientation === "landscape";
+
   // Solo mostrar filas que tengan nombre de sección definido
   const rawRows = (data?.rows || []).filter(r => r.nombre_seccion);
 
@@ -133,6 +135,14 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
 
   // Rellenar hasta MIN_ROWS con filas vacías para mantener el aspecto de plantilla
   while (displayRows.length < MIN_ROWS) displayRows.push({ ...EMPTY_ROW });
+
+  const fData   = isLandscape ? "8px"   : "6.5px";
+  const fHeader = isLandscape ? "7.5px" : "6px";
+
+  // Estilos dinámicos por orientación
+  const DATA_DYN        = { ...BASE, fontSize: fData,   minHeight: "16px", height: "16px" };
+  const DATA_CENTER_DYN = { ...DATA_DYN, textAlign: "center" };
+  const HEADER_DYN      = { ...HEADER, fontSize: fHeader };
 
   const producer = entityName || "";
 
@@ -179,27 +189,27 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
           </colgroup>
           <thead>
             <tr>
-              <th style={HEADER}>ACTO<br />ADMINISTRATIVO</th>
-              <th style={HEADER}>FUNCIÓN</th>
-              <th style={HEADER}>CÓDIGO<br />SECCIÓN</th>
-              <th style={HEADER}>NOMBRE DE<br />SECCIÓN</th>
-              <th style={HEADER}>CÓDIGO<br />SERIE O ASUNTO</th>
-              <th style={HEADER}>SERIE O ASUNTO</th>
-              <th style={HEADER}>CÓDIGO<br />SUBSERIE</th>
-              <th style={HEADER}>SUBSERIE</th>
+              <th style={HEADER_DYN}>ACTO<br />ADMINISTRATIVO</th>
+              <th style={HEADER_DYN}>FUNCIÓN</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SECCIÓN</th>
+              <th style={HEADER_DYN}>NOMBRE DE<br />SECCIÓN</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SERIE O ASUNTO</th>
+              <th style={HEADER_DYN}>SERIE O ASUNTO</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SUBSERIE</th>
+              <th style={HEADER_DYN}>SUBSERIE</th>
             </tr>
           </thead>
           <tbody>
             {displayRows.map((row, i) => (
               <tr key={i}>
-                <td style={DATA}>{row.acto_administrativo}</td>
-                <td style={DATA}>{row.funcion}</td>
-                <td style={DATA_CENTER}>{row.codigo_seccion}</td>
-                <td style={DATA}>{row.nombre_seccion}</td>
-                <td style={DATA_CENTER}>{row.codigo_serie}</td>
-                <td style={DATA}>{row.nombre_serie}</td>
-                <td style={DATA_CENTER}>{row.codigo_subserie}</td>
-                <td style={DATA}>{row.nombre_subserie}</td>
+                <td style={DATA_DYN}>{row.acto_administrativo}</td>
+                <td style={DATA_DYN}>{row.funcion}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_seccion}</td>
+                <td style={DATA_DYN}>{row.nombre_seccion}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_serie}</td>
+                <td style={DATA_DYN}>{row.nombre_serie}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_subserie}</td>
+                <td style={DATA_DYN}>{row.nombre_subserie}</td>
               </tr>
             ))}
           </tbody>
@@ -212,7 +222,7 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
             <col style={{ width: "15%" }} /> {/* FUNCIÓN */}
             <col style={{ width: "5%"  }} /> {/* CÓD SECC */}
             <col style={{ width: "10%" }} /> {/* NOM SECC */}
-            <col style={{ width: "7%"  }} /> {/* CÓD SUBSECC — ampliado para "SUBSECCIÓN" */}
+            <col style={{ width: "7%"  }} /> {/* CÓD SUBSECC */}
             <col style={{ width: "9%"  }} /> {/* NOM SUBSECC */}
             <col style={{ width: "7%"  }} /> {/* CÓD SERIE */}
             <col style={{ width: "14%" }} /> {/* SERIE */}
@@ -221,31 +231,31 @@ export default function CCDTable({ data, entityName, flatMode = false }) {
           </colgroup>
           <thead>
             <tr>
-              <th style={HEADER}>ACTO<br />ADMINISTRATIVO</th>
-              <th style={HEADER}>FUNCIÓN</th>
-              <th style={HEADER}>CÓDIGO<br />SECCIÓN</th>
-              <th style={HEADER}>NOMBRE DE<br />SECCIÓN</th>
-              <th style={HEADER}>CÓDIGO<br />SUBSECCIÓN</th>
-              <th style={HEADER}>NOMBRE DE<br />SUBSECCIÓN</th>
-              <th style={HEADER}>CÓDIGO<br />SERIE O ASUNTO</th>
-              <th style={HEADER}>SERIE O ASUNTO</th>
-              <th style={HEADER}>CÓDIGO<br />SUBSERIE</th>
-              <th style={HEADER}>SUBSERIE</th>
+              <th style={HEADER_DYN}>ACTO<br />ADMINISTRATIVO</th>
+              <th style={HEADER_DYN}>FUNCIÓN</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SECCIÓN</th>
+              <th style={HEADER_DYN}>NOMBRE DE<br />SECCIÓN</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SUBSECCIÓN</th>
+              <th style={HEADER_DYN}>NOMBRE DE<br />SUBSECCIÓN</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SERIE O ASUNTO</th>
+              <th style={HEADER_DYN}>SERIE O ASUNTO</th>
+              <th style={HEADER_DYN}>CÓDIGO<br />SUBSERIE</th>
+              <th style={HEADER_DYN}>SUBSERIE</th>
             </tr>
           </thead>
           <tbody>
             {displayRows.map((row, i) => (
               <tr key={i}>
-                <td style={DATA}>{row.acto_administrativo}</td>
-                <td style={DATA}>{row.funcion}</td>
-                <td style={DATA_CENTER}>{row.codigo_seccion}</td>
-                <td style={DATA}>{row.nombre_seccion}</td>
-                <td style={DATA_CENTER}>{row.codigo_subseccion}</td>
-                <td style={DATA}>{row.nombre_subseccion}</td>
-                <td style={DATA_CENTER}>{row.codigo_serie}</td>
-                <td style={DATA}>{row.nombre_serie}</td>
-                <td style={DATA_CENTER}>{row.codigo_subserie}</td>
-                <td style={DATA}>{row.nombre_subserie}</td>
+                <td style={DATA_DYN}>{row.acto_administrativo}</td>
+                <td style={DATA_DYN}>{row.funcion}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_seccion}</td>
+                <td style={DATA_DYN}>{row.nombre_seccion}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_subseccion}</td>
+                <td style={DATA_DYN}>{row.nombre_subseccion}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_serie}</td>
+                <td style={DATA_DYN}>{row.nombre_serie}</td>
+                <td style={DATA_CENTER_DYN}>{row.codigo_subserie}</td>
+                <td style={DATA_DYN}>{row.nombre_subserie}</td>
               </tr>
             ))}
           </tbody>
