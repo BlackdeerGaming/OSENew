@@ -82,49 +82,18 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
     } catch (e) { console.error(e); }
   };
 
+  // Auto-carga el CCD en formato AGN al entrar al tab o cambiar de entidad
+  useEffect(() => {
+    if (activeTab === "ccd" && activeEntityId && !loading) {
+      handleLoadCCD();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activeEntityId]);
+
   useEffect(() => {
     if (generationMode === "manual" || generationMode === "standard") {
       if (activeTab === "ccd") {
-        let html = `<h1 style="text-align:center;">Cuadro de Clasificación Documental (CCD)</h1>`;
-        html += `<h2 style="text-align:center;color:#666;">Fondo: ${entities.find(e => e.id === activeEntityId)?.razonSocial || "Entidad Central"}</h2>`;
-        html += `<div style="margin-top:20px;"><table border="1" width="100%" style="border-collapse:collapse;">
-                  <thead style="background:#f2f2f2;">
-                    <tr>
-                      <th width="15%">CÓDIGO</th>
-                      <th width="35%">SECCIÓN / SUBSECCIÓN</th>
-                      <th width="50%">SERIE (FUNCIÓN ADMINISTRATIVA)</th>
-                    </tr>
-                  </thead>
-                  <tbody>`;
-        
-        // Filtrar dependencias por entidad activa
-        const rels = dependencias.filter(d => String(d.entidadId) === String(activeEntityId));
-        
-        if (rels.length === 0) {
-          html += `<tr><td colspan="3" style="text-align:center;padding:20px;color:#999;">No hay dependencias registradas para esta entidad.</td></tr>`;
-        } else {
-          rels.forEach(dep => {
-            const depFuns = funcionesList.filter(f => String(f.dependencia_id) === String(dep.id));
-            if (depFuns.length === 0) {
-              html += `<tr style="background:#fdfdfd;">
-                        <td style="font-family:monospace;text-align:center;font-weight:bold;">${dep.codigo || "S/C"}</td>
-                        <td><strong>${dep.nombre}</strong></td>
-                        <td style="color:#999;font-style:italic;">Sin funciones asociadas</td>
-                      </tr>`;
-            } else {
-              depFuns.forEach((f, idx) => {
-                html += `<tr>`;
-                if (idx === 0) {
-                  html += `<td rowspan="${depFuns.length}" style="font-family:monospace;text-align:center;font-weight:bold;vertical-align:middle;">${dep.codigo || "S/C"}</td>`;
-                  html += `<td rowspan="${depFuns.length}" style="vertical-align:middle;"><strong>${dep.nombre}</strong></td>`;
-                }
-                html += `<td>${f.codigo_funcion ? f.codigo_funcion + " - " : ""}${f.titulo}</td></tr>`;
-              });
-            }
-          });
-        }
-        html += `</tbody></table></div>`;
-        setGeneratedHtml(html);
+        // El CCD ahora usa el formato AGN (auto-cargado por el useEffect anterior)
       } else {
         // --- MANUAL DE FUNCIONES: HERENCIA AUTOMÁTICA ---
         let html = `<h1 style="text-align:center;">Manual de Funciones y Competencias</h1>`;
