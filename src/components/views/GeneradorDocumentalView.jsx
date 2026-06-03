@@ -314,7 +314,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col min-h-full bg-background">
       <ViewHeader
         icon={Wand2}
         title="Generador Documental IA"
@@ -334,7 +334,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         }
       />
 
-      <div className="flex-1 overflow-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
+      <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
 
         {/* ── Panel Izquierdo ──────────────────────────────────────────── */}
         <div className="w-full lg:w-96 flex flex-col gap-4 shrink-0">
@@ -633,7 +633,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
         </div>
 
         {/* ── Panel Derecho: Visor ─────────────────────────────────────── */}
-        <div className="flex-1 bg-secondary/30 rounded-xl border border-border shadow-inner p-2 md:p-4 flex flex-col items-start overflow-y-auto">
+        <div className="flex-1 bg-secondary/30 rounded-xl border border-border shadow-inner p-2 md:p-4 flex flex-col items-start">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 animate-pulse w-full">
               <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center">
