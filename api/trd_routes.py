@@ -901,6 +901,18 @@ async def create_documento_oficial(entity_id: str, payload: DocumentoOficialCrea
 
     try:
         all_docs = await db.query_by_entity("documentos_oficiales", entity_id, sk_prefix="DOC#")
+    except Exception as e:
+        err_str = str(e)
+        if "ValidationException" in err_str or "key schema" in err_str.lower():
+            print(f"[DOC-OFICIAL] Tabla mal configurada: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="La tabla 'ose_documentos_oficiales' no tiene el esquema correcto (PK+SK). "
+                       "Recréala en DynamoDB con Partition Key='PK' (String) y Sort Key='SK' (String)."
+            )
+        raise HTTPException(status_code=500, detail=f"Error en la base de datos: {err_str}")
+
+    try:
         type_docs = [d for d in all_docs if d.get("tipo") == tipo]
 
         # Delete existing backup
