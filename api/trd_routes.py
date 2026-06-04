@@ -416,7 +416,8 @@ async def create_trd_record_entity(entity_id: str, payload: TRDRecordCreate, use
 
     record_id = payload.id if payload.id else str(uuid.uuid4())
     now = datetime.now().isoformat()
-    item = payload.dict()
+    # exclude_none=True evita que valores None contaminen DynamoDB como NULL types
+    item = {k: v for k, v in payload.dict().items() if v is not None}
     item.update({
         "id": record_id,
         "entidad_id": entity_id,
@@ -425,9 +426,11 @@ async def create_trd_record_entity(entity_id: str, payload: TRDRecordCreate, use
         "created_at": now,
         "updated_at": now,
     })
+    # funciones_ids=[] se omite (lista vacía no aporta info); se guarda solo cuando tiene IDs
     if not item.get("funciones_ids"):
         item.pop("funciones_ids", None)
 
+    print(f"[TRD-CREATE] acto_admo={item.get('acto_admo')!r}  funciones_ids={item.get('funciones_ids')}")
     await db.put_item("trd_records", item)
     return _strip_keys(item)
 
@@ -447,12 +450,15 @@ async def update_trd_record_entity(entity_id: str, record_id: str, payload: TRDR
     if not existing:
         raise HTTPException(status_code=404, detail="TRD Record not found")
 
-    updates = payload.dict(exclude_unset=True)
-    # Allow funciones_ids=[] to clear existing selections; only skip when absent (None)
-    if "funciones_ids" in updates and updates["funciones_ids"] is None:
-        updates.pop("funciones_ids", None)
+    # exclude_unset: solo campos enviados explícitamente por el frontend
+    updates = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
+    # funciones_ids=[] se acepta explícitamente (limpia selección), no se filtra por None
+    raw = payload.dict(exclude_unset=True)
+    if "funciones_ids" in raw:
+        updates["funciones_ids"] = raw["funciones_ids"] or []
     updates["updated_at"] = datetime.now().isoformat()
 
+    print(f"[TRD-UPDATE] record={record_id}  acto_admo={updates.get('acto_admo')!r}  funciones_ids={updates.get('funciones_ids')}")
     await db.update_item("trd_records", pk, sk, updates)
     return _strip_keys({**existing, **updates})
 
@@ -742,16 +748,16 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
             subs_by_serie.setdefault(sid, []).append(sc)
 
     def get_funciones(trd: dict) -> list:
-        """Retorna la descripción de cada función seleccionada en el registro TRD.
-        La relación es directa: trd.funciones_ids → función.descripcion.
-        No se filtra por dependencia; si el ID está en funciones_ids es porque
-        fue seleccionado explícitamente en ese formulario de valoración."""
+        """Retorna el texto de cada función seleccionada en el registro TRD.
+        Usa descripcion si existe; si no, cae a titulo (siempre obligatorio)."""
         result = []
         for fid in (trd.get("funciones_ids") or []):
             f = funciones_map.get(fid)
-            if f and f.get("descripcion"):
-                result.append(f["descripcion"])
-        return result or [""]   # Al menos una fila con función vacía si no hay funciones
+            if f:
+                text = (f.get("descripcion") or "").strip() or (f.get("titulo") or "").strip()
+                if text:
+                    result.append(text)
+        return result or [""]   # Al menos una fila vacía si no hay funciones
 
     def make_rows(trd: dict, seccion: dict, subseccion: dict,
                   serie: dict, subserie: dict) -> list:

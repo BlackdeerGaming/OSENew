@@ -389,6 +389,13 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
                     {loading ? "Cargando..." : "Generar CCD"}
                   </button>
+                  {ccdData && (
+                    <button onClick={handleLoadCCD} disabled={loading}
+                      className="w-full bg-secondary hover:bg-secondary/80 text-foreground border border-border px-4 py-2 rounded-lg font-bold text-xs transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Recargar datos
+                    </button>
+                  )}
                 </>
               ) : (
                 /* ── MANUAL IA: multi-cargo ─────────────────────────── */
