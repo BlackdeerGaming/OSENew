@@ -801,13 +801,19 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
                 lookup_key = (serie_id, ss.get("id", ""))
                 trd = trd_idx.get(lookup_key, {})
                 if not trd:
-                    print(f"[CCD]  MISS serie={s.get('nombre')} sub={ss.get('nombre')} key={lookup_key}")
+                    print(f"[CCD] MISS serie={s.get('nombre')!r} sub={ss.get('nombre')!r} key={lookup_key}")
+                    print(f"[CCD] trd_idx keys disponibles: {list(trd_idx.keys())[:10]}")
+                else:
+                    print(f"[CCD] HIT  serie={s.get('nombre')!r} sub={ss.get('nombre')!r} → acto_admo={trd.get('acto_admo')!r} fids={trd.get('funciones_ids')}")
                 rows.extend(make_rows(trd, seccion, subseccion, s, ss))
         else:
             lookup_key = (serie_id, "")
             trd = trd_idx.get(lookup_key, {})
             if not trd:
-                print(f"[CCD]  MISS serie={s.get('nombre')} (sin subserie) key={lookup_key}")
+                print(f"[CCD] MISS serie={s.get('nombre')!r} (sin subserie) key={lookup_key}")
+                print(f"[CCD] trd_idx keys disponibles: {list(trd_idx.keys())[:10]}")
+            else:
+                print(f"[CCD] HIT  serie={s.get('nombre')!r} (sin sub) → acto_admo={trd.get('acto_admo')!r} fids={trd.get('funciones_ids')}")
             rows.extend(make_rows(trd, seccion, subseccion, s, {}))
 
     rows.sort(key=lambda r: (
