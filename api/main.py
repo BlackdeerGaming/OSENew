@@ -2094,21 +2094,16 @@ async def delete_entity(entity_id: str, user: dict = Depends(require_super_admin
 
 @router.post("/entities/upload-logo")
 async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Sube un logo a Supabase Storage y devuelve URL pública permanente."""
-    if not supabase_client:
-        raise HTTPException(status_code=503, detail="Supabase no disponible")
+    """Sube un logo a S3 y devuelve URL presignada (24 h) + key para renovar."""
     try:
         content = await file.read()
         ext = (file.filename or "logo.png").rsplit(".", 1)[-1].lower()
-        filename = f"logo_{int(time.time())}.{ext}"
-        supabase_client.storage.from_("logos").upload(
-            filename, content, {"content-type": file.content_type or "image/png"}
-        )
-        url = supabase_client.storage.from_("logos").get_public_url(filename)
-        # URL pública permanente — no expira, no se necesita logoKey
-        return {"url": url, "key": ""}
+        key = f"logos/logo_{int(time.time())}.{ext}"
+        await s3_client.upload_file(content, key, file.content_type or "image/png")
+        url = await s3_client.get_download_url(key, expires_in=86400)
+        return {"url": url, "key": key}
     except Exception as e:
-        print(f" [upload-logo] Error Supabase: {e}")
+        print(f" [upload-logo] Error S3: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3337,21 +3332,6 @@ async def get_entities(user: dict = Depends(get_current_user)):
     
     res = supabase_client.table("entities").select("*").in_("id", allowed_ids).execute()
     return res.data or []
-
-@router.post("/entities/upload-logo")
-async def upload_entity_logo(file: UploadFile = File(...)):
-    if not supabase_client: raise HTTPException(503, "Supabase disconnected")
-    content = await file.read()
-    ext = file.filename.split('.')[-1]
-    filename = f"logo_{int(datetime.now().timestamp())}.{ext}"
-    
-    # Upload to 'logos' bucket
-    try:
-        supabase_client.storage.from_("logos").upload(filename, content, {"content-type": file.content_type})
-        url = supabase_client.storage.from_("logos").get_public_url(filename)
-        return {"url": url}
-    except Exception as e:
-        raise HTTPException(500, f"Upload failed: {str(e)}")
 
 @router.post("/entities")
 async def create_entity(entity: EntityCreate):
