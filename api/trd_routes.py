@@ -713,10 +713,10 @@ async def get_ccd_debug(entity_id: str, user: dict = Depends(get_current_user)):
 # ---------- CCD Estructurado (formato AGN Acuerdo 001 / 2024) ----------
 @router.get("/entity/{entity_id}/ccd-data", response_model=dict)
 async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
-    """Retorna los datos jerárquicos para el Cuadro de Clasificación Documental (CCD)
-    en el formato exacto del AGN — 10 columnas: acto administrativo, función,
-    código/nombre de sección, código/nombre de subsección, código/nombre de serie,
-    código/nombre de subserie."""
+    """Retorna los datos jerárquicos para el Cuadro de Clasificación Documental (CCD).
+    Itera los TRD records como fuente primaria: cada TRD tiene su propio dependencia_id
+    (siempre lleno), lo que evita el problema de series importadas sin dependencia_id.
+    """
     deps_raw      = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
     series_raw    = await db.query_by_entity("series",       entity_id, sk_prefix="SER#")
     subseries_raw = await db.query_by_entity("subseries",    entity_id, sk_prefix="SUB#")
@@ -726,30 +726,12 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
     print(f"[CCD] entity={entity_id} → deps={len(deps_raw)} series={len(series_raw)} subs={len(subseries_raw)} trds={len(trd_raw)} funs={len(funciones_raw)}")
 
     deps_map      = {d["id"]: _strip_keys(d) for d in deps_raw      if "id" in d}
+    series_map    = {s["id"]: _strip_keys(s) for s in series_raw    if "id" in s}
+    subseries_map = {ss["id"]: _strip_keys(ss) for ss in subseries_raw if "id" in ss}
     funciones_map = {f["id"]: _strip_keys(f) for f in funciones_raw if "id" in f}
 
-    # TRD records indexados solo por (serie_id, subserie_id).
-    # dep_id se excluye de la clave porque puede estar vacío en la serie
-    # pero lleno en el TRD record (o viceversa), causando un falso mismatch.
-    # serie_id es un UUID único: no necesita dep_id para ser inequívoco.
-    trd_idx: dict = {}
-    for r in trd_raw:
-        rc  = _strip_keys(r)
-        key = (rc.get("serie_id", ""), rc.get("subserie_id") or "")
-        trd_idx[key] = rc
-        print(f"[CCD]  trd_idx key={key} acto_admo={rc.get('acto_admo')} funciones_ids={rc.get('funciones_ids')}")
-
-    # Subseries agrupadas por serie_id
-    subs_by_serie: dict = {}
-    for ss in subseries_raw:
-        sc  = _strip_keys(ss)
-        sid = sc.get("serie_id")
-        if sid:
-            subs_by_serie.setdefault(sid, []).append(sc)
-
     def get_funciones(trd: dict) -> list:
-        """Retorna el texto de cada función seleccionada en el registro TRD.
-        Usa descripcion si existe; si no, cae a titulo (siempre obligatorio)."""
+        """Retorna el texto de cada función. Usa descripcion; fallback a titulo."""
         result = []
         for fid in (trd.get("funciones_ids") or []):
             f = funciones_map.get(fid)
@@ -757,11 +739,10 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
                 text = (f.get("descripcion") or "").strip() or (f.get("titulo") or "").strip()
                 if text:
                     result.append(text)
-        return result or [""]   # Al menos una fila vacía si no hay funciones
+        return result or [""]
 
     def make_rows(trd: dict, seccion: dict, subseccion: dict,
                   serie: dict, subserie: dict) -> list:
-        """Crea una fila por función para el par (TRD, serie/subserie) dado."""
         base = {
             "acto_administrativo": trd.get("acto_admo") or "",
             "codigo_seccion":      seccion.get("codigo", ""),
@@ -776,12 +757,14 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
         return [{**base, "funcion": desc} for desc in get_funciones(trd)]
 
     rows = []
-    for serie_item in series_raw:
-        s      = _strip_keys(serie_item)
-        dep_id = s.get("dependencia_id", "")
-        dep    = deps_map.get(dep_id, {})
+    for trd_item in trd_raw:
+        rc       = _strip_keys(trd_item)
+        dep_id   = rc.get("dependencia_id", "")
+        serie_id = rc.get("serie_id", "")
+        sub_id   = rc.get("subserie_id") or ""
 
-        # Determinar sección (top-level) vs subsección (tiene depende_de)
+        # Sección/subsección desde la DEPENDENCIA del TRD (siempre tiene dep_id)
+        dep = deps_map.get(dep_id, {})
         if dep.get("depende_de"):
             seccion    = deps_map.get(dep["depende_de"], {})
             subseccion = dep
@@ -789,32 +772,15 @@ async def get_ccd_data(entity_id: str, user: dict = Depends(get_current_user)):
             seccion    = dep
             subseccion = {}
 
-        # Omitir series cuya sección no tenga nombre (dependencia no vinculada o sin jerarquía)
         if not seccion.get("nombre"):
+            print(f"[CCD] SKIP trd={rc.get('id')} dep={dep_id!r} sin sección válida")
             continue
 
-        serie_id            = s.get("id", "")
-        subseries_for_serie = subs_by_serie.get(serie_id, [])
+        serie   = series_map.get(serie_id, {})
+        subserie = subseries_map.get(sub_id, {}) if sub_id else {}
 
-        if subseries_for_serie:
-            for ss in subseries_for_serie:
-                lookup_key = (serie_id, ss.get("id", ""))
-                trd = trd_idx.get(lookup_key, {})
-                if not trd:
-                    print(f"[CCD] MISS serie={s.get('nombre')!r} sub={ss.get('nombre')!r} key={lookup_key}")
-                    print(f"[CCD] trd_idx keys disponibles: {list(trd_idx.keys())[:10]}")
-                else:
-                    print(f"[CCD] HIT  serie={s.get('nombre')!r} sub={ss.get('nombre')!r} → acto_admo={trd.get('acto_admo')!r} fids={trd.get('funciones_ids')}")
-                rows.extend(make_rows(trd, seccion, subseccion, s, ss))
-        else:
-            lookup_key = (serie_id, "")
-            trd = trd_idx.get(lookup_key, {})
-            if not trd:
-                print(f"[CCD] MISS serie={s.get('nombre')!r} (sin subserie) key={lookup_key}")
-                print(f"[CCD] trd_idx keys disponibles: {list(trd_idx.keys())[:10]}")
-            else:
-                print(f"[CCD] HIT  serie={s.get('nombre')!r} (sin sub) → acto_admo={trd.get('acto_admo')!r} fids={trd.get('funciones_ids')}")
-            rows.extend(make_rows(trd, seccion, subseccion, s, {}))
+        print(f"[CCD] ROW trd={rc.get('id')} sec={seccion.get('nombre')!r} serie={serie.get('nombre')!r} acto_admo={rc.get('acto_admo')!r} fids={rc.get('funciones_ids')}")
+        rows.extend(make_rows(rc, seccion, subseccion, serie, subserie))
 
     rows.sort(key=lambda r: (
         r["codigo_seccion"],    r["codigo_subseccion"],
