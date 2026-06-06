@@ -196,7 +196,7 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
   };
 
   const handleGenerateManual = async () => {
-    if (!activeEntityId || !selectedDependenciaId || selectedCargos.length === 0) return;
+    if (!activeEntityId || !selectedDependenciaId) return;
     setLoading(true); setError(null); setGeneratedHtml("");
     try {
       const resp = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/generate/manual-funciones`, {
@@ -205,12 +205,12 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
           "Authorization": `Bearer ${currentUser?.token || ""}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          cargos: selectedCargos,
-          dependencia_id: selectedDependenciaId
-        })
+        body: JSON.stringify({ dependencia_id: selectedDependenciaId })
       });
-      if (!resp.ok) throw new Error("Error generando Manual");
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || "Error generando Manual");
+      }
       const data = await resp.json();
       setGeneratedHtml(data.html);
     } catch (err) { setError(err.message); }
@@ -398,13 +398,16 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                   )}
                 </>
               ) : (
-                /* ── MANUAL IA: multi-cargo ─────────────────────────── */
+                /* ── MANUAL: auto desde todas las funciones ──────────── */
                 <>
-                  <div className="text-sm font-semibold text-foreground">Configurar Manual con IA</div>
+                  <div className="text-sm font-semibold text-foreground">Manual de Funciones</div>
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    Selecciona una dependencia. El manual se genera automáticamente con todas sus funciones registradas.
+                  </p>
 
                   {/* Dependencia */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-muted-foreground">Dependencia (Sección)</label>
+                    <label className="text-xs font-bold text-muted-foreground">Dependencia</label>
                     <select
                       value={selectedDependenciaId}
                       onChange={(e) => setSelectedDependenciaId(e.target.value)}
@@ -412,64 +415,33 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                     >
                       <option value="">Seleccione una dependencia...</option>
                       {dependencias.map(dep => (
-                        <option key={dep.id} value={dep.id}>{dep.codigo} - {dep.nombre}</option>
+                        <option key={dep.id} value={dep.id}>{dep.codigo} — {dep.nombre}</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Multi-cargo picker */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-muted-foreground">
-                      Cargos a incluir <span className="text-primary">({selectedCargos.length} seleccionado{selectedCargos.length !== 1 ? "s" : ""})</span>
-                    </label>
-
-                    {/* Chips de cargos seleccionados */}
-                    {selectedCargos.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 p-2 bg-primary/5 rounded-lg border border-primary/10">
-                        {selectedCargos.map(c => (
-                          <Chip key={c} label={c} onRemove={() => removeCargo(c)} />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Dropdown para añadir */}
-                    <div className="flex gap-2">
-                      <select
-                        value={pickCargo}
-                        onChange={(e) => setPickCargo(e.target.value)}
-                        disabled={availableCargos.length === 0}
-                        className="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm disabled:opacity-50"
-                      >
-                        <option value="">
-                          {availableCargos.length === 0
-                            ? cargosUnicos.length === 0 ? "Sin cargos registrados" : "Todos añadidos"
-                            : "Añadir cargo..."}
-                        </option>
-                        {availableCargos.map(cargo => (
-                          <option key={cargo} value={cargo}>{cargo}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => addCargo(pickCargo)}
-                        disabled={!pickCargo}
-                        className="shrink-0 bg-primary text-primary-foreground rounded-md px-3 py-2 disabled:opacity-40 hover:bg-primary/90 transition-all"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
+                  {selectedDependenciaId && funcionesList.filter(f => f.dependencia_id === selectedDependenciaId).length === 0 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                      <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Esta dependencia no tiene funciones registradas. Agrégalas en el módulo <strong>Funciones</strong>.
+                      </p>
                     </div>
+                  )}
 
-                    {cargosUnicos.length === 0 && (
-                      <p className="text-[11px] text-muted-foreground italic">Registra entrevistados con sus cargos para habilitar esta opción.</p>
-                    )}
-                  </div>
+                  {selectedDependenciaId && funcionesList.filter(f => f.dependencia_id === selectedDependenciaId).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-primary">{funcionesList.filter(f => f.dependencia_id === selectedDependenciaId).length}</span> función(es) encontrada(s) para esta dependencia.
+                    </p>
+                  )}
 
                   <button
                     onClick={handleGenerateManual}
-                    disabled={loading || !selectedDependenciaId || selectedCargos.length === 0}
-                    className="w-full mt-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2.5 rounded-lg font-bold text-sm shadow transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70"
+                    disabled={loading || !selectedDependenciaId}
+                    className="w-full mt-1 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2.5 rounded-lg font-bold text-sm shadow transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70"
                   >
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    {loading ? "Redactando..." : `Redactar Manual (${selectedCargos.length} cargo${selectedCargos.length !== 1 ? "s" : ""})`}
+                    {loading ? "Generando..." : "Generar Manual"}
                   </button>
                 </>
               )
@@ -764,23 +736,55 @@ export default function GeneradorDocumentalView({ dependencias, entities, curren
                   style={{
                     minHeight: "297mm",
                     width: "210mm",
-                    fontFamily: "'Inter', 'Roboto', sans-serif",
-                    padding: "25mm 25mm 25mm 20px",
+                    fontFamily: "'Times New Roman', 'Georgia', serif",
+                    padding: "15mm 15mm 15mm 15mm",
                     boxSizing: "border-box",
                   }}
                 >
                   <style>{`
-                    @media print { #documento-generado { padding: 10px !important; } }
-                    #documento-generado h1 { font-size: 24px; font-weight: 800; text-transform: uppercase; margin-bottom: 24px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-                    #documento-generado h2 { font-size: 18px; font-weight: 700; margin-top: 30px; margin-bottom: 12px; color: #333; }
-                    #documento-generado h3 { font-size: 16px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-                    #documento-generado p { font-size: 14px; line-height: 1.6; margin-bottom: 12px; text-align: justify; outline: none; }
-                    #documento-generado ul, #documento-generado ol { font-size: 14px; margin-bottom: 16px; padding-left: 24px; }
-                    #documento-generado li { margin-bottom: 8px; line-height: 1.5; }
-                    #documento-generado table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; font-size: 13px; }
-                    #documento-generado th, #documento-generado td { border: 1px solid #ccc; padding: 10px 12px; text-align: left; }
-                    #documento-generado th { background-color: #f2f2f2; font-weight: bold; }
-                    #documento-generado hr { border: 0; border-top: 2px dashed #ccc; margin: 32px 0; }
+                    @media print {
+                      #documento-generado { padding: 10mm !important; }
+                      .mf-page-break { page-break-after: always; break-after: page; }
+                    }
+
+                    /* ── Sección por cargo ── */
+                    .mf-section { margin-bottom: 8px; }
+                    .mf-page-break { height: 0; margin: 40px 0; border-top: 2px dashed #999; }
+
+                    /* ── Tabla de encabezado: empresa | MANUAL DE FUNCIONES ── */
+                    .mf-header { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 0; }
+                    .mf-header td { padding: 6px 10px; vertical-align: middle; }
+                    .mf-entity { font-size: 13px; font-weight: 700; text-align: left; width: 55%; border-right: 2px solid #000; }
+                    .mf-title  { font-size: 15px; font-weight: 800; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
+
+                    /* ── Tabla de información: dependencia, código, superior, cargo ── */
+                    .mf-info { width: 100%; border-collapse: collapse; border: 2px solid #000; border-top: none; margin-bottom: 0; }
+                    .mf-info td { padding: 5px 10px; font-size: 12px; border: 1px solid #000; vertical-align: middle; }
+                    .mf-lbl { font-weight: 700; text-transform: uppercase; background-color: #f0f0f0; width: 18%; white-space: nowrap; }
+                    .mf-val { font-weight: 400; }
+                    .mf-cargo { font-weight: 700; font-size: 13px; }
+
+                    /* ── Tabla de funciones ── */
+                    .mf-funs { width: 100%; border-collapse: collapse; border: 2px solid #000; border-top: none; margin-bottom: 0; font-size: 12px; }
+                    .mf-funs th, .mf-funs td { border: 1px solid #000; padding: 5px 8px; vertical-align: top; }
+                    .mf-section-hdr { background-color: #d9d9d9; font-weight: 700; text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px; }
+                    .mf-col-cod  { background-color: #f0f0f0; font-weight: 700; width: 6%;  text-align: center; }
+                    .mf-col-fun  { background-color: #f0f0f0; font-weight: 700; width: 28%; }
+                    .mf-col-desc { background-color: #f0f0f0; font-weight: 700; }
+                    .mf-cod  { text-align: center; font-weight: 600; }
+                    .mf-fun  { font-weight: 600; }
+                    .mf-desc { text-align: justify; line-height: 1.5; }
+
+                    /* ── Footer de página ── */
+                    .mf-footer { border: 2px solid #000; border-top: none; text-align: right; font-size: 11px; padding: 4px 10px; color: #333; }
+
+                    /* Fallback para HTML heredado (h1/h2/ul) */
+                    #documento-generado h1 { font-size: 20px; font-weight: 800; text-transform: uppercase; margin-bottom: 20px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; }
+                    #documento-generado h2 { font-size: 15px; font-weight: 700; margin-top: 24px; margin-bottom: 10px; }
+                    #documento-generado p  { font-size: 13px; line-height: 1.6; margin-bottom: 10px; text-align: justify; }
+                    #documento-generado ul, #documento-generado ol { font-size: 13px; margin-bottom: 12px; padding-left: 20px; }
+                    #documento-generado li { margin-bottom: 6px; line-height: 1.5; }
+                    #documento-generado hr { border: 0; border-top: 2px dashed #ccc; margin: 28px 0; }
                   `}</style>
                   <div
                     contentEditable

@@ -28,6 +28,7 @@ import DocumentcioRAGView from './components/views/DocumentcioRAGView';
 import FuncionesView from './components/views/FuncionesView';
 import EntrevistasView from './components/views/EntrevistasView';
 import GeneradorDocumentalView from './components/views/GeneradorDocumentalView';
+import ReportesManualesView from './components/views/ReportesManualesView';
 import { cn } from './lib/utils';
 import API_BASE_URL from './config/api';
 import { supabase } from './lib/supabase';
@@ -975,7 +976,13 @@ function App() {
         if (entity === 'trd_records') entity = 'TRD';
 
         const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
-        const name = action.payload?.nombre || action.payload?.name || "Registro";
+        // For TRD records the AI puts the label in serieNombre/subserieNombre, not nombre
+        const name = action.payload?.nombre ||
+                     action.payload?.name ||
+                     action.payload?.subserieNombre ||
+                     action.payload?.serieNombre ||
+                     action.payload?.dependenciaNombre ||
+                     "Registro";
 
         // Feedback de progreso
         setModalStatus(prev => ({ 
@@ -2165,12 +2172,13 @@ function App() {
               />
             )}
             {activeModule === 'generador_manual' && (
-              <GeneradorDocumentalView 
-                dependencias={dependencias} 
-                entities={userEntities} 
-                currentUser={currentUser} 
+              <ReportesManualesView
+                dependencias={dependencias}
+                series={series}
+                subseries={subseries}
+                entities={userEntities}
+                currentUser={currentUser}
                 selectedEntityId={selectedEntityId}
-                forceMode="manual" 
               />
             )}
 
@@ -2453,11 +2461,12 @@ function App() {
                 )}
                 {mainView === 'entities' && <EntitiesView entities={entities} setEntities={setEntities} currentUser={currentUser} />}
                 {mainView === 'import' && (
-                  <TRDImportView 
-                    onImportComplete={executeAgentActions} 
-                    currentUser={currentUser} 
-                    currentEntity={currentEntity} 
-                    logoBase64={entidadLogoBase64} 
+                  <TRDImportView
+                    onImportComplete={executeAgentActions}
+                    onRefreshData={refreshData}
+                    currentUser={currentUser}
+                    currentEntity={currentEntity}
+                    logoBase64={entidadLogoBase64}
                     imports={imports}
                     setImports={setImports}
                     addActivityLog={addActivityLog}

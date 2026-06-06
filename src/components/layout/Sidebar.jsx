@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock, Mail, Users, Wand2 } from "lucide-react";
+import { Building2, FolderOpen, FileText, Database, LayoutTemplate, Bot, ChevronLeft, ChevronRight, Network, FileUp, Menu, X, ChevronDown, Lock, Mail, Users, Wand2, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { id: "entrevistas", label: "Entrevistas", icon: Users },
   { separator: true },
   { id: "generador_ia", label: "Reportes IA", icon: Wand2 },
-  { id: "generador_manual", label: "Reportes Manuales", icon: FileText },
+  { id: "generador_manual", label: "Reportes Manuales", icon: ClipboardList },
   { id: "datos", label: "Datos Estructurados", icon: Database },
   { id: "trd", label: "Tabla Final", icon: LayoutTemplate },
 ];

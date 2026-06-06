@@ -88,7 +88,7 @@ class EntrevistaCreate(BaseModel):
     entrevistado: EntrevistadoSchema
 
 class GenerateManualRequest(BaseModel):
-    cargos: List[str]
+    cargos: Optional[List[str]] = []
     dependencia_id: str
 
 class DocumentoOficialCreate(BaseModel):
@@ -819,42 +819,99 @@ async def generate_ccd(entity_id: str, user: dict = Depends(get_current_user)):
         print(f"LLM Error generating CCD: {e}")
         raise HTTPException(status_code=500, detail="Error de generación por IA.")
 
+def _esc(text: str) -> str:
+    """Minimal HTML escaping for user-supplied text in the manual."""
+    return (str(text)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;"))
+
+
 @router.post("/entity/{entity_id}/generate/manual-funciones")
 async def generate_manual(entity_id: str, payload: GenerateManualRequest, user: dict = Depends(get_current_user)):
     require_entity_admin(user, entity_id)
 
+    # Entity name
+    entity_item = await db.get_item("entities", _epk(entity_id), "METADATA")
+    entity_data = _strip_keys(entity_item) if entity_item else {}
+    entity_name = entity_data.get("razonSocial", "")
+
+    # Dependencia data
     dep_item = await db.get_item("dependencias", _epk(entity_id), f"DEP#{payload.dependencia_id}")
     dep_data = _strip_keys(dep_item) if dep_item else {}
+    dep_nombre = dep_data.get("nombre", "")
+    dep_codigo = dep_data.get("codigo", "")
 
+    # Resolve dependencia superior name
+    dep_superior_raw = dep_data.get("depende_de", "")
+    dep_superior = dep_superior_raw
+    if dep_superior_raw:
+        all_deps = await db.query_by_entity("dependencias", entity_id, sk_prefix="DEP#")
+        for d in all_deps:
+            if d.get("id") == dep_superior_raw:
+                dep_superior = d.get("nombre", dep_superior_raw)
+                break
+
+    # ALL functions of the dependencia, sorted by codigo_funcion
     all_funs = await db.query_by_entity("funciones", entity_id, sk_prefix="FUN#")
     funciones = [f for f in all_funs if f.get("dependencia_id") == payload.dependencia_id]
+    funciones.sort(key=lambda f: str(f.get("codigo_funcion") or "").zfill(6))
 
-    cargos_str = ", ".join(payload.cargos) if payload.cargos else "Desconocido"
-    ctx = f"Cargos a documentar: {cargos_str}\n"
-    ctx += f"Dependencia (Sección): {dep_data.get('nombre')} (Cód {dep_data.get('codigo')})\n"
-    ctx += "Funciones de la Dependencia:\n"
-    for f in funciones:
-        ctx += f"- {f.get('titulo')} (Detalle: {f.get('descripcion', '')})\n"
+    if not funciones:
+        raise HTTPException(status_code=404, detail="No hay funciones registradas para esta dependencia.")
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "Eres un analista de talento humano experto en el sector público de Colombia y la ley 594. "
-         "Tu objetivo es redactar el 'Manual de Funciones' para un conjunto de cargos dentro de una dependencia. "
-         "Para CADA cargo provisto en la lista, deberás crear una sección que incluya:\n"
-         "1. Un encabezado <h2>Identificación del Cargo: [Nombre del cargo]</h2>.\n"
-         "2. El Propósito Principal del Cargo basado en el nombre y las funciones de su área.\n"
-         "3. Las Funciones Específicas del cargo formateadas formalmente (<ul>), extraídas de las funciones provistas.\n"
-         "4. Las Relaciones e Interacciones con otras áreas.\n"
-         "Si documentas MÁS DE UN CARGO, pon una etiqueta <hr style='margin: 32px 0; border-color: #ccc;' /> entre cada uno para separarlos visualmente.\n\n"
-         "RESPONDE ÚNICAMENTE EN FORMATO HTML bien estructurado estilo documento formal (<h1>, <h2>, <ul>) y sin macros markdown (sin ```html), para ser embebido en una vista. El documento general debe empezar con <h1>Manual de Funciones</h1>. No expongas saludos informales."),
-        ("user", "{data}")
-    ])
-    chain = prompt | llm | StrOutputParser()
-    try:
-        html_output = await chain.ainvoke({"data": ctx})
-        return {"html": html_output}
-    except Exception as e:
-        print(f"LLM Error generating Manual: {e}")
-        raise HTTPException(status_code=500, detail="Error de generación por IA.")
+    # Build the functions table rows
+    fun_rows = ""
+    for i, f in enumerate(funciones, 1):
+        cod = _esc(f.get("codigo_funcion") or str(i))
+        titulo = _esc(f.get("titulo", ""))
+        desc = _esc(f.get("descripcion", ""))
+        fun_rows += (
+            f'<tr>'
+            f'<td class="mf-cod">{cod}</td>'
+            f'<td class="mf-fun">{titulo}</td>'
+            f'<td class="mf-desc">{desc}</td>'
+            f'</tr>'
+        )
+
+    # Assemble the complete HTML document
+    html_output = (
+        '<div class="mf-section">'
+        '<table class="mf-header">'
+        '<tr>'
+        f'<td class="mf-entity">{_esc(entity_name)}</td>'
+        '<td class="mf-title">MANUAL DE FUNCIONES</td>'
+        '</tr>'
+        '</table>'
+        '<table class="mf-info">'
+        '<tr>'
+        '<td class="mf-lbl">DEPENDENCIA</td>'
+        f'<td class="mf-val" colspan="3">{_esc(dep_nombre)}</td>'
+        '</tr>'
+        '<tr>'
+        '<td class="mf-lbl">CÓDIGO</td>'
+        f'<td class="mf-val">{_esc(dep_codigo)}</td>'
+        '<td class="mf-lbl">DEPENDENCIA SUPERIOR</td>'
+        f'<td class="mf-val">{_esc(dep_superior)}</td>'
+        '</tr>'
+        '</table>'
+        '<table class="mf-funs">'
+        '<thead>'
+        '<tr><th colspan="3" class="mf-section-hdr">Descripción de las funciones esenciales</th></tr>'
+        '<tr>'
+        '<th class="mf-col-cod">Cód</th>'
+        '<th class="mf-col-fun">Función</th>'
+        '<th class="mf-col-desc">Descripción detallada</th>'
+        '</tr>'
+        '</thead>'
+        f'<tbody>{fun_rows}</tbody>'
+        '</table>'
+        '<div class="mf-footer">Página 1 de 1</div>'
+        '</div>'
+    )
+
+    return {"html": html_output}
 
 
 # ---------- Documentos Oficiales (Control de Versiones) ----------

@@ -39,8 +39,8 @@ if OPENROUTER_API_KEY:
             openai_api_key=OPENROUTER_API_KEY,
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.1,
-            max_tokens=4096,
-            request_timeout=65,
+            max_tokens=8192,   # Increased: TRD JSON responses can exceed 4096 tokens
+            request_timeout=120,
             default_headers={
                 "HTTP-Referer": "https://ose-ia.vercel.app",
                 "X-Title": "OSE Copilot Context"

@@ -43,7 +43,7 @@ const calculateFileHash = async (file) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
+const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEntity, logoBase64, imports = [], setImports, addActivityLog }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingNew, setIsProcessingNew] = useState(false);
   
@@ -112,21 +112,25 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
           });
           
           // 3. Mapear la data del backend a nuestro formato de UI
-          const backendTasks = data.map(d => {
+          // Safety net: never show permanently-dismissed sessions even if backend slips them through
+          const DISMISSED_STATUSES = new Set(['cancelled', 'dismissed', 'closed']);
+
+          const backendTasks = data
+            .filter(d => !DISMISSED_STATUSES.has(d.status || d.metadata?.status))
+            .map(d => {
              const statusValue = d.status || d.metadata?.status;
-             const mappedStatus = statusValue === 'success' ? 'success' : 
+             const mappedStatus = statusValue === 'success' ? 'success' :
                                   (statusValue === 'reviewing' || statusValue === 'pending_verification') ? 'pending_verification' :
                                   statusValue === 'integrating' ? 'integrating' :
                                   statusValue === 'extraction_completed' ? 'extraction_completed' :
                                   statusValue === 'ocr_completed' ? 'ocr_completed' :
-                                  statusValue === 'processing_ocr' ? 'processing_ocr' : 
-                                  statusValue === 'ocr_running' ? 'processing_ocr' : 
-                                  statusValue === 'processing' ? 'processing_ocr' : 
+                                  statusValue === 'processing_ocr' ? 'processing_ocr' :
+                                  statusValue === 'ocr_running' ? 'processing_ocr' :
+                                  statusValue === 'processing' ? 'processing_ocr' :
                                   statusValue === 'uploaded' ? 'uploaded' :
                                   statusValue === 'uploading' ? 'uploading' :
-                                  statusValue === 'error' ? 'failed' : 
-                                  statusValue === 'failed' ? 'failed' :
-                                  statusValue === 'cancelled' ? 'cancelled' : 'processing_ocr';
+                                  statusValue === 'error' ? 'failed' :
+                                  statusValue === 'failed' ? 'failed' : 'processing_ocr';
 
              return {
                 id: d.id,
@@ -282,40 +286,42 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
     if (e) e.stopPropagation();
     const imp = imports.find(i => i.id === id);
     if (!imp) return;
-    
-    const isProcessing = ['uploading', 'analyzing', 'processing', 'ocr_running'].includes(imp.status);
-    const msg = isProcessing 
-      ? "¿Estás seguro de cancelar este proceso activo? El avance se detendrá." 
-      : "¿Eliminar este registro del historial?";
-      
+
+    const isPending = imp.status === 'pending_verification';
+    const isActivelyProcessing = ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'integrating'].includes(imp.status);
+
+    const msg = isPending
+      ? "¿Cancelar y eliminar esta verificación pendiente? Los datos extraídos se descartarán."
+      : isActivelyProcessing
+        ? "¿Estás seguro de cancelar este proceso activo? El avance se detendrá."
+        : "¿Eliminar este registro del historial?";
+
     if (!window.confirm(msg)) return;
 
-    // Si está procesando, primero intentamos marcar como cancelado en el backend
-    if (isProcessing && !id.startsWith('temp_')) {
-      try {
-        await fetch(`${API_BASE_URL}/rag-documents/${id}`, {
-          method: 'PUT',
-          headers: { 
-            "Authorization": `Bearer ${currentUser?.token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ status: 'cancelled' })
-        });
-      } catch (err) {
-        console.error("Error cancelling process:", err);
-      }
-    }
-
+    // 1. Remove from local state immediately for snappy UX
     setImports(prev => prev.filter(item => item.id !== id));
+
+    // 2. If it's a temp-only item (never reached backend), nothing more to do
+    if (id.startsWith('temp_')) return;
+
+    // 3. Hard-delete from backend (pass entity_id for direct PK/SK lookup)
+    const entityId = currentEntity?.id || imp.entidad_id;
+    const deleteUrl = entityId
+      ? `${API_BASE_URL}/rag-documents/${id}?entidad_id=${entityId}`
+      : `${API_BASE_URL}/rag-documents/${id}`;
+
     try {
-      if (!id.startsWith('temp_')) {
-        await fetch(`${API_BASE_URL}/rag-documents/${id}`, { 
-          method: 'DELETE',
-          headers: { "Authorization": `Bearer ${currentUser?.token}` }
-        });
+      const resp = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${currentUser?.token}` }
+      });
+      if (!resp.ok) {
+        // Best-effort: log the failure; the GET filter will hide it anyway
+        const detail = await resp.json().catch(() => ({}));
+        console.error(`[TRDImport] DELETE failed for ${id}:`, detail);
       }
     } catch (err) {
-      console.error("Error deleting import:", err);
+      console.error("[TRDImport] Network error deleting import:", err);
     }
   };
 
@@ -413,9 +419,14 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
       }
 
       if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Importación TRD Finalizada con Éxito: ${currentPreviewImport.filename}`);
-      
+
       setPreviewImportId(null);
-      // Refrescar para asegurar sincronía con DB de RAG
+
+      // Refresh TRD data so Dependencias/Series/Subseries/Tabla Final update immediately
+      if (onRefreshData) {
+        try { await onRefreshData(); } catch (_) {}
+      }
+      // Refresh import session list to reflect 'success' status
       await fetchImports();
     } catch (err) {
       console.error("Error al integrar:", err);
@@ -1037,7 +1048,20 @@ const TRDImportView = ({ onImportComplete, currentUser, currentEntity, logoBase6
                             Vista DANE
                          </button>
                       )}
-                      <button 
+                      <button
+                        disabled={isProcessingNew}
+                        onClick={() => {
+                          if (window.confirm("¿Cancelar y descartar esta verificación? Los datos extraídos se eliminarán.")) {
+                            handleDeleteImport(currentPreviewImport.id);
+                            setPreviewImportId(null);
+                          }
+                        }}
+                        className="flex items-center gap-2 px-8 py-4 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+                      >
+                        <X className="h-4 w-4" />
+                        Cancelar verificación
+                      </button>
+                      <button
                         disabled={isProcessingNew}
                         onClick={handleCommit}
                         className={cn(

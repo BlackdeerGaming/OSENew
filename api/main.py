@@ -370,77 +370,55 @@ CONTEXTO DEL DOCUMENTO:
     ("human", "{question}")
 ])
 
-TRD_ARCHITECT_PROMPT = """Eres el OCR Archivistico Inteligente de OSE IA, experto en digitalizacion y extraccion de Tablas de Retencion Documental (TRD) segun la Ley 594 de 2000 (Colombia).
+TRD_ARCHITECT_PROMPT = """Eres el Arquitecto Archivistico de OSE IA, experto en digitalizacion y extraccion de Tablas de Retencion Documental (TRD) segun la Ley 594 de 2000 de Colombia.
 
-TU OBJETIVO: 
-Se te proporcionar una mezcla de texto corregido (OCR) e IMGENES reales de un documento. Debes analizar visualmente la disposicin de las tablas, filas y columnas para extraer informacin precisa.
+OBJETIVO:
+Se te proporciona texto extraido por OCR de un documento TRD y opcionalmente imagenes de sus paginas. Debes analizar el contenido y extraer TODOS los registros de la tabla de retencion documental.
 
+REGLAS DE EXTRACCION:
 
+1. CODIGOS:
+   - Dependencia/Seccion: codigo de 2-3 digitos (ej: 100, 200, 110).
+   - Serie documental: codigo compuesto (ej: 100.1, 200-70, 1.1).
+   - Subserie: extension del codigo de serie (ej: 100.1.01, 1.1.1).
 
-REGLAS DE EXTRACCIN (MUY IMPORTANTES):
+2. RETENCION (en anios enteros):
+   - Gestion (AG): anios en archivo de oficina. Si no aparece, usa 2.
+   - Central (AC): anios en archivo central. Si no aparece, usa 10.
 
-1. IDENTIFICACIN DE CDIGOS:
+3. DISPOSICION FINAL (usa EXACTAMENTE una de estas):
+   - "CT" = Conservacion Total
+   - "E"  = Eliminacion
+   - "S"  = Seleccion
+   - "MT" = Medio Tecnico / Microfilmacion
 
-   - Dependencia: Suele ser un cdigo de 3 dgitos (ej: 100, 110, 200).
+4. COMPORTAMIENTO:
+   - Extrae CADA fila de la tabla como un action separado.
+   - Si una subserie existe, usala en subserieNombre; si no, dejala como cadena vacia "".
+   - NO inventes datos. Si un campo no esta claro, usa un valor razonable basado en contexto.
+   - Si el documento tiene multiples dependencias, extrae TODAS sus series y subseries.
+   - El campo "codigo" debe ser el codigo de la SERIE o SUBSERIE (no de la dependencia).
 
-   - Serie: Suele ser el cdigo de dependencia seguido de un punto o guion y un nmero (ej: 100-1, 200.70).
-
-   - Subserie: Cdigo extendido (ej: 100-1-01).
-
-2. COLUMNAS DE VALORACIN:
-
-   - Gestin (AG): Aos en archivo de oficina.
-
-   - Central (AC): Aos en archivo central.
-
-   - Disposicin: CT (Conservacin Total), E (Eliminacin), S (Seleccin).
-
-3. TRATAMIENTO DE IMAGEN:
-
-   - Si la imagen muestra una tabla, sguela fila por fila. No inventes datos.
-
-   - Si una celda est vaca, asume valor nulo o segn contexto previo.
-
-
-
-FORMATO DE SALIDA (JSON ESTRICTO):
-
+FORMATO DE SALIDA - RESPONDE UNICAMENTE CON ESTE JSON (sin texto extra, sin markdown):
 {
-
-  "message": "He detectado visualmente [X] oficinas y su estructura documental.",
-
+  "message": "Descripcion breve de lo encontrado.",
   "actions": [
-
     {
-
       "type": "CREATE",
-
       "entity": "trd_records",
-
       "payload": {
-
-        "dependenciaNombre": "SECRETARA GENERAL",
-
-        "codigo": "100.1.01",
-
-        "serieNombre": "ACTAS",
-
-        "subserieNombre": "ACTAS DE CONSEJO",
-
+        "dependenciaNombre": "NOMBRE DE LA DEPENDENCIA EN MAYUSCULAS",
+        "dependenciaCodigo": "100",
+        "serieNombre": "NOMBRE DE LA SERIE",
+        "subserieNombre": "NOMBRE DE LA SUBSERIE O CADENA VACIA",
+        "codigo": "100.1",
         "retencionGestion": 2,
-
         "retencionCentral": 8,
-
         "disposicion": "CT",
-
-        "procedimiento": "Conservacin total segn AGN."
-
+        "procedimiento": "Descripcion del procedimiento archivistico."
       }
-
     }
-
   ]
-
 }
 """
 
@@ -1150,49 +1128,81 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
 
         fitz_doc.close()
 
-        # --- FASE 2: Análisis TRD ---
+        # --- FASE 2: Análisis TRD con IA ---
         if pages_ok > 0:
             await _update_ocr_progress(
-                doc_id, filename, stage="Analizando estructura TRD...",
+                doc_id, filename, stage="Analizando estructura TRD con IA...",
                 progress=85, current_page=total_pages, total_pages=total_pages,
                 pages_ok=pages_ok, pages_error=pages_error, error_pages=error_pages,
                 extra={"status": "extraction_completed"}
             )
-            
+
+            # Build prompt messages
+            text_preview = full_text[:OCR_MAX_TEXT_CHARS * 3]
             messages = [SystemMessage(content=TRD_ARCHITECT_PROMPT)]
-            user_content = [{"type": "text", "text": f"Analiza esta TRD. Texto extraído:\n{full_text[:OCR_MAX_TEXT_CHARS * 3]}"}]
-            
-            # Incluir imágenes de referencia si las hay
+            user_content = [{"type": "text", "text": f"Analiza esta TRD y extrae todos sus registros.\n\nTEXTO EXTRAIDO POR OCR:\n{text_preview}"}]
+
             for b64_img in images_base64:
                 user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}"}})
-            
+
             messages.append(HumanMessage(content=user_content))
-            
+
             parsed_actions = []
-            ai_message = "Análisis completado."
-            
+            ai_message = "Analisis completado."
+
+            print(f"[OCR-AI] Enviando {len(text_preview)} chars + {len(images_base64)} imagenes al LLM para {filename}")
+
             try:
-                # Usamos el LLM configurado
-                response_ai = await llm.ainvoke(messages)
-                content_ai = response_ai.content.strip()
-                
-                # Limpiar JSON de la respuesta
+                if not llm:
+                    raise Exception("LLM no inicializado. Verifica OPENROUTER_API_KEY en variables de entorno.")
+
+                # Use higher token limit for TRD analysis (large documents need more output tokens)
+                llm_trd = llm.bind(max_tokens=16000)
+                response_ai = await llm_trd.ainvoke(messages)
+                raw_content = response_ai.content.strip()
+
+                print(f"[OCR-AI] Respuesta del LLM ({len(raw_content)} chars): {raw_content[:300]}...")
+
+                # --- Robust JSON extraction ---
+                content_ai = raw_content
+
+                # Strip markdown code fences if present
                 if "```json" in content_ai:
                     content_ai = content_ai.split("```json")[-1].split("```")[0].strip()
                 elif "```" in content_ai:
-                    content_ai = content_ai.split("```")[-1].split("```")[0].strip()
+                    parts = content_ai.split("```")
+                    # Find the part that contains a JSON object
+                    for part in parts:
+                        part = part.strip()
+                        if part.startswith("{") or part.startswith("["):
+                            content_ai = part
+                            break
+
+                # Extract JSON object boundaries
+                start = content_ai.find('{')
+                end = content_ai.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    content_ai = content_ai[start:end + 1]
                 else:
-                    start = content_ai.find('{')
-                    end = content_ai.rfind('}')
-                    if start != -1 and end != -1:
-                        content_ai = content_ai[start:end+1]
-                
+                    raise ValueError(f"No se encontro un objeto JSON valido en la respuesta. Primeros 500 chars: {raw_content[:500]}")
+
                 ai_data = json.loads(content_ai)
                 parsed_actions = ai_data.get("actions", [])
                 ai_message = ai_data.get("message", ai_message)
+
+                print(f"[OCR-AI] Extraccion exitosa: {len(parsed_actions)} acciones encontradas para {filename}")
+
+                if not parsed_actions:
+                    print(f"[OCR-AI] ADVERTENCIA: El LLM retorno 0 acciones. Respuesta completa:\n{raw_content}")
+                    ai_message = "El analisis finalizo pero no se extrajeron registros. Verifica que el documento sea una TRD valida."
+
+            except json.JSONDecodeError as json_err:
+                print(f"[OCR-AI] Error JSON en respuesta: {json_err}")
+                print(f"[OCR-AI] Contenido que fallo el parse: {content_ai[:800]}")
+                ai_message = f"Error al interpretar la respuesta de la IA (JSON invalido): {str(json_err)}"
             except Exception as ai_err:
-                print(f"[OCR] Error en análisis IA: {ai_err}")
-                ai_message = f"Error interpretando la TRD: {str(ai_err)}"
+                print(f"[OCR-AI] Error en analisis IA: {type(ai_err).__name__}: {ai_err}")
+                ai_message = f"Error en analisis IA: {str(ai_err)}"
 
             # --- FASE FINAL: Guardar todo ---
             final_status = "pending_verification"
@@ -2109,7 +2119,12 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
 
 
 @router.post("/analyze-trd")
-async def analyze_trd(file: UploadFile = File(...), entidad_id: str = "", user: dict = Depends(get_current_user)):
+async def analyze_trd(
+    request: Request,
+    file: UploadFile = File(...),
+    entidad_id: str = Form(""),   # multipart form field sent by the frontend
+    user: dict = Depends(get_current_user),
+):
     """Sube un documento TRD, procesa OCR + análisis IA sincrónicamente y retorna el resultado completo."""
     print(f" POST /analyze-trd - File: {file.filename}")
 
@@ -2118,7 +2133,17 @@ async def analyze_trd(file: UploadFile = File(...), entidad_id: str = "", user: 
     file_hash = hashlib.sha256(content).hexdigest()
 
     doc_id = str(uuid.uuid4())
-    entidad_actual = user.get("entity_id") or entidad_id or "GLOBAL"
+
+    # Priority: Form field > x-entity-context header > JWT entity_id
+    entity_from_header = request.headers.get("x-entity-context", "")
+    entidad_actual = entidad_id or entity_from_header or user.get("entity_id") or "GLOBAL"
+
+    # Block import if there is no valid entity
+    if not entidad_actual or entidad_actual in ("GLOBAL", "null", "e0"):
+        raise HTTPException(
+            status_code=400,
+            detail="No hay entidad activa seleccionada. Selecciona una entidad antes de importar una TRD."
+        )
     user_id = user.get("user_id")
     user_name = user.get("nombre", "Sistema")
     pk_val = f"ENTITY#{entidad_actual}"
@@ -2376,14 +2401,20 @@ async def get_rag_documents(entidad_id: str | None = None, type: str | None = No
 
         items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
+        # Statuses that must never be returned to the frontend
+        HIDDEN_STATUSES = {"cancelled", "dismissed", "closed"}
+
         processed_data = []
         sources_handled = set()
 
         for item in items:
             meta = item.get("metadata") or {}
+            # Skip permanently-dismissed sessions before anything else
+            if meta.get("status") in HIDDEN_STATUSES:
+                continue
             doc_type = meta.get("type")
             source = meta.get("source") or meta.get("filename")
-            if doc_type in ("temp_trd_session", "trd_upload"):
+            if doc_type in ("temp_trd_session", "trd_upload", "trd_import_session"):
                 if source and source in sources_handled:
                     continue
                 processed_data.append(item)
@@ -2392,9 +2423,11 @@ async def get_rag_documents(entidad_id: str | None = None, type: str | None = No
 
         for item in items:
             meta = item.get("metadata") or {}
+            if meta.get("status") in HIDDEN_STATUSES:
+                continue
             doc_type = meta.get("type")
             source = meta.get("source") or meta.get("filename")
-            if doc_type not in ("temp_trd_session", "trd_upload"):
+            if doc_type not in ("temp_trd_session", "trd_upload", "trd_import_session"):
                 if not source or source not in sources_handled:
                     processed_data.append(item)
                     if source:
@@ -2435,13 +2468,30 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
         final_meta = {**meta, **incoming_meta}
 
         if new_status:
+            # cancelled/dismissed/closed → hard delete immediately so it never resurfaces
+            if new_status in ("cancelled", "dismissed", "closed"):
+                source = meta.get("source")
+                effective_entity = entidad_id or meta.get("entidad_id")
+                if source and effective_entity:
+                    pk_all = f"ENTITY#{effective_entity}"
+                    all_items = await db.query_by_entity("RagDocuments", pk_all, sk_prefix="IMPORT#")
+                    related = [i for i in all_items if (i.get("metadata") or {}).get("source") == source]
+                    tbl = db.get_table("RagDocuments")
+                    for rel in related:
+                        tbl.delete_item(Key={"PK": rel["PK"], "SK": rel["SK"]})
+                else:
+                    tbl = db.get_table("RagDocuments")
+                    tbl.delete_item(Key={"PK": pk, "SK": sk})
+                print(f"[PUT] Hard-deleted session {item['id']} on status={new_status}")
+                return {"status": "success", "new_status": new_status, "deleted": True}
+
             final_meta["status"] = new_status
             if new_status == "success":
                 final_meta["type"] = "trd_upload"
                 final_meta["integrated_at"] = datetime.now().isoformat()
                 final_meta["integrated_by"] = user.get("nombre", "Usuario")
             elif new_status == "pending_verification":
-                final_meta["type"] = "temp_trd_session"
+                final_meta["type"] = "trd_import_session"
 
         if entidad_id and not final_meta.get("entidad_id"):
             final_meta["entidad_id"] = entidad_id
@@ -2459,34 +2509,63 @@ async def update_rag_document(doc_id: str, payload: dict, user: dict = Depends(g
         print(f" Error actualizando documento RAG: {e}")
         raise HTTPException(500, str(e))
 @router.delete("/rag-documents/{doc_id}")
-async def delete_rag_document(doc_id: str, user: dict = Depends(get_current_user)):
-    """Elimina un documento de importación de DynamoDB (con borrado en cascada por source)."""
+async def delete_rag_document(
+    doc_id: str,
+    entidad_id: str | None = None,
+    user: dict = Depends(get_current_user)
+):
+    """Elimina un documento de importación de DynamoDB.
+
+    Intenta primero lookup directo por PK/SK (O(1)) usando entidad_id.
+    Si no se provee entidad_id, hace scan de respaldo.
+    """
     try:
         table = db.get_table("RagDocuments")
-        scan_resp = table.scan(FilterExpression=Attr("id").eq(doc_id))
-        items_found = scan_resp.get("Items", [])
-        if not items_found:
-            return {"status": "success", "message": "Documento ya eliminado."}
-
-        item = items_found[0]
-        meta = item.get("metadata") or {}
-        entidad_id = meta.get("entidad_id")
-        source = meta.get("source")
-
         user_role = user.get("role", "user")
         user_entity = user.get("entity_id")
+
+        item = None
+
+        # ── Intento 1: lookup directo con PK/SK (rápido, confiable) ──────────
+        entity_hint = entidad_id or user_entity
+        if entity_hint:
+            pk_hint = f"ENTITY#{entity_hint}"
+            sk_hint = f"IMPORT#{doc_id}"
+            try:
+                item = await db.get_item("RagDocuments", pk_hint, sk_hint)
+            except Exception:
+                item = None
+
+        # ── Intento 2: scan completo como respaldo ────────────────────────────
+        if not item:
+            scan_resp = table.scan(FilterExpression=Attr("id").eq(doc_id))
+            items_found = scan_resp.get("Items", [])
+            if items_found:
+                item = items_found[0]
+
+        if not item:
+            return {"status": "success", "message": "Documento ya eliminado o no encontrado."}
+
+        meta = item.get("metadata") or {}
+        item_entidad_id = meta.get("entidad_id")
+        source = meta.get("source")
+
         if user_role != SUPERADMIN_ROLE:
-            if entidad_id and str(entidad_id) != str(user_entity):
+            if item_entidad_id and str(item_entidad_id) != str(user_entity):
                 raise HTTPException(403, "No tienes permiso para eliminar documentos de otra entidad")
 
-        if source and entidad_id:
-            pk_val = f"ENTITY#{entidad_id}"
+        # ── Eliminar el ítem y todos los relacionados por source ──────────────
+        effective_entity = item_entidad_id or entity_hint
+        if source and effective_entity:
+            pk_val = f"ENTITY#{effective_entity}"
             all_items = await db.query_by_entity("RagDocuments", pk_val, sk_prefix="IMPORT#")
             related = [i for i in all_items if (i.get("metadata") or {}).get("source") == source]
             for rel in related:
                 table.delete_item(Key={"PK": rel["PK"], "SK": rel["SK"]})
+            print(f"[DELETE] Eliminados {len(related)} ítem(s) con source='{source}' en entidad {effective_entity}")
         else:
             table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+            print(f"[DELETE] Eliminado ítem individual: {item.get('PK')}/{item.get('SK')}")
 
         return {"status": "success", "message": f"Documento {source or doc_id} eliminado correctamente."}
 
@@ -3421,8 +3500,14 @@ async def delete_entity(entity_id: str):
     supabase_client.table("entities").delete().eq("id", entity_id).execute()
     return {"status": "success"}
 
-@router.post("/analyze-trd")
-async def analyze_trd(
+# ──────────────────────────────────────────────────────────────────────────────
+# LEGACY ENDPOINT (Supabase-based, disabled)
+# This was overriding the DynamoDB-based /analyze-trd above. Route renamed so
+# the primary synchronous endpoint is used instead. Background tasks are killed
+# by Vercel serverless on return, so this approach never completed OCR.
+# ──────────────────────────────────────────────────────────────────────────────
+@router.post("/analyze-trd-legacy-supabase")
+async def analyze_trd_legacy(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     entidad_id: str = Form(""),
