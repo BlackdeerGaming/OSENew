@@ -16,6 +16,7 @@ load_dotenv()
 
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter, BackgroundTasks, Depends, Request, Form
+from fastapi.responses import Response
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -1347,13 +1348,21 @@ def _ensure_entity_id(item: dict) -> dict:
     return item
 
 async def _refresh_entity_logo(entity: dict) -> dict:
-    """Si la entidad tiene logoKey, regenera la URL presignada (24 h)."""
+    """Si la entidad tiene logoKey, devuelve URL del proxy (evita CORS de S3).
+    En producción (FRONTEND_URL configurado) usa el endpoint proxy del mismo origen.
+    En desarrollo local, usa presigned URL como fallback."""
     key = entity.get("logoKey") or entity.get("logo_key")
     if key:
-        try:
-            entity["logoUrl"] = await s3_client.get_download_url(key, expires_in=86400)
-        except Exception as e:
-            print(f" [logo-refresh] No se pudo refrescar URL para key={key}: {e}")
+        frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+        if frontend_url:
+            # Proxy URL — mismo origen que el frontend → sin problema de CORS
+            entity["logoUrl"] = f"{frontend_url}/api/entities/logo-proxy?key={key}"
+        else:
+            # Fallback para desarrollo local: presigned URL (24 h)
+            try:
+                entity["logoUrl"] = await s3_client.get_download_url(key, expires_in=86400)
+            except Exception as e:
+                print(f" [logo-refresh] No se pudo refrescar URL para key={key}: {e}")
     return entity
 
 @router.get("/entities")
@@ -2110,12 +2119,35 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
         ext = (file.filename or "logo.png").rsplit(".", 1)[-1].lower()
         key = f"logos/logo_{int(time.time())}.{ext}"
         await s3_client.upload_file(content, key, file.content_type or "image/png")
-        url = await s3_client.get_download_url(key, expires_in=86400)
+        # Devolver URL del proxy (sin CORS) en lugar de presigned URL directa a S3
+        frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+        if frontend_url:
+            url = f"{frontend_url}/api/entities/logo-proxy?key={key}"
+        else:
+            url = await s3_client.get_download_url(key, expires_in=86400)
         return {"url": url, "key": key}
     except Exception as e:
         print(f" [upload-logo] Error S3: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/entities/logo-proxy")
+async def logo_proxy(key: str):
+    """Sirve logos desde S3 a través del backend para evitar errores CORS en el browser.
+    No requiere autenticación — los logos son activos visuales públicos de la entidad.
+    Seguridad: solo permite claves bajo el prefijo 'logos/'."""
+    if not key or not key.startswith("logos/"):
+        raise HTTPException(status_code=400, detail="Clave de logo inválida")
+    try:
+        content, content_type = await s3_client.get_object_bytes(key)
+        return Response(
+            content=content,
+            media_type=content_type or "image/png",
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+    except Exception as e:
+        print(f" [logo-proxy] No se encontró logo key={key}: {e}")
+        raise HTTPException(status_code=404, detail="Logo no encontrado")
 
 
 @router.post("/analyze-trd")

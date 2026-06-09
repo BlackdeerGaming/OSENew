@@ -42,6 +42,17 @@ class S3Manager:
             print(f"Error generating pre-signed URL: {e}")
             raise e
 
+    async def get_object_bytes(self, path: str) -> tuple:
+        """Descarga un objeto de S3 y devuelve (bytes, content_type)."""
+        try:
+            response = self.s3.get_object(Bucket=self.bucket_name, Key=path)
+            content = response["Body"].read()
+            content_type = response.get("ContentType", "application/octet-stream")
+            return content, content_type
+        except ClientError as e:
+            print(f"Error downloading from S3: {e}")
+            raise e
+
     async def delete_file(self, path: str):
         try:
             self.s3.delete_object(Bucket=self.bucket_name, Key=path)
