@@ -16,6 +16,37 @@ class S3Manager:
             endpoint_url=f"https://s3.{self.region}.amazonaws.com",
             config=Config(signature_version="s3v4"),
         )
+        self._apply_cors_policy()
+
+    def _apply_cors_policy(self):
+        """Configura CORS en el bucket S3 para que el browser pueda cargar logos
+        directamente desde URLs presignadas sin errores de CORS.
+        Falla silenciosamente si el IAM no tiene permiso s3:PutBucketCors."""
+        if not self.bucket_name:
+            return
+        origins = list(filter(None, [
+            os.getenv("FRONTEND_URL", ""),
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5173",
+        ]))
+        if not origins:
+            return
+        try:
+            self.s3.put_bucket_cors(
+                Bucket=self.bucket_name,
+                CORSConfiguration={
+                    "CORSRules": [{
+                        "AllowedHeaders": ["*"],
+                        "AllowedMethods": ["GET", "HEAD"],
+                        "AllowedOrigins": origins,
+                        "MaxAgeSeconds": 3600,
+                    }]
+                }
+            )
+            print(f"[S3 CORS] Política aplicada para orígenes: {origins}")
+        except Exception as e:
+            print(f"[S3 CORS] No se pudo configurar (sin permiso s3:PutBucketCors): {e}")
 
     async def upload_file(self, file_content: bytes, path: str, content_type: str = "application/octet-stream"):
         try:
