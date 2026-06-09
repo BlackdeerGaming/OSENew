@@ -1347,11 +1347,27 @@ def _ensure_entity_id(item: dict) -> dict:
         item["id"] = _normalize_entity_id(str(item["id"]))
     return item
 
+_S3_KEY_RE = re.compile(r"/(logos/[^?#]+)")
+
 async def _refresh_entity_logo(entity: dict) -> dict:
-    """Si la entidad tiene logoKey, devuelve URL del proxy (evita CORS de S3).
-    En producción (FRONTEND_URL configurado) usa el endpoint proxy del mismo origen.
-    En desarrollo local, usa presigned URL como fallback."""
+    """Devuelve la URL del logo a través del proxy del backend para evitar CORS de S3.
+
+    Estrategia de resolución de la clave S3 (orden de prioridad):
+    1. logoKey  — campo explícito guardado junto al logo
+    2. logo_key — alias alternativo
+    3. Parse de la logoUrl existente — para entidades antiguas sin logoKey
+    """
     key = entity.get("logoKey") or entity.get("logo_key")
+
+    # Fallback: extraer la clave del bucket desde una URL presignada de S3 existente
+    if not key:
+        existing_url = entity.get("logoUrl") or entity.get("logo_url") or ""
+        if "amazonaws.com" in existing_url or (s3_client.bucket_name and s3_client.bucket_name in existing_url):
+            m = _S3_KEY_RE.search(existing_url)
+            if m:
+                key = m.group(1)  # e.g. "logos/logo_1780592863.png"
+                entity["logoKey"] = key  # normalizar para próximas lecturas
+
     if key:
         frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
         if frontend_url:
