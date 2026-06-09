@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   FileUp, Scan, Database, CheckCircle2, AlertCircle, Loader2, Trash2, 
@@ -58,26 +58,8 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
   const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, existing: null });
   const [pendingFile, setPendingFile] = useState(null);
 
-  // Initial load
-  useEffect(() => {
-    fetchImports();
-  }, [currentUser, currentEntity]);
-
-  // Polling for analyzing tasks
-  useEffect(() => {
-    const hasActiveTasks = imports.some(imp => ['uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'integrating'].includes(imp.status));
-    if (!hasActiveTasks) return;
-    
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchImports();
-      }
-    }, 5000); 
-    
-    return () => clearInterval(interval);
-  }, [imports]);
-
-  const fetchImports = async () => {
+  // fetchImports debe declararse ANTES de los useEffects que la referencian
+  const fetchImports = useCallback(async () => {
     if (!currentUser?.token) {
       setIsLoading(false);
       return;
@@ -85,7 +67,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
     try {
       const entId = currentEntity?.id || '';
       const res = await fetch(`${API_BASE_URL}/rag-documents${entId ? `?entidad_id=${entId}` : ''}`, {
-        headers: { 
+        headers: {
           "Authorization": `Bearer ${currentUser.token}`,
           "x-entity-context": entId
         }
@@ -96,23 +78,17 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
           // 1. Identificar archivos que ya están en el backend para no duplicarlos con los temporales
           const dataIds = new Set(data.map(d => d.id));
           const dataFiles = new Set(data.map(d => d.filename || d.metadata?.source));
-          
-          // 2. Filtrar el estado previo:
-          // - Mantener los que están 'uploading' pero aún no aparecen en el backend (por nombre)
-          // - Mantener errores locales que no son temporales (si los hubiera)
+
+          // 2. Filtrar el estado previo
           const localTasks = prev.filter(p => {
             const isTemp = p.id.toString().startsWith('temp_') || p.id.toString().startsWith('err_');
             if (isTemp) {
-              // Si es temporal, solo lo mantenemos si NO ha llegado al backend aún
               return !dataFiles.has(p.filename);
             }
-            // Si ya tiene un ID real, solo lo mantenemos si NO está en el nuevo batch de data
-            // (porque el batch de data es más fresco y lo incluiremos abajo)
             return !dataIds.has(p.id);
           });
-          
+
           // 3. Mapear la data del backend a nuestro formato de UI
-          // Safety net: never show permanently-dismissed sessions even if backend slips them through
           const DISMISSED_STATUSES = new Set(['cancelled', 'dismissed', 'closed']);
 
           const backendTasks = data
@@ -152,7 +128,6 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
              };
           });
 
-          // 4. Combinar: Primero las tareas locales (nuevas subidas) y luego las del backend (ordenadas por fecha en backend)
           return [...localTasks, ...backendTasks];
         });
       }
@@ -161,7 +136,33 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser?.token, currentEntity?.id]);
+
+  // Refs para el intervalo de polling estable
+  const importsRef = useRef(imports);
+  useEffect(() => { importsRef.current = imports; }, [imports]);
+
+  const fetchImportsRef = useRef(fetchImports);
+  useEffect(() => { fetchImportsRef.current = fetchImports; }, [fetchImports]);
+
+  // Carga inicial — fetchImports es estable (useCallback), solo cambia si varía token/entityId
+  useEffect(() => {
+    fetchImports();
+  }, [fetchImports]);
+
+  // Polling estable — el intervalo no se recrea en cada cambio de imports
+  useEffect(() => {
+    const ACTIVE_STATUSES = new Set([
+      'uploading', 'uploaded', 'processing_ocr', 'ocr_completed', 'extraction_completed', 'integrating'
+    ]);
+    const interval = setInterval(() => {
+      const hasActiveTasks = importsRef.current.some(imp => ACTIVE_STATUSES.has(imp.status));
+      if (hasActiveTasks && document.visibilityState === 'visible') {
+        fetchImportsRef.current();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const uploadFile = async (file, force = false) => {
     const tempId = "temp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);

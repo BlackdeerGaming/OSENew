@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import AgentChat from './components/chat/AgentChat';
@@ -523,18 +523,53 @@ function App() {
     return () => clearTimeout(timer);
   }, [isInitializing]);
 
-  // Intervalo de actualización en segundo plano
+  // Refresco silencioso en segundo plano — no muestra loading screen ni afecta formularios
+  const performSilentBackgroundRefresh = useCallback(async () => {
+    if (!currentUser?.token) return;
+    try {
+      const headers = {
+        'Authorization': `Bearer ${currentUser.token}`,
+        'Content-Type': 'application/json'
+      };
+      const [usersRes, entitiesRes, invRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/users`, { headers }),
+        fetch(`${API_BASE_URL}/entities`, { headers }),
+        fetch(`${API_BASE_URL}/invitations/my`, { headers })
+      ]);
+      if (!usersRes.ok || !entitiesRes.ok || !invRes.ok) return;
+
+      const uData = await usersRes.json();
+      const eData = await entitiesRes.json();
+      const iData = await invRes.json();
+
+      setUsers(uData);
+      const mappedEntities = eData.map(e => ({
+        ...e,
+        id: e.id || e.PK || e.entity_id || "",
+        razonSocial: e.razonSocial || e.razon_social || e.nombre || "",
+        nombre: e.nombre || e.razonSocial || e.razon_social || "",
+        numeroDocumento: e.numeroDocumento || e.nit || e.NIT || "",
+        nit: e.nit || e.numeroDocumento || e.NIT || ""
+      }));
+      setEntities(mappedEntities);
+      setPendingInvitationsCount(iData.length || 0);
+    } catch (err) {
+      console.error("[Background refresh] Error silencioso:", err);
+    }
+  }, [currentUser]);
+
+  // Intervalo de actualización en segundo plano (silencioso — sin loading screen)
   useEffect(() => {
     if (!currentUser?.token || !hasInitialized) return;
 
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !isInitializing) {
-        performInitialLoad();
+      if (document.visibilityState === 'visible') {
+        performSilentBackgroundRefresh();
       }
     }, 300000); // Cada 5 minutos
 
     return () => clearInterval(interval);
-  }, [currentUser, hasInitialized, isInitializing, performInitialLoad]);
+  }, [currentUser?.token, hasInitialized, performSilentBackgroundRefresh]);
 
   const handleActivateUser = async (token, newPassword) => {
     try {
@@ -651,37 +686,57 @@ function App() {
   const [conflictModal, setConflictModal] = useState({ isOpen: false, info: null });
   const [conflictResolver, setConflictResolver] = useState(null);
 
-  // Auto-persist form data
+  // Refs para seguimiento de estado sin causar re-renders
+  const prevEntityIdRef = useRef(null);
+  const formIsDirtyRef = useRef(false);
+
+  // Auto-persist form data + dirty-state tracking
   useEffect(() => {
-    if (['dependencias', 'series', 'subseries', 'trdform'].includes(activeModule)) {
-       setFormsPersistence(prev => ({
-         ...prev,
-         [activeModule]: activeFormData
-       }));
+    const FORM_MODULES = ['dependencias', 'series', 'subseries', 'trdform'];
+    if (FORM_MODULES.includes(activeModule)) {
+      setFormsPersistence(prev => ({
+        ...prev,
+        [activeModule]: activeFormData
+      }));
+      // Marcar formulario como "sucio" si el usuario ha ingresado datos más allá del estado inicial
+      const meaningfulKeys = Object.keys(activeFormData).filter(
+        k => k !== 'entidadId' && k !== 'pais' && k !== 'id'
+      );
+      formIsDirtyRef.current = meaningfulKeys.some(k => {
+        const v = activeFormData[k];
+        return v !== undefined && v !== '' && v !== null;
+      });
+    } else {
+      formIsDirtyRef.current = false;
     }
   }, [activeFormData, activeModule]);
 
-  // --- CRÍTICO: AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) ---
+  // --- AISLAMIENTO DE DATOS POR ENTIDAD (FRONTEND) ---
   useEffect(() => {
-    if (selectedEntityId) {
-      console.log(" [Context] Sincronizando contexto global de entidad:", selectedEntityId);
-      
-      // 1. RESETEAR el formulario activo si la entidad cambia para evitar entrecruce
+    if (!selectedEntityId) return;
+
+    const entityActuallyChanged =
+      prevEntityIdRef.current !== null && prevEntityIdRef.current !== selectedEntityId;
+    prevEntityIdRef.current = selectedEntityId;
+
+    if (entityActuallyChanged) {
+      console.warn("[Aislamiento] Cambio de entidad detectado:", prevEntityIdRef.current, "→", selectedEntityId);
+
+      // 1. Limpiar formulario activo SOLO si pertenece a la entidad anterior
       setActiveFormData(prev => {
         if (prev.entidadId && prev.entidadId !== selectedEntityId) {
-          console.warn(" [Aislamiento] Cambio de entidad detectado. Limpiando formulario activo.");
-          return { entidadId: selectedEntityId }; 
+          formIsDirtyRef.current = false;
+          return { entidadId: selectedEntityId };
         }
         return { ...prev, entidadId: selectedEntityId };
       });
 
-      // 2. Limpiar la persistencia de formularios que pertenezcan a OTRA entidad
+      // 2. Limpiar persistencia de formularios de la entidad anterior
       setFormsPersistence(prev => {
         const next = { ...prev };
         let changed = false;
         ['dependencias', 'series', 'subseries', 'trdform'].forEach(mod => {
-          if (next[mod] && next[mod].entidadId && next[mod].entidadId !== selectedEntityId) {
-            console.log(` [Aislamiento] Purgando cache persistente de ${mod} (entidad anterior)`);
+          if (next[mod]?.entidadId && next[mod].entidadId !== selectedEntityId) {
             delete next[mod];
             changed = true;
           }
@@ -689,8 +744,14 @@ function App() {
         return changed ? next : prev;
       });
 
-      // 3. Resetear el flujo si cambiamos de entidad para evitar estados inconsistentes
+      // 3. Resetear flujo SOLO cuando cambia la entidad
       setFlowStep(0);
+    } else {
+      // Misma entidad: solo asegurar que entidadId esté presente sin resetear nada
+      setActiveFormData(prev => {
+        if (!prev.entidadId) return { ...prev, entidadId: selectedEntityId };
+        return prev;
+      });
     }
   }, [selectedEntityId]);
 
@@ -1411,10 +1472,11 @@ function App() {
       const actionLabel = isUpdate ? 'Edición' : 'Creación';
       
       addActivityLog(`${actionLabel} ${entityLabel} - ${record.nombre || record.id || 'Nuevo'}`);
-      
-      // Limpiar persistencia de este módulo al guardar con éxito
+
+      // Limpiar persistencia y dirty-state al guardar con éxito
+      formIsDirtyRef.current = false;
       setFormsPersistence(prev => ({ ...prev, [activeModule]: {} }));
-      
+
       setActiveFormData({});
       setFlowStep(0);
       
@@ -1825,18 +1887,32 @@ function App() {
 
   // Auto pre-select entity when navigating to a form module if user has at least one entity
   const handleNavigation = (moduleId) => {
+    // Protección dirty-state: confirmar antes de descartar cambios no guardados
+    const FORM_MODULES = ['dependencias', 'series', 'subseries', 'trdform'];
+    if (
+      moduleId !== activeModule &&
+      FORM_MODULES.includes(activeModule) &&
+      formIsDirtyRef.current
+    ) {
+      const confirmar = window.confirm(
+        'Tienes cambios no guardados en el formulario actual.\n\n¿Deseas salir sin guardar? Los cambios se perderán.'
+      );
+      if (!confirmar) return;
+      formIsDirtyRef.current = false;
+    }
+
     setActiveModule(moduleId);
     setFormErrors({});
-    
-    // Si tenemos data persistida para este módulo (escrita por el usuario antes), la recuperamos
+
+    // Si tenemos data persistida para este módulo, la recuperamos
     const persisted = formsPersistence[moduleId];
     if (persisted && Object.keys(persisted).length > 0) {
       console.log(`♻️ Recuperando formulario persistido para ${moduleId}`);
       setActiveFormData(persisted);
     } else {
+      const autoData = {};
       const activeEntity = selectedEntityId || userEntities?.[0]?.id;
       if (activeEntity) {
-        console.log("📍 Auto-seleccionando entidad para formulario:", activeEntity);
         autoData.entidadId = activeEntity;
       }
       if (moduleId === 'dependencias') {
@@ -1844,7 +1920,11 @@ function App() {
       }
       setActiveFormData(autoData);
     }
-    setFlowStep(0);
+
+    // Resetear flujo solo al cambiar de módulo
+    if (moduleId !== activeModule) {
+      setFlowStep(0);
+    }
     setFormErrors({});
   };
 
@@ -2444,7 +2524,7 @@ function App() {
             />
 
             <div className="flex-1 overflow-y-auto relative flex flex-col w-full">
-              <LoadingOverlay isVisible={trdLoading} message="Sincronizando Archivos..." />
+              <LoadingOverlay isVisible={trdLoading && !isSynced} message="Cargando datos iniciales..." />
               <ErrorBoundary key={mainView}>
                 {mainView === 'dashboard' && (
                   <DashboardView 
