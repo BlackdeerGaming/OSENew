@@ -423,6 +423,22 @@ FORMATO DE SALIDA - RESPONDE UNICAMENTE CON ESTE JSON (sin texto extra, sin mark
 }
 """
 
+# Prompt compacto para extracción por secciones (menor overhead de tokens)
+TRD_CHUNK_PROMPT = """Eres un archivista experto en TRD colombianas (Ley 594/2000). Extrae TODOS los registros TRD del siguiente fragmento.
+Responde SOLO con JSON válido, sin texto adicional ni markdown:
+{"actions":[{"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"","dependenciaCodigo":"","serieNombre":"","subserieNombre":"","codigo":"","retencionGestion":2,"retencionCentral":8,"disposicion":"CT","procedimiento":""}}]}
+Reglas: disposicion solo "CT","E","S","MT" | retenciones en números enteros | subserieNombre="" si no aplica | si no hay registros TRD retorna {"actions":[]}
+
+FRAGMENTO:
+"""
+
+# Marcadores de sección para detectar límites de dependencias en texto TRD
+_TRD_SECTION_MARKERS = (
+    "DEPENDENCIA", "SECCIÓN", "SECCION", "OFICINA", "DESPACHO",
+    "DIVISIÓN", "DIVISION", "ÁREA", "AREA", "UNIDAD",
+    "SUBGERENCIA", "GERENCIA", "DIRECCIÓN", "DIRECCION", "SUBDIRECCIÓN"
+)
+
 
 
 
@@ -1019,7 +1035,7 @@ async def _vision_ocr_page(img_b64: str) -> str:
     if not llm: return ""
     try:
         prompt = "Extrae TODO el texto contenido en esta imagen de un documento oficial (Tablas de Retención Documental). Mantén la estructura de tablas si es posible. No añadas comentarios, solo el texto extraído."
-        
+
         message = HumanMessage(
             content=[
                 {"type": "text", "text": prompt},
@@ -1034,6 +1050,113 @@ async def _vision_ocr_page(img_b64: str) -> str:
     except Exception as e:
         print(f" [VISION-OCR] Error en página: {e}")
         return ""
+
+
+def _split_trd_text_into_chunks(text: str, max_chars: int = 14000) -> list:
+    """
+    Divide el texto de una TRD en secciones procesables.
+    Intenta cortar en límites de dependencias; si no los detecta, corta por tamaño.
+    """
+    lines = text.splitlines()
+    chunks, current, current_len = [], [], 0
+
+    for line in lines:
+        upper = line.strip().upper()
+        is_section = (
+            any(upper.startswith(m) for m in _TRD_SECTION_MARKERS)
+            and len(line.strip()) < 120
+        )
+        if is_section and current_len > 3000:
+            chunks.append("\n".join(current))
+            current, current_len = [line], len(line)
+        else:
+            current.append(line)
+            current_len += len(line)
+            if current_len >= max_chars:
+                chunks.append("\n".join(current))
+                current, current_len = [], 0
+
+    if current:
+        chunks.append("\n".join(current))
+
+    return [c for c in chunks if c.strip()]
+
+
+def _parse_json_actions(raw: str) -> list:
+    """Extrae la lista 'actions' de una respuesta LLM, manejando markdown y texto extra."""
+    text = raw.strip()
+    # Quitar cercas markdown
+    if "```" in text:
+        for part in text.split("```"):
+            part = part.strip().lstrip("json").strip()
+            if part.startswith("{"):
+                text = part
+                break
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return []
+    data = json.loads(text[start:end + 1])
+    return data.get("actions", [])
+
+
+async def _analyze_trd_ai_smart(full_text: str, images: list, llm_instance) -> tuple:
+    """
+    Extracción TRD multi-sección: divide el documento en fragmentos y los procesa
+    de forma independiente, luego consolida y deduplica los resultados.
+    Evita el límite de tokens de salida procesando sección por sección.
+    """
+    if not llm_instance:
+        return [], "LLM no disponible — verifica OPENROUTER_API_KEY."
+
+    chunks = _split_trd_text_into_chunks(full_text)
+    if not chunks:
+        return [], "No se encontró texto para analizar."
+
+    print(f"[TRD-AI] Documento dividido en {len(chunks)} sección(es).")
+
+    all_actions, errors = [], 0
+
+    for i, chunk in enumerate(chunks):
+        # Imágenes solo en el primer fragmento para contexto visual del encabezado
+        chunk_images = images[:3] if i == 0 else []
+
+        user_content = [{"type": "text", "text": TRD_CHUNK_PROMPT + chunk}]
+        for b64 in chunk_images:
+            user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+        try:
+            resp = await llm_instance.ainvoke([HumanMessage(content=user_content)])
+            actions = _parse_json_actions(resp.content)
+            all_actions.extend(actions)
+            print(f"[TRD-AI] Sección {i+1}/{len(chunks)}: {len(actions)} registros extraídos.")
+        except json.JSONDecodeError as e:
+            print(f"[TRD-AI] Sección {i+1}: JSON inválido — {e}")
+            errors += 1
+        except Exception as e:
+            err_str = str(e)
+            print(f"[TRD-AI] Sección {i+1}: Error — {type(e).__name__}: {e}")
+            # Si el modelo configurado no existe en OpenRouter, avisar claramente
+            if "not a valid model ID" in err_str or "No endpoints found" in err_str:
+                print(f"[TRD-AI] ⚠️  El modelo '{llm_instance.model_name}' no está disponible en OpenRouter. "
+                      f"Actualiza OPENROUTER_MODEL en el .env con un ID válido (ej: openai/gpt-4o-mini).")
+            errors += 1
+
+    # Deduplicar por (dependenciaCodigo, codigo, subserieNombre)
+    seen, unique = set(), []
+    for action in all_actions:
+        p = action.get("payload", {})
+        key = (p.get("dependenciaCodigo", ""), p.get("codigo", ""), p.get("subserieNombre", ""))
+        if key not in seen:
+            seen.add(key)
+            unique.append(action)
+
+    msg = f"Extraídos {len(unique)} registros TRD en {len(chunks)} sección(es)."
+    if errors:
+        msg += f" ({errors} sección(es) con errores parciales)."
+    if not unique:
+        msg = "El análisis finalizó pero no se extrajeron registros. Verifica que el documento sea una TRD válida."
+
+    return unique, msg
 
 async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name: str = "Sistema", user_id: str = None, log_eid: str = None):
     """
@@ -1138,72 +1261,9 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
                 extra={"status": "extraction_completed"}
             )
 
-            # Build prompt messages
-            text_preview = full_text[:OCR_MAX_TEXT_CHARS * 3]
-            messages = [SystemMessage(content=TRD_ARCHITECT_PROMPT)]
-            user_content = [{"type": "text", "text": f"Analiza esta TRD y extrae todos sus registros.\n\nTEXTO EXTRAIDO POR OCR:\n{text_preview}"}]
-
-            for b64_img in images_base64:
-                user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}"}})
-
-            messages.append(HumanMessage(content=user_content))
-
-            parsed_actions = []
-            ai_message = "Analisis completado."
-
-            print(f"[OCR-AI] Enviando {len(text_preview)} chars + {len(images_base64)} imagenes al LLM para {filename}")
-
-            try:
-                if not llm:
-                    raise Exception("LLM no inicializado. Verifica OPENROUTER_API_KEY en variables de entorno.")
-
-                # Use higher token limit for TRD analysis (large documents need more output tokens)
-                llm_trd = llm.bind(max_tokens=16000)
-                response_ai = await llm_trd.ainvoke(messages)
-                raw_content = response_ai.content.strip()
-
-                print(f"[OCR-AI] Respuesta del LLM ({len(raw_content)} chars): {raw_content[:300]}...")
-
-                # --- Robust JSON extraction ---
-                content_ai = raw_content
-
-                # Strip markdown code fences if present
-                if "```json" in content_ai:
-                    content_ai = content_ai.split("```json")[-1].split("```")[0].strip()
-                elif "```" in content_ai:
-                    parts = content_ai.split("```")
-                    # Find the part that contains a JSON object
-                    for part in parts:
-                        part = part.strip()
-                        if part.startswith("{") or part.startswith("["):
-                            content_ai = part
-                            break
-
-                # Extract JSON object boundaries
-                start = content_ai.find('{')
-                end = content_ai.rfind('}')
-                if start != -1 and end != -1 and end > start:
-                    content_ai = content_ai[start:end + 1]
-                else:
-                    raise ValueError(f"No se encontro un objeto JSON valido en la respuesta. Primeros 500 chars: {raw_content[:500]}")
-
-                ai_data = json.loads(content_ai)
-                parsed_actions = ai_data.get("actions", [])
-                ai_message = ai_data.get("message", ai_message)
-
-                print(f"[OCR-AI] Extraccion exitosa: {len(parsed_actions)} acciones encontradas para {filename}")
-
-                if not parsed_actions:
-                    print(f"[OCR-AI] ADVERTENCIA: El LLM retorno 0 acciones. Respuesta completa:\n{raw_content}")
-                    ai_message = "El analisis finalizo pero no se extrajeron registros. Verifica que el documento sea una TRD valida."
-
-            except json.JSONDecodeError as json_err:
-                print(f"[OCR-AI] Error JSON en respuesta: {json_err}")
-                print(f"[OCR-AI] Contenido que fallo el parse: {content_ai[:800]}")
-                ai_message = f"Error al interpretar la respuesta de la IA (JSON invalido): {str(json_err)}"
-            except Exception as ai_err:
-                print(f"[OCR-AI] Error en analisis IA: {type(ai_err).__name__}: {ai_err}")
-                ai_message = f"Error en analisis IA: {str(ai_err)}"
+            print(f"[OCR-AI] Iniciando extracción TRD — {len(full_text)} chars, {len(images_base64)} imágenes — {filename}")
+            parsed_actions, ai_message = await _analyze_trd_ai_smart(full_text, images_base64, llm)
+            print(f"[OCR-AI] Resultado final: {len(parsed_actions)} registros — {filename}")
 
             # --- FASE FINAL: Guardar todo ---
             final_status = "pending_verification"
@@ -2202,6 +2262,11 @@ async def analyze_trd(
         for item in (existing or []):
             meta = item.get("metadata", {})
             if meta.get("file_hash") == file_hash and meta.get("status") in ("processing_ocr", "pending_verification"):
+                # No reutilizar si está en pending_verification sin acciones: significa que
+                # la extracción anterior falló y debe reprocesarse con el nuevo código.
+                if meta.get("status") == "pending_verification" and not meta.get("actions"):
+                    print(f" [INFO] Sesión previa vacía encontrada — forzando reprocesamiento: {item['id']}")
+                    continue
                 print(f" [INFO] Reusando sesión activa DynamoDB: {item['id']}")
                 return {
                     "import_id": item["id"],
