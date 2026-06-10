@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Download, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { FileText, Download, Info, ZoomIn, ZoomOut, RotateCcw, ChevronDown } from "lucide-react";
 
 /**
  * TRDGenerator — Formato Oficial Acuerdo 001 de 2024
@@ -32,13 +32,23 @@ export default function TRDGenerator({
   const ZOOM_MIN  = 50;
   const ZOOM_MAX  = 150;
 
-  const handleDepChange = (e) => {
-    const value = e.target.value;
-    if (value === "TODAS") { onSelectDependencia(["TODAS"]); return; }
-    let current = [...selectedPrintDependencias];
-    if (current.includes("TODAS")) current = [];
-    if (current.includes(value)) current = current.filter((d) => d !== value);
-    else current.push(value);
+  const [depDropdownOpen, setDepDropdownOpen] = React.useState(false);
+  const depDropdownRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!depDropdownOpen) return;
+    const handle = (e) => {
+      if (depDropdownRef.current && !depDropdownRef.current.contains(e.target))
+        setDepDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [depDropdownOpen]);
+
+  const toggleDep = (dep) => {
+    let current = selectedPrintDependencias.includes("TODAS") ? [] : [...selectedPrintDependencias];
+    if (current.includes(dep)) current = current.filter((d) => d !== dep);
+    else current.push(dep);
     onSelectDependencia(current.length === 0 ? ["TODAS"] : current);
   };
 
@@ -187,24 +197,50 @@ export default function TRDGenerator({
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 relative" ref={depDropdownRef}>
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
               Dependencias a imprimir
             </span>
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-              <select
-                value={selectedPrintDependencias.length === 1 && !selectedPrintDependencias.includes("TODAS") ? selectedPrintDependencias[0] : ""}
-                onChange={handleDepChange}
-                className="text-[11px] font-bold bg-transparent text-slate-700 outline-none w-52 truncate cursor-pointer"
-              >
-                <option value="TODAS">— TODAS LAS DEPENDENCIAS —</option>
+            <button
+              onClick={() => setDepDropdownOpen((o) => !o)}
+              className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 w-56 hover:bg-slate-100 transition-colors"
+            >
+              <span className="flex-1 text-left text-[11px] font-bold text-slate-700 truncate">
+                {selectedPrintDependencias.includes("TODAS")
+                  ? "— TODAS —"
+                  : `${selectedPrintDependencias.length} seleccionada(s)`}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 text-slate-500 shrink-0 transition-transform duration-150 ${depDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {depDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 max-h-72 overflow-y-auto">
+                {/* Opción "Todas" */}
+                <label className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintDependencias.includes("TODAS")}
+                    onChange={() => onSelectDependencia(["TODAS"])}
+                    className="accent-red-600 h-3.5 w-3.5"
+                  />
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-wide">
+                    Todas las dependencias
+                  </span>
+                </label>
+
                 {availableDependencias.map((dep) => (
-                  <option key={dep} value={dep}>
-                    {selectedPrintDependencias.includes(dep) ? "✓ " : ""}{dep}
-                  </option>
+                  <label key={dep} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedPrintDependencias.includes(dep)}
+                      onChange={() => toggleDep(dep)}
+                      className="accent-red-600 h-3.5 w-3.5 shrink-0"
+                    />
+                    <span className="text-[11px] text-slate-700 leading-tight">{dep}</span>
+                  </label>
                 ))}
-              </select>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* ── Zoom ── */}
@@ -514,7 +550,7 @@ export default function TRDGenerator({
                                 {sg.rows[0]?.procedimiento || ""}
                                 {sg.rows[0]?.actoAdmo && (
                                   <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#444" }}>
-                                    Acto admo.: {sg.rows[0].actoAdmo}
+                                    Acto administrativo:{sg.rows[0].actoAdmo}
                                   </div>
                                 )}
                               </td>
@@ -583,7 +619,7 @@ export default function TRDGenerator({
                                 {row.procedimiento || ""}
                                 {row.actoAdmo && (
                                   <div style={{ marginTop: "3px", fontSize: "6.5px", fontStyle: "italic", color: "#444" }}>
-                                    Acto admo.: {row.actoAdmo}
+                                    Acto administrativo:{row.actoAdmo}
                                   </div>
                                 )}
                               </td>

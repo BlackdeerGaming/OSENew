@@ -291,19 +291,6 @@ export default function FuncionModal({
             </div>
 
             {/* Row 4 */}
-            <div className="md:col-span-2">
-              <FormGroup label="Título de la Función" required error={errors.titulo}>
-                <input
-                  name="titulo"
-                  value={formData.titulo}
-                  onChange={handleChange}
-                  className={inputClass}
-                  placeholder="Ej. Dirigir, coordinar y controlar las políticas..."
-                />
-              </FormGroup>
-            </div>
-
-            {/* Row 5 */}
             <FormGroup label="Sigla (Dependencia)">
               <input
                 type="text"
@@ -324,15 +311,28 @@ export default function FuncionModal({
               />
             </FormGroup>
 
-            {/* Row 6 */}
+            {/* Row 5 */}
             <div className="md:col-span-2">
               <FormGroup label="Código de la Función">
-                <input 
-                  name="codigo_funcion" 
-                  value={formData.codigo_funcion || ""} 
-                  onChange={handleChange} 
-                  className={inputClass} 
-                  placeholder="Ej. F-001 (Opcional)" 
+                <input
+                  name="codigo_funcion"
+                  value={formData.codigo_funcion || ""}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="Ej. F-001 (Opcional)"
+                />
+              </FormGroup>
+            </div>
+
+            {/* Row 6 */}
+            <div className="md:col-span-2">
+              <FormGroup label="Título de la Función" required error={errors.titulo}>
+                <input
+                  name="titulo"
+                  value={formData.titulo}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="Ej. Dirigir, coordinar y controlar las políticas..."
                 />
               </FormGroup>
             </div>
@@ -340,12 +340,12 @@ export default function FuncionModal({
             {/* Row 7 */}
             <div className="md:col-span-2">
               <FormGroup label="Descripción">
-                <textarea 
-                  name="descripcion" 
-                  value={formData.descripcion || ""} 
-                  onChange={handleChange} 
-                  className={textareaClass} 
-                  placeholder="Detalles adicionales sobre la función administrativa..." 
+                <textarea
+                  name="descripcion"
+                  value={formData.descripcion || ""}
+                  onChange={handleChange}
+                  className={textareaClass}
+                  placeholder="Detalles adicionales sobre la función administrativa..."
                 />
               </FormGroup>
             </div>

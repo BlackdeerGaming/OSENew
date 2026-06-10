@@ -756,7 +756,7 @@ function App() {
   }, [selectedEntityId]);
 
   const [flowStep, setFlowStep] = useState(0);
-  const [isAgentOpen, setIsAgentOpen] = useState(window.innerWidth >= 1024);
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [selectedTrdIds, setSelectedTrdIds] = useState(new Set());
   
   // Chat State (Moved up to avoid ReferenceError in effects)
@@ -1547,10 +1547,8 @@ function App() {
   // Calculate TRD Rows globally with grouping to avoid duplicates
   const trdRows = React.useMemo(() => {
     const rawList = trdRecords || [];
-    // Grouping by unique combination of Dependency + Serie + Subserie
     const grouped = rawList.reduce((acc, record) => {
       const key = `${record.dependenciaId}-${record.serieId}-${record.subserieId || 'none'}`;
-      // Keep the most recent record if multiple exist for the same key
       if (!acc[key] || new Date(record.createdAt || 0) > new Date(acc[key].createdAt || 0)) {
         acc[key] = record;
       }

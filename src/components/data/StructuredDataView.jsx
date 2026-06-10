@@ -290,8 +290,16 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
 
       const depMatchesText = matchQ(dep, ['nombre', 'codigo', 'sigla', 'ciudad', 'departamento']);
 
-      // All series directly linked to this dependency (no TRD record required)
-      let seriesForDep = (series || []).filter(s => s.dependenciaId === dep.id);
+      // TRD records that list this dep as their dependencia (authoritative source)
+      const trdForDep = (trdRecords || []).filter(t => String(t.dependenciaId) === String(dep.id));
+
+      // Series IDs referenced in TRD records for this dep
+      const trdSerieIds = new Set(trdForDep.map(t => String(t.serieId)).filter(Boolean));
+
+      // Series: directly linked by dependenciaId OR referenced in a TRD record for this dep
+      let seriesForDep = (series || []).filter(s =>
+        String(s.dependenciaId) === String(dep.id) || trdSerieIds.has(String(s.id))
+      );
       if (targetSerie !== "ALL") {
         seriesForDep = seriesForDep.filter(s => normalizeText(s.nombre) === targetSerie);
       }
@@ -301,8 +309,17 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
       for (const serie of seriesForDep) {
         const serieMatchesText = matchQ(serie, ['nombre', 'codigo']);
 
-        // All subseries directly linked to this serie
-        let subsForSerie = (subseries || []).filter(ss => ss.serieId === serie.id);
+        // Subserie IDs referenced in TRD records for this dep + serie
+        const trdSubIds = new Set(
+          trdForDep
+            .filter(t => String(t.serieId) === String(serie.id) && t.subserieId)
+            .map(t => String(t.subserieId))
+        );
+
+        // Subseries: directly linked by serieId OR referenced in a TRD record
+        let subsForSerie = (subseries || []).filter(ss =>
+          String(ss.serieId) === String(serie.id) || trdSubIds.has(String(ss.id))
+        );
         if (targetSub !== "ALL") {
           subsForSerie = subsForSerie.filter(ss => normalizeText(ss.nombre) === targetSub);
           if (subsForSerie.length === 0) continue;
@@ -323,16 +340,16 @@ export default function StructuredDataView({ dependencias = [], series = [], sub
           continue; // nothing at or below serie level matches
         }
 
-        // Enrich subs with tiposDocumentales from TRD records when available
+        // Enrich subs with tiposDocumentales from TRD records
         const enrichedSubs = finalSubs.map(ss => {
-          const trd = (trdRecords || []).find(t =>
-            t.dependenciaId === dep.id && t.serieId === serie.id && t.subserieId === ss.id
+          const trd = trdForDep.find(t =>
+            String(t.serieId) === String(serie.id) && String(t.subserieId) === String(ss.id)
           );
           return { ...ss, tiposDocumentales: trd?.tiposDocumentales || [] };
         });
 
-        const trdForSerie = (trdRecords || []).find(t =>
-          t.dependenciaId === dep.id && t.serieId === serie.id && !t.subserieId
+        const trdForSerie = trdForDep.find(t =>
+          String(t.serieId) === String(serie.id) && !t.subserieId
         );
 
         matchedSeries.push({

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   FileText, Download, Plus, X, Trash2, Save, History, CheckCircle2,
   RotateCcw, ChevronDown, ChevronUp, Building2, Users, Table2,
-  AlertCircle, GripVertical, Eye, ClipboardList,
+  AlertCircle, GripVertical, Eye, ClipboardList, Loader2, RefreshCw,
 } from "lucide-react";
 import { handleExportPDFGeneral } from "../../utils/exportUtils";
 import API_BASE_URL from "../../config/api";
@@ -426,6 +426,24 @@ export default function ReportesManualesView({
   const [ccdPageSize, setCcdPageSize] = useState("a4");
   const [ccdFlatMode, setCcdFlatMode] = useState(false);
   const [ccdRows, setCcdRows] = useState([{ ...EMPTY_CCD_ROW }]);
+  const [ccdLoading, setCcdLoading] = useState(false);
+
+  const fetchCcdData = useCallback(async () => {
+    if (!activeEntityId) return;
+    setCcdLoading(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/trd/entity/${activeEntityId}/ccd-data`, {
+        headers: { Authorization: `Bearer ${currentUser?.token || ""}` },
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.rows?.length > 0) setCcdRows(data.rows);
+      }
+    } catch (_) {}
+    finally { setCcdLoading(false); }
+  }, [activeEntityId, currentUser]);
+
+  useEffect(() => { fetchCcdData(); }, [fetchCcdData]);
 
   const ccdPreviewData = useMemo(() => ({ rows: ccdRows }), [ccdRows]);
 
@@ -662,12 +680,25 @@ ${idx < mfSections.length - 1 ? '<div class="mf-page-break"></div>' : ""}`;
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold text-foreground">Filas del CCD <span className="text-muted-foreground font-normal">({ccdRows.length})</span></p>
-                    <button
-                      onClick={addCcdRow}
-                      className="text-xs text-primary font-bold flex items-center gap-1 hover:text-primary/80 transition-colors"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Añadir fila
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={fetchCcdData}
+                        disabled={ccdLoading}
+                        className="text-xs text-muted-foreground font-bold flex items-center gap-1 hover:text-foreground transition-colors disabled:opacity-50"
+                        title="Recargar desde TRD"
+                      >
+                        {ccdLoading
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <RefreshCw className="h-3.5 w-3.5" />}
+                        Actualizar
+                      </button>
+                      <button
+                        onClick={addCcdRow}
+                        className="text-xs text-primary font-bold flex items-center gap-1 hover:text-primary/80 transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Añadir fila
+                      </button>
+                    </div>
                   </div>
 
                   {ccdRows.map((row, i) => (
