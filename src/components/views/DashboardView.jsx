@@ -251,33 +251,34 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
 
       {/* Top Cards Indicator */}
       {showMetrics && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-700">
-          <StatsCard 
-            title="Documentos" 
-            value={stats.totalDocs} 
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-4 duration-700">
+          <StatsCard
+            title="Documentos"
+            value={stats.totalDocs}
             subtitle={stats.trend}
-            icon={FileText} 
+            icon={FileText}
             trend="up"
             isRefreshing={isRefreshing}
           />
-          <StatsCard 
-            title="Alertas Vencimiento" 
-            value={stats.expiredDocs} 
+          <StatsCard
+            title="Alertas Vencimiento"
+            value={stats.expiredDocs}
             subtitle="Tablas de Retención"
-            icon={AlertTriangle} 
+            icon={AlertTriangle}
             trend="down"
             alert={stats.expiredDocs > 0}
             isRefreshing={isRefreshing}
           />
           {iaAvailable && (
-            <StatsCard 
-              title="Consumo IA" 
-              value={stats.tokensUsed} 
+            <StatsCard
+              title="Consumo IA"
+              value={stats.tokensUsed}
               subtitle="Tokens procesados"
-              icon={BrainCircuit} 
+              icon={BrainCircuit}
               isRefreshing={isRefreshing}
             />
           )}
+          <QuotaWidget currentUser={currentUser} currentEntity={currentEntity} />
         </div>
       )}
 
@@ -377,8 +378,6 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                 <AnalysisWidget title="Insight" desc={isRefreshing ? "Calculando..." : recommendations[0].desc} type="success" />
               </div>
             )}
-
-            <QuotaWidget currentUser={currentUser} currentEntity={currentEntity} />
 
             {showActions && (
               <div className="flex items-center gap-2 overflow-x-auto animate-in fade-in duration-500">
