@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { HardDrive, Network, Zap, AlertTriangle, RefreshCw } from 'lucide-react';
+import { HardDrive, Network, Zap, AlertTriangle, RefreshCw, Infinity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import API_BASE_URL from '../../config/api';
 
@@ -18,9 +18,11 @@ const colorFor = (pct) => {
   return               { bar: 'bg-primary',    text: 'text-primary',   trackBg: 'bg-secondary' };
 };
 
-function QuotaBar({ icon: Icon, label, usedLabel, limitLabel, remainLabel, pct }) {
+function QuotaBar({ icon: Icon, label, usedLabel, limitLabel, remainLabel, pct, unlimited }) {
   const clamped = Math.min(100, Math.max(0, pct));
-  const { bar, text, trackBg } = colorFor(pct);
+  const { bar, text, trackBg } = unlimited
+    ? { bar: 'bg-primary/30', text: 'text-muted-foreground', trackBg: 'bg-secondary' }
+    : colorFor(pct);
 
   return (
     <div className="space-y-1.5">
@@ -39,16 +41,20 @@ function QuotaBar({ icon: Icon, label, usedLabel, limitLabel, remainLabel, pct }
       <div className={cn('h-1.5 w-full rounded-full overflow-hidden', trackBg)}>
         <div
           className={cn('h-full rounded-full transition-all duration-500', bar)}
-          style={{ width: `${clamped}%` }}
+          style={{ width: unlimited ? '0%' : `${clamped}%` }}
         />
       </div>
 
       <div className="flex items-center justify-between">
         <span className="text-[9px] text-muted-foreground">
-          {pct >= 100 ? 'Sin espacio disponible' : `Disponible: ${remainLabel}`}
+          {unlimited
+            ? 'Sin límite'
+            : pct >= 100
+              ? 'Sin espacio disponible'
+              : `Disponible: ${remainLabel}`}
         </span>
         <span className={cn('text-[9px] font-black', text)}>
-          {pct.toFixed(0)}%
+          {unlimited ? '∞' : `${pct.toFixed(0)}%`}
         </span>
       </div>
     </div>
@@ -83,13 +89,11 @@ export default function QuotaWidget({ currentUser, currentEntity }) {
   useEffect(() => { fetchQuota(); }, [fetchQuota]);
 
   if (loading && !quota) return null;
-  if (error || !quota || !quota.quota_enabled) return null;
+  if (error || !quota) return null;
 
-  const hasWarning = quota.dependency_pct >= 80 || quota.storage_pct >= 80;
-  const hasBlock   = quota.dependency_pct >= 100 || quota.storage_pct >= 100;
-  const showDeps    = quota.dependency_limit > 0;
-  const showStorage = quota.storage_limit_bytes > 0;
-  if (!showDeps && !showStorage) return null;
+  const isUnlimited = !quota.quota_enabled;
+  const hasWarning  = !isUnlimited && (quota.dependency_pct >= 80 || quota.storage_pct >= 80);
+  const hasBlock    = !isUnlimited && (quota.dependency_pct >= 100 || quota.storage_pct >= 100);
 
   return (
     <div className={cn(
@@ -103,8 +107,8 @@ export default function QuotaWidget({ currentUser, currentEntity }) {
         <div className="flex items-center gap-2.5">
           <div className={cn(
             'p-1.5 rounded-lg',
-            hasBlock   ? 'bg-rose-100  text-rose-500'  :
-            hasWarning ? 'bg-amber-100 text-amber-500' :
+            hasBlock   ? 'bg-rose-100   text-rose-500'   :
+            hasWarning ? 'bg-amber-100  text-amber-500'  :
                          'bg-primary/10 text-primary'
           )}>
             <Zap className="w-3.5 h-3.5" />
@@ -120,7 +124,12 @@ export default function QuotaWidget({ currentUser, currentEntity }) {
         </div>
 
         <div className="flex items-center gap-2">
-          {(hasWarning || hasBlock) && (
+          {isUnlimited ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-600">
+              <Infinity className="w-3 h-3" />
+              Ilimitado
+            </div>
+          ) : (hasWarning || hasBlock) && (
             <div className={cn(
               'flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider',
               hasBlock ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
@@ -142,26 +151,24 @@ export default function QuotaWidget({ currentUser, currentEntity }) {
 
       {/* Bars */}
       <div className="flex flex-col gap-3">
-        {showDeps && (
-          <QuotaBar
-            icon={Network}
-            label="Dependencias"
-            usedLabel={`${quota.dependency_count} dep.`}
-            limitLabel={`${quota.dependency_limit} dep.`}
-            remainLabel={`${quota.dependency_remaining ?? 0} dep.`}
-            pct={quota.dependency_pct}
-          />
-        )}
-        {showStorage && (
-          <QuotaBar
-            icon={HardDrive}
-            label="Almacenamiento"
-            usedLabel={fmtBytes(quota.storage_used_bytes)}
-            limitLabel={quota.storage_limit_fmt}
-            remainLabel={fmtBytes(quota.storage_remaining_bytes)}
-            pct={quota.storage_pct}
-          />
-        )}
+        <QuotaBar
+          icon={Network}
+          label="Dependencias"
+          usedLabel={`${quota.dependency_count} dep.`}
+          limitLabel={isUnlimited ? '∞' : `${quota.dependency_limit} dep.`}
+          remainLabel={`${quota.dependency_remaining ?? 0} dep.`}
+          pct={isUnlimited ? 0 : quota.dependency_pct}
+          unlimited={isUnlimited}
+        />
+        <QuotaBar
+          icon={HardDrive}
+          label="Almacenamiento"
+          usedLabel={fmtBytes(quota.storage_used_bytes)}
+          limitLabel={isUnlimited ? '∞' : quota.storage_limit_fmt}
+          remainLabel={fmtBytes(quota.storage_remaining_bytes ?? 0)}
+          pct={isUnlimited ? 0 : quota.storage_pct}
+          unlimited={isUnlimited}
+        />
       </div>
     </div>
   );
