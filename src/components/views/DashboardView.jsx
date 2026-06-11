@@ -86,15 +86,22 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
     setIsTyping(true);
 
     try {
+      // Send last 8 messages as history for conversational context
+      const history = messages.slice(-8).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content || '',
+      }));
+
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${currentUser?.token}`
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           query,
-          entidadId: currentEntity?.id 
+          entidadId: currentEntity?.id,
+          history,
         })
       });
 

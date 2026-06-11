@@ -457,6 +457,8 @@ class ChatRequest(BaseModel):
 
     entidadId: str | None = None
 
+    history: list[dict] = []
+
 
 
 class ActivityLogRequest(BaseModel):
@@ -969,30 +971,39 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
             
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         docs = text_splitter.create_documents([cleaned_text])
-        
-        for i, doc in enumerate(docs):
-            doc.metadata = {
-                "source": filename,
-                "chunk": i,
-                "entidad_id": entidad or "",
-                "file_url": file_url or "",
-                "status": "success",
-                "type": "rag_chunk",
-                "created_at": datetime.now().isoformat()
-            }
-            
-        # Guardar documento completo en DynamoDB (entity-partitioned)
-        full_text = "\n\n".join(doc.page_content for doc in docs)
+
         rag_doc_id = doc_id or str(uuid.uuid4())
         entity_pk = f"ENTITY#{entidad}" if entidad and not entidad.startswith("ENTITY#") else (entidad or "GLOBAL")
+        now_iso = datetime.now().isoformat()
+
+        # Store each chunk as a separate DynamoDB item for granular retrieval
+        for i, doc in enumerate(docs):
+            await db.put_item("RagDocuments", {
+                "PK": entity_pk,
+                "SK": f"CHUNK#{rag_doc_id}#{i:04d}",
+                "id": f"{rag_doc_id}#{i:04d}",
+                "doc_id": rag_doc_id,
+                "chunk_index": i,
+                "content": doc.page_content,
+                "metadata": {
+                    "source": filename,
+                    "chunk": i,
+                    "entidad_id": entidad or "",
+                    "file_url": file_url or "",
+                    "type": "rag_chunk",
+                    "created_at": now_iso,
+                }
+            })
+
+        # Store metadata record (no full content — chunks hold the text)
         await db.put_item("RagDocuments", {
             "PK": entity_pk,
             "SK": f"UPLOAD#{rag_doc_id}",
             "id": rag_doc_id,
             "filename": filename,
             "file_size_bytes": file_size_bytes,
-            "content": full_text,
-            "created_at": datetime.now().isoformat(),
+            "chunk_count": len(docs),
+            "created_at": now_iso,
             "metadata": {
                 "source": filename,
                 "entidad_id": entidad or "",
@@ -1001,10 +1012,10 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
                 "type": "rag_document",
                 "chunk_count": len(docs),
                 "file_size_bytes": file_size_bytes,
-                "created_at": datetime.now().isoformat(),
+                "created_at": now_iso,
             }
         })
-        print(f"RAG BACKGROUND: Documento indexado en DynamoDB: {filename} ({len(docs)} chunks, {file_size_bytes} bytes).")
+        print(f"RAG BACKGROUND: Indexado {filename} — {len(docs)} chunks en DynamoDB.")
     except Exception as e:
         print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")
 
@@ -2554,48 +2565,64 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
 
 
+    # Spanish stopwords for keyword scoring
+    _STOPWORDS = {
+        'de','la','el','en','y','a','que','es','se','los','las','un','una','con',
+        'por','para','como','del','al','este','esta','su','sus','lo','mas','pero',
+        'si','no','o','le','me','mi','te','tu','nos','fue','son','han','hay','ser',
+        'estar','tiene','tienen','cada','todo','todos','cual','cuales','como','donde',
+    }
+
+    def _score(item: dict, q: str) -> float:
+        content = (item.get("content") or "").lower()
+        words = {w for w in re.sub(r'[^\w\s]', '', q.lower()).split() if w not in _STOPWORDS and len(w) > 2}
+        if not words:
+            return 1.0
+        return sum(1 for w in words if w in content) / len(words)
+
     try:
 
         entidad_actual = user.get("entity_id") or "GLOBAL"
 
-        
+        # 1. Retrieve all RAG items for entity (CHUNK# from new docs, UPLOAD# legacy with content)
+        all_items = await db.query_by_entity("RagDocuments", entidad_actual)
 
-        # 1. Recuperar contexto de DynamoDB
+        if not all_items:
+            all_items = await db.query_by_entity("RagDocuments", "GLOBAL")
 
-        chunks = await db.query_by_entity("RagDocuments", entidad_actual)
+        # Keep only actual document content items (not TRD imports or metadata-only records)
+        content_items = [
+            item for item in all_items
+            if item.get("content") and len(item.get("content", "")) > 50
+            and item.get("SK", "").startswith(("CHUNK#", "UPLOAD#"))
+        ]
 
-        
+        # 2. Score by keyword relevance, take top 15
+        scored = sorted(content_items, key=lambda x: _score(x, request.query), reverse=True)
+        top_items = scored[:15] if scored else []
 
-        if not chunks:
+        # If all scores are zero (generic question), take first 10 by recency
+        if not any(_score(i, request.query) > 0 for i in top_items):
+            top_items = sorted(content_items, key=lambda x: x.get("metadata", {}).get("created_at", ""), reverse=True)[:10]
 
-            # Reintento con GLOBAL
+        # 3. Build context_docs for rag_query (cap each chunk at 1400 chars)
+        context_docs = [
+            {
+                "content": item.get("content", "")[:1400],
+                "source": (item.get("metadata") or {}).get("source") or item.get("filename") or "Documento",
+                "chunk": item.get("chunk_index", (item.get("metadata") or {}).get("chunk", "")),
+            }
+            for item in top_items
+        ]
 
-            chunks = await db.query_by_entity("RagDocuments", "GLOBAL")
+        # 4. Query with history
+        answer = await ai.rag_query(request.query, context_docs, entidad_actual, request.history)
 
-
-
-        context_texts = [c.get("content", "") for c in chunks]
-
-        
-
-        # 2. Query RAG usando OpenRouter
-
-        answer = await ai.rag_query(request.query, context_texts, entidad_actual)
-
-        
-
-        # Extraer fuentes nicas
-
-        sources = list(set([c.get("metadata", {}).get("source", "Desconocido") for c in chunks]))
-
-        
+        sources = list(dict.fromkeys(d["source"] for d in context_docs if d["source"]))
 
         return {
-
             "answer": answer,
-
-            "sources": sources[:5]
-
+            "sources": sources[:5],
         }
 
     except Exception as e:
