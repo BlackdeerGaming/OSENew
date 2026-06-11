@@ -298,6 +298,14 @@ from .aws.cognito_auth import cognito
 
 from .aws.s3_storage import s3_client
 
+from .quota import (
+    check_storage_quota,
+    increment_storage_used,
+    get_quota_status,
+    recalculate_dependency_count,
+    recalculate_storage_used,
+)
+
 
 
 #  FastAPI App 
@@ -844,6 +852,14 @@ class EntityCreate(BaseModel):
     maxUsuarios: int | None = 10
     maxDependencias: int | None = 20
     maxProyectos: int | None = 5
+    # Quota system
+    quota_enabled: bool = False
+    quota_type: str = "unlimited"          # "storage" | "dependencies" | "both" | "unlimited"
+    storage_limit_bytes: int | None = None
+    storage_used_bytes: int | None = 0
+    dependency_limit: int | None = None    # overrides maxDependencias when set
+    dependency_count: int | None = 0
+    plan_name: str | None = "Free"
 
 class PasswordResetRequest(BaseModel):
     email: str
@@ -911,7 +927,7 @@ def add_activity_log(message: str, entidad_id: str = None, user_name: str = "Sis
     except Exception as e:
         print(f" [LOG ERROR] {e}")
 
-async def index_document_rag(doc_id: str | None, content: bytes, filename: str, entidad: str, file_url: str):
+async def index_document_rag(doc_id: str | None, content: bytes, filename: str, entidad: str, file_url: str, file_size_bytes: int = 0):
     """
     Background Task: Extrae texto (Digital o Visual), realiza chunking y guarda en DynamoDB (entity-partitioned).
     """
@@ -974,6 +990,7 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
             "SK": f"UPLOAD#{rag_doc_id}",
             "id": rag_doc_id,
             "filename": filename,
+            "file_size_bytes": file_size_bytes,
             "content": full_text,
             "created_at": datetime.now().isoformat(),
             "metadata": {
@@ -983,10 +1000,11 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
                 "status": "success",
                 "type": "rag_document",
                 "chunk_count": len(docs),
+                "file_size_bytes": file_size_bytes,
                 "created_at": datetime.now().isoformat(),
             }
         })
-        print(f"RAG BACKGROUND: ✨ Documento indexado en DynamoDB: {filename} ({len(docs)} chunks).")
+        print(f"RAG BACKGROUND: Documento indexado en DynamoDB: {filename} ({len(docs)} chunks, {file_size_bytes} bytes).")
     except Exception as e:
         print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")
 
@@ -2225,6 +2243,45 @@ async def delete_entity(entity_id: str, user: dict = Depends(require_super_admin
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class QuotaUpdate(BaseModel):
+    quota_enabled: bool | None = None
+    quota_type: str | None = None          # "storage" | "dependencies" | "both" | "unlimited"
+    storage_limit_bytes: int | None = None
+    dependency_limit: int | None = None
+    plan_name: str | None = None
+
+@router.get("/entities/{entity_id}/quota")
+async def get_entity_quota_endpoint(entity_id: str, user: dict = Depends(get_current_user)):
+    """Returns current quota usage and limits for an entity."""
+    if user.get("role") != SUPERADMIN_ROLE:
+        allowed = (user.get("allowed_entities") or []) + [user.get("entity_id")]
+        if entity_id not in allowed:
+            raise HTTPException(status_code=403, detail="No autorizado")
+    return await get_quota_status(entity_id)
+
+@router.put("/admin/entities/{entity_id}/quota")
+async def set_entity_quota(entity_id: str, req: QuotaUpdate, user: dict = Depends(require_super_admin)):
+    """Superadmin sets quota configuration for an entity."""
+    updates = {k: v for k, v in req.dict().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    await db.update_item("entities", f"ENTITY#{entity_id}", "METADATA", updates)
+    return await get_quota_status(entity_id)
+
+@router.post("/admin/entities/{entity_id}/quota/recalculate")
+async def recalculate_entity_quota(entity_id: str, user: dict = Depends(require_super_admin)):
+    """Recount dependency_count and storage_used_bytes from live DynamoDB records.
+    Use to repair counters that became inconsistent."""
+    dep_count  = await recalculate_dependency_count(entity_id)
+    stor_bytes = await recalculate_storage_used(entity_id)
+    return {
+        "status": "ok",
+        "entity_id": entity_id,
+        "dependency_count": dep_count,
+        "storage_used_bytes": stor_bytes,
+        "message": f"Recalculado: {dep_count} dependencias, {stor_bytes} bytes de almacenamiento.",
+    }
+
 @router.post("/entities/upload-logo")
 async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     """Sube un logo a S3 y devuelve URL presignada (24 h) + key para renovar."""
@@ -2300,6 +2357,11 @@ async def analyze_trd(
                 status_code=403,
                 detail="No tienes permiso para importar datos en esta entidad."
             )
+
+    # Storage quota check — TRD files are processed in memory (not stored in S3),
+    # but we still validate the file size to detect oversized uploads early.
+    # The file does NOT count toward storage_used_bytes since nothing is written to S3.
+    await check_storage_quota(entidad_actual, 0)  # only checks if entity is over limit already
 
     user_id = user.get("user_id")
     user_name = user.get("nombre", "Sistema")
@@ -2417,38 +2479,10 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
 
 
     content = await file.read()
+    file_size_bytes = len(content)
+    print(f" Tamaño recibido: {file_size_bytes / (1024*1024):.2f} MB")
 
-    print(f" Tamao recibido: {len(content) / (1024*1024):.2f} MB")
-
-
-
-    # 1. Guardar el archivo original en AWS S3
-
-    file_url = None
-
-    try:
-
-        clean_filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
-
-        entidad_path = user.get("entity_id", "global")
-
-        storage_path = f"{entidad_path}/rag-uploads/{clean_filename}"
-
-        
-
-        await s3_client.upload_file(content, storage_path, "application/pdf")
-
-        file_url = await s3_client.get_download_url(storage_path)
-
-        print(f"  PDF subido a S3: {file_url}")
-
-    except Exception as e:
-
-        print(f"  Error subiendo PDF a S3: {e}")
-
-
-
-    # Determine and validate entity for the document
+    # Determine and validate entity BEFORE doing any S3 work
     user_role = user.get("role")
     user_entity = user.get("entity_id")
     allowed_entities = user.get("allowed_entities") or []
@@ -2456,27 +2490,37 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
     if user_role == SUPERADMIN_ROLE:
         entidad_final = entidad_id or user_entity
     else:
-        # Non-superadmin: must upload to an entity they are assigned to
         entidad_final = entidad_id or user_entity
         if entidad_final and entidad_final not in ([user_entity] + list(allowed_entities)):
             raise HTTPException(status_code=403, detail="No tienes permiso para subir documentos a esta entidad")
         if not entidad_final:
             raise HTTPException(status_code=400, detail="No hay entidad activa seleccionada")
 
+    # Storage quota check — before any S3 upload
+    await check_storage_quota(entidad_final, file_size_bytes)
 
+    # 1. Guardar el archivo original en AWS S3 (entity-scoped path)
+    file_url = None
+    doc_id = str(uuid.uuid4())
+    try:
+        clean_filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
+        storage_path = f"entities/{entidad_final}/documents/{doc_id}/{clean_filename}"
+        await s3_client.upload_file(content, storage_path, "application/pdf")
+        file_url = await s3_client.get_download_url(storage_path)
+        print(f"  PDF subido a S3: {storage_path}")
+        # Increment storage counter synchronously so the next upload sees the correct usage
+        await increment_storage_used(entidad_final, file_size_bytes)
+    except Exception as e:
+        print(f"  Error subiendo PDF a S3: {e}")
 
-    # En lugar de bloquear, lo delegamos a una tarea de fondo
-
-    background_tasks.add_task(index_document_rag, None, content, file.filename, entidad_final, file_url)
-
-
+    # Pass file_size and doc_id to the background indexer so it can store them in DynamoDB
+    background_tasks.add_task(
+        index_document_rag, doc_id, content, file.filename, entidad_final, file_url, file_size_bytes
+    )
 
     return {
-
-        "message": f"PDF '{file.filename}' recibido. Se esta indexando en segundo plano.",
-
-        "status": "indexing"
-
+        "message": f"PDF '{file.filename}' recibido. Se está indexando en segundo plano.",
+        "status": "indexing",
     }
 
 
@@ -2699,15 +2743,17 @@ async def delete_rag_document(
 
         item = None
 
-        # ── Intento 1: lookup directo con PK/SK (rápido, confiable) ──────────
+        # ── Intento 1: lookup directo con PK/SK — prueba IMPORT# luego UPLOAD# ──
         entity_hint = entidad_id or user_entity
         if entity_hint:
             pk_hint = f"ENTITY#{entity_hint}"
-            sk_hint = f"IMPORT#{doc_id}"
-            try:
-                item = await db.get_item("RagDocuments", pk_hint, sk_hint)
-            except Exception:
-                item = None
+            for sk_prefix in (f"IMPORT#{doc_id}", f"UPLOAD#{doc_id}"):
+                try:
+                    item = await db.get_item("RagDocuments", pk_hint, sk_prefix)
+                    if item:
+                        break
+                except Exception:
+                    pass
 
         # ── Intento 2: scan completo como respaldo ────────────────────────────
         if not item:
@@ -2720,25 +2766,45 @@ async def delete_rag_document(
             return {"status": "success", "message": "Documento ya eliminado o no encontrado."}
 
         meta = item.get("metadata") or {}
-        item_entidad_id = meta.get("entidad_id")
+        item_entidad_id = meta.get("entidad_id") or (str(item.get("PK", "")).replace("ENTITY#", "") or None)
         source = meta.get("source")
+        is_upload_record = str(item.get("SK", "")).startswith("UPLOAD#")
 
         if user_role != SUPERADMIN_ROLE:
             if item_entidad_id and str(item_entidad_id) != str(user_entity):
                 raise HTTPException(403, "No tienes permiso para eliminar documentos de otra entidad")
 
+        # ── Calcular bytes que se liberarán (solo para UPLOAD# records) ───────
+        freed_bytes = 0
+        if is_upload_record:
+            size = item.get("file_size_bytes") or meta.get("file_size_bytes") or 0
+            freed_bytes = int(size)
+
         # ── Eliminar el ítem y todos los relacionados por source ──────────────
         effective_entity = item_entidad_id or entity_hint
+        sk_prefix_for_query = "UPLOAD#" if is_upload_record else "IMPORT#"
         if source and effective_entity:
             pk_val = f"ENTITY#{effective_entity}"
-            all_items = await db.query_by_entity("RagDocuments", pk_val, sk_prefix="IMPORT#")
+            all_items = await db.query_by_entity("RagDocuments", pk_val, sk_prefix=sk_prefix_for_query)
             related = [i for i in all_items if (i.get("metadata") or {}).get("source") == source]
             for rel in related:
                 table.delete_item(Key={"PK": rel["PK"], "SK": rel["SK"]})
+                if is_upload_record:
+                    extra_size = rel.get("file_size_bytes") or (rel.get("metadata") or {}).get("file_size_bytes") or 0
+                    if rel.get("id") != item.get("id"):  # don't double-count the primary item
+                        freed_bytes += int(extra_size)
             print(f"[DELETE] Eliminados {len(related)} ítem(s) con source='{source}' en entidad {effective_entity}")
         else:
             table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
             print(f"[DELETE] Eliminado ítem individual: {item.get('PK')}/{item.get('SK')}")
+
+        # ── Decrementar contador de almacenamiento ────────────────────────────
+        if freed_bytes > 0 and effective_entity:
+            try:
+                await increment_storage_used(effective_entity, -freed_bytes)
+                print(f"[DELETE] Liberados {freed_bytes} bytes de almacenamiento para entidad {effective_entity}")
+            except Exception as e:
+                print(f"[DELETE] Error actualizando contador de almacenamiento: {e}")
 
         return {"status": "success", "message": f"Documento {source or doc_id} eliminado correctamente."}
 

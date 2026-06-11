@@ -7,6 +7,7 @@ from datetime import datetime
 from .permissions import get_current_user, require_entity_admin, require_super_admin
 from .aws.dynamo_db import db
 from .db import llm
+from .quota import check_dependency_quota, increment_dependency_count
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -120,6 +121,8 @@ async def create_dependencia_entity(entity_id: str, payload: DependenciaCreate, 
             if not payload.id or str(dep.get("id")) != str(payload.id):
                 raise HTTPException(status_code=400, detail=f"Ya existe una dependencia con el código '{clean_codigo}' en esta entidad. Usa un código diferente.")
 
+    await check_dependency_quota(entity_id)
+
     dep_id = payload.id if payload.id else str(uuid.uuid4())
     now = datetime.now().isoformat()
     item = payload.dict()
@@ -133,6 +136,7 @@ async def create_dependencia_entity(entity_id: str, payload: DependenciaCreate, 
         "updated_at": now,
     })
     await db.put_item("dependencias", item)
+    await increment_dependency_count(entity_id, 1)
     return _strip_keys(item)
 
 @router.get("/entity/{entity_id}/dependencias", response_model=List[dict])
@@ -217,7 +221,10 @@ async def delete_dependencia_entity(entity_id: str, dep_id: str, user: dict = De
         pk = _epk(entity_id)
         sk = f"DEP#{dep_id}"
         await db.delete_item("dependencias", pk, sk)
+        await increment_dependency_count(entity_id, -1)
         return {"status": "deleted", "id": dep_id}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error deleting dependencia: {e}")
         raise HTTPException(status_code=500, detail=f"Error al eliminar dependencia: {str(e)}")
