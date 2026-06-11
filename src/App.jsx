@@ -1246,76 +1246,55 @@ function App() {
 
   const handleUserMessage = (text) => {
     const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const userMsg = { id: requestId, sender: 'user', text: text };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [...prev, { id: requestId, sender: 'user', text }]);
     setCurrentOptions([]);
-    
-    if (['dependencias', 'series', 'subseries', 'datos', 'trd', 'orgchart', 'trdform'].includes(activeModule)) {
-       simulateAgentResponse("Analizando solicitud y preparando sincronización...");
-       
-       const context = { dependencias, series, subseries, trdRecords, entidades: userEntities };
-       const history = messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'agent', content: m.text }));
-       
-       fetch(`${API_BASE_URL}/agent-action`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${currentUser?.token}` 
-          },
-          body: JSON.stringify({ prompt: text, context, history })
-       })
-       .then(res => res.json())
-       .then(async data => {
-          // Si es una consulta (QUERY), mostramos el panel de resultados
-          if (data.intent === 'QUERY') {
-            setAiQueryResult({
-              title: "Resultado de Consulta Orianna",
-              content: data.message,
-              data: data.data || []
-            });
-            setActiveModule('ai-result');
-            simulateAgentResponse(data.message || "He preparado la información que solicitaste en el panel central.");
-            return;
-          }
 
-          if (data.actions?.length > 0) {
-             try {
-               await executeAgentActions(data.actions);
-               simulateAgentResponse(data.message || "Cambios guardados y sincronizados correctamente en la nube. ☁️");
-             } catch (e) {
-               setModalStatus({ isOpen: true, type: 'error', message: "Error al aplicar cambios automáticos en la nube." });
-               simulateAgentResponse("Se realizaron cambios locales, pero hubo un error al sincronizar con la nube.");
-             }
-          } else {
-             simulateAgentResponse(data.message || "No se identificaron acciones específicas.");
-          }
-          setFlowStep(0);
-          setActiveFormData({});
-       })
-       .catch((err) => {
-          console.error("Error en Orianna:", err);
-          simulateAgentResponse("Error de conexión con el motor de IA.");
-       });
-       
-       return; 
-    }
+    simulateAgentResponse("Analizando solicitud...");
 
-    let cleaned = text.trim();
-    cleaned = cleaned.replace(/^(creo que\s*)?(el nombre de la dependencia es|la (nueva )?dependencia se llama|la dependencia es|el nombre es|es|mi|se llama|quiero que se llame|llamada)\s+/gi, '').trim();
-    if (cleaned.length > 0) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    const context = { dependencias, series, subseries, trdRecords, entidades: userEntities };
+    const history = messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'agent', content: m.text }));
 
-    if (activeField) {
-      if (cleaned.toLowerCase() === 'no aplica' || cleaned.toLowerCase() === 'ninguna') cleaned = "";
-      setActiveFormData(prev => ({ ...prev, [activeField]: cleaned }));
-      
-      const nextStep = flowStep + 1;
-      setFlowStep(nextStep);
-      if (nextStep < currentFlow.length) {
-        simulateAgentResponse(`¡Anotado! ${currentFlow[nextStep].query}`);
-      } else {
-        simulateAgentResponse('¡Formulario completo! Revisa los datos y presiona "Guardar Registro" para subirlo a la nube.');
+    fetch(`${API_BASE_URL}/agent-action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentUser?.token}`
+      },
+      body: JSON.stringify({ prompt: text, context, history })
+    })
+    .then(res => res.json())
+    .then(async data => {
+      if (data.intent === 'QUERY') {
+        if (data.data?.length > 0) {
+          // Real query with results — show in panel
+          setAiQueryResult({ title: "Resultado de Consulta Orianna", content: data.message, data: data.data });
+          setActiveModule('ai-result');
+          simulateAgentResponse(data.message || "He preparado la información en el panel central.");
+        } else {
+          // Conversational step (asking for missing data) — reply in chat only
+          simulateAgentResponse(data.message || "¿Puedes darme más detalles?");
+        }
+        return;
       }
-    }
+
+      if (data.actions?.length > 0) {
+        try {
+          await executeAgentActions(data.actions);
+          simulateAgentResponse(data.message || "Cambios guardados y sincronizados correctamente en la nube. ☁️");
+        } catch (e) {
+          setModalStatus({ isOpen: true, type: 'error', message: "Error al aplicar cambios automáticos en la nube." });
+          simulateAgentResponse("Se realizaron cambios, pero hubo un error al sincronizar con la nube.");
+        }
+      } else {
+        simulateAgentResponse(data.message || "No se identificaron acciones específicas.");
+      }
+      setFlowStep(0);
+      setActiveFormData({});
+    })
+    .catch((err) => {
+      console.error("Error en Orianna:", err);
+      simulateAgentResponse("Error de conexión con el motor de IA. Intenta de nuevo.");
+    });
   };
 
   const handleSave = async () => {
