@@ -2474,12 +2474,13 @@ function App() {
               <LoadingOverlay isVisible={trdLoading && !isSynced} message="Cargando datos iniciales..." />
               <ErrorBoundary key={mainView}>
                 {mainView === 'dashboard' && (
-                  <DashboardView 
-                    stats={realStats} 
-                    searchQuery={globalSearchQuery} 
-                    currentUser={currentUser} 
-                    seriesCount={(series || []).length} 
-                    activityLogs={activityLogs} 
+                  <DashboardView
+                    stats={realStats}
+                    searchQuery={globalSearchQuery}
+                    currentUser={currentUser}
+                    currentEntity={currentEntity}
+                    seriesCount={(series || []).length}
+                    activityLogs={activityLogs}
                     trdRecords={trdRecords}
                     onDownloadPDF={handleExportTRD}
                     onRefresh={refreshDashboardData}
