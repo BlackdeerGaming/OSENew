@@ -1429,7 +1429,7 @@ def _ensure_entity_id(item: dict) -> dict:
         item["id"] = _normalize_entity_id(str(item["id"]))
     return item
 
-_S3_KEY_RE = re.compile(r"/(logos/[^?#]+)")
+_S3_KEY_RE = re.compile(r"/((?:entities/[^/]+/)?logos/[^?#]+)")
 
 async def _refresh_entity_logo(entity: dict) -> dict:
     """Devuelve la URL del logo a través del proxy del backend para evitar CORS de S3.
@@ -2283,12 +2283,22 @@ async def recalculate_entity_quota(entity_id: str, user: dict = Depends(require_
     }
 
 @router.post("/entities/upload-logo")
-async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Sube un logo a S3 y devuelve URL presignada (24 h) + key para renovar."""
+async def upload_entity_logo(
+    file: UploadFile = File(...),
+    entity_id: str = Form(""),
+    user: dict = Depends(get_current_user),
+):
+    """Sube un logo a S3 y devuelve URL presignada (24 h) + key para renovar.
+    Si entity_id está presente, el logo se guarda en entities/{entity_id}/logos/.
+    Si no (entidad nueva aún sin ID), se usa el prefijo plano logos/."""
     try:
         content = await file.read()
         ext = (file.filename or "logo.png").rsplit(".", 1)[-1].lower()
-        key = f"logos/logo_{int(time.time())}.{ext}"
+        clean_entity_id = entity_id.strip() if entity_id else ""
+        if clean_entity_id:
+            key = f"entities/{clean_entity_id}/logos/logo_{int(time.time())}.{ext}"
+        else:
+            key = f"logos/logo_{int(time.time())}.{ext}"
         await s3_client.upload_file(content, key, file.content_type or "image/png")
         # Devolver URL del proxy (sin CORS) en lugar de presigned URL directa a S3
         frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
@@ -2302,12 +2312,14 @@ async def upload_entity_logo(file: UploadFile = File(...), user: dict = Depends(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_LOGO_KEY_RE = re.compile(r"^(?:logos/|entities/[0-9a-f\-]{36}/logos/)[^/\s][^?#]*$")
+
 @router.get("/entities/logo-proxy")
 async def logo_proxy(key: str):
     """Sirve logos desde S3 a través del backend para evitar errores CORS en el browser.
     No requiere autenticación — los logos son activos visuales públicos de la entidad.
-    Seguridad: solo permite claves bajo el prefijo 'logos/'."""
-    if not key or not key.startswith("logos/"):
+    Seguridad: solo permite claves bajo logos/ o entities/{uuid}/logos/."""
+    if not key or not _LOGO_KEY_RE.match(key):
         raise HTTPException(status_code=400, detail="Clave de logo inválida")
     try:
         content, content_type = await s3_client.get_object_bytes(key)

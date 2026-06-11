@@ -58,6 +58,10 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
   const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, existing: null });
   const [pendingFile, setPendingFile] = useState(null);
 
+  // Quota pre-check state
+  const [quotaModal, setQuotaModal] = useState(null);
+  const pendingActionsRef = useRef(null);
+
   // fetchImports debe declararse ANTES de los useEffects que la referencian
   const fetchImports = useCallback(async () => {
     if (!currentUser?.token) {
@@ -381,38 +385,26 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
     });
   };
 
-  const handleCommit = async () => {
+  const executeCommit = async (finalActionsToRun) => {
     if (!currentPreviewImport) return;
-    
-    // Preparar las acciones finales (solo las seleccionadas y editadas)
-    const finalActionsToRun = localActions.filter((_, i) => selectedIndices.has(i));
-
-    if (finalActionsToRun.length === 0) {
-      alert("Debes seleccionar al menos un registro para integrar.");
-      return;
-    }
-
     try {
       setIsProcessingNew(true);
-      
-      // Update local state to 'integrating'
+
       setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'integrating' } : imp));
 
       if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Iniciando fase final de integración estructural.`);
-      
-      // 1. Ejecutar acciones en App state / Database (esto lanzará el modal global de progreso)
+
       if (onImportComplete) {
         await onImportComplete(finalActionsToRun);
       }
 
-      // 2. Marcar sesión como exitosa en la DB de RAG (trazabilidad)
       const resStatus = await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
-         method: 'PUT',
-         headers: { 
-           'Content-Type': 'application/json',
-           'Authorization': `Bearer ${currentUser?.token}`
-         },
-         body: JSON.stringify({ status: 'success' })
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
+        body: JSON.stringify({ status: 'success' })
       });
 
       if (!resStatus.ok) {
@@ -423,41 +415,82 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
 
       setPreviewImportId(null);
 
-      // Refresh TRD data so Dependencias/Series/Subseries/Tabla Final update immediately
       if (onRefreshData) {
         try { await onRefreshData(); } catch (_) {}
       }
-      // Refresh import session list to reflect 'success' status
       await fetchImports();
     } catch (err) {
       console.error("Error al integrar:", err);
       const detail = err.message || "Error desconocido";
-      
-      // Marcar como error en el estado local y DB para que el usuario pueda reintentar
+
       setImports(prev => prev.map(imp => imp.id === currentPreviewImport.id ? { ...imp, status: 'error', error_summary: detail } : imp));
-      
+
       if (addActivityLog) addActivityLog(`[${currentPreviewImport.id}] Error en integración: ${detail}`);
 
       try {
         await fetch(`${API_BASE_URL}/rag-documents/${currentPreviewImport.id}`, {
           method: 'PUT',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${currentUser?.token}`
           },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             status: 'error',
-            metadata: { ...currentPreviewImport.metadata, error_summary: detail } 
+            metadata: { ...currentPreviewImport.metadata, error_summary: detail }
           })
         });
       } catch (dbErr) {
         console.error("Error updating fail status in DB:", dbErr);
       }
-
-      // No mostramos el alert aquí porque executeAgentActions ya muestra el modal de error
     } finally {
       setIsProcessingNew(false);
     }
+  };
+
+  const handleCommit = async () => {
+    if (!currentPreviewImport) return;
+
+    const finalActionsToRun = localActions.filter((_, i) => selectedIndices.has(i));
+
+    if (finalActionsToRun.length === 0) {
+      alert("Debes seleccionar al menos un registro para integrar.");
+      return;
+    }
+
+    // Quota pre-check: count unique dependency names to estimate new deps
+    if (currentEntity?.id) {
+      try {
+        const uniqueDeps = new Set(
+          finalActionsToRun
+            .map(a => a.payload?.dependenciaNombre?.trim()?.toLowerCase())
+            .filter(Boolean)
+        );
+        const newDepCount = uniqueDeps.size;
+
+        const quotaRes = await fetch(`${API_BASE_URL}/entities/${currentEntity.id}/quota`, {
+          headers: {
+            Authorization: `Bearer ${currentUser?.token}`,
+            'x-entity-context': currentEntity.id,
+          },
+        });
+        if (quotaRes.ok) {
+          const quota = await quotaRes.json();
+          if (
+            quota.quota_enabled &&
+            quota.dependency_limit &&
+            quota.dependency_count + newDepCount > quota.dependency_limit
+          ) {
+            pendingActionsRef.current = finalActionsToRun;
+            setQuotaModal({ newDepCount, ...quota });
+            return;
+          }
+        }
+      } catch (_) {
+        // Quota check failure is non-blocking — proceed with import
+      }
+    }
+
+    await executeCommit(finalActionsToRun);
   };
 
   const handleExportPDF = () => {
@@ -1075,6 +1108,96 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                       </button>
                   </div>
               </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quota Pre-Check Warning Modal */}
+      <AnimatePresence>
+        {quotaModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100 flex flex-col"
+            >
+              <div className="bg-amber-600 p-8 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-12 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="h-14 w-14 bg-white/20 rounded-2xl flex items-center justify-center border-4 border-white/20">
+                    <AlertCircle className="h-8 w-8" />
+                  </div>
+                  <div className="flex flex-col">
+                    <h3 className="text-2xl font-black uppercase tracking-tighter italic">
+                      Límite de <span className="text-amber-200">Dependencias</span>
+                    </h3>
+                    <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mt-1">
+                      Cuota de la entidad en riesgo
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <p className="text-sm text-slate-500 leading-relaxed font-medium">
+                  Esta importación podría intentar crear hasta{' '}
+                  <span className="text-slate-900 font-black">
+                    {quotaModal.newDepCount} nueva{quotaModal.newDepCount !== 1 ? 's' : ''} dependencia{quotaModal.newDepCount !== 1 ? 's' : ''}
+                  </span>.
+                  Tu entidad ya tiene{' '}
+                  <span className="text-amber-600 font-black">
+                    {quotaModal.dependency_count} de {quotaModal.dependency_limit}
+                  </span>{' '}
+                  dependencias permitidas.
+                </p>
+
+                <div className="bg-amber-50 rounded-2xl p-5 border border-amber-100 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Uso actual</span>
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {quotaModal.dependency_count} / {quotaModal.dependency_limit}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-amber-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, quotaModal.dependency_pct)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-amber-700 font-bold">
+                    Espacio disponible: {quotaModal.dependency_remaining ?? 0} dependencia{(quotaModal.dependency_remaining ?? 0) !== 1 ? 's' : ''}
+                  </p>
+                </div>
+
+                <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                  Si las dependencias del documento ya existen en tu entidad, no se duplicarán y la importación podría completarse sin inconvenientes.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <button
+                    onClick={() => { setQuotaModal(null); pendingActionsRef.current = null; }}
+                    className="w-full py-4 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const actions = pendingActionsRef.current;
+                      setQuotaModal(null);
+                      pendingActionsRef.current = null;
+                      if (actions) await executeCommit(actions);
+                    }}
+                    className="w-full py-4 bg-amber-600 text-white hover:bg-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-amber-200 transition-all active:scale-95"
+                  >
+                    Importar de todas formas
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

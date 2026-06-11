@@ -167,6 +167,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
     setIsUploading(true);
     const body = new FormData();
     body.append('file', file);
+    if (formData.id) body.append('entity_id', formData.id);
     try {
       const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
         method: 'POST',
@@ -353,6 +354,7 @@ export default function EntitiesView({ entities, setEntities, currentUser }) {
     setIsUploading(true);
     const body = new FormData();
     body.append('file', file);
+    if (formData.id) body.append('entity_id', formData.id);
     try {
       const res = await fetch(`${API_BASE_URL}/entities/upload-logo`, {
         method: 'POST',

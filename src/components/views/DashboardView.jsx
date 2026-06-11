@@ -1,9 +1,10 @@
 import React from 'react';
-import { 
-  Activity, RefreshCw, FileText, AlertTriangle, BrainCircuit, 
-  Clock, Download, X, ChevronRight, FileDown 
+import {
+  Activity, RefreshCw, FileText, AlertTriangle, BrainCircuit,
+  Clock, Download, X, ChevronRight, FileDown
 } from 'lucide-react';
 import { LoadingOverlay, StatsSkeleton, SkeletonLine } from '../ui/LoadingOverlay';
+import QuotaWidget from '../ui/QuotaWidget';
 import API_BASE_URL from '../../config/api';
 import { cn } from "@/lib/utils";
 
@@ -376,6 +377,8 @@ export default function DashboardView({ stats, searchQuery, currentUser, seriesC
                 <AnalysisWidget title="Insight" desc={isRefreshing ? "Calculando..." : recommendations[0].desc} type="success" />
               </div>
             )}
+
+            <QuotaWidget currentUser={currentUser} currentEntity={currentEntity} />
 
             {showActions && (
               <div className="flex items-center gap-2 overflow-x-auto animate-in fade-in duration-500">
