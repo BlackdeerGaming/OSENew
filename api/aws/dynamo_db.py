@@ -59,6 +59,25 @@ class DynamoDBManager:
         response = table_obj.query(KeyConditionExpression=key_condition)
         return response.get("Items", [])
 
+    async def query_by_gsi(self, table: str, index_name: str, key_name: str, key_value: str,
+                           sk_name: Optional[str] = None, sk_value: Optional[str] = None) -> List[Dict]:
+        """Query a Global Secondary Index by partition key (and optional sort key)."""
+        table_obj = self.get_table(table)
+        key_condition = Key(key_name).eq(key_value)
+        if sk_name and sk_value:
+            key_condition &= Key(sk_name).eq(sk_value)
+        kwargs = {
+            "IndexName": index_name,
+            "KeyConditionExpression": key_condition,
+        }
+        items: List[Dict] = []
+        response = table_obj.query(**kwargs)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table_obj.query(ExclusiveStartKey=response["LastEvaluatedKey"], **kwargs)
+            items.extend(response.get("Items", []))
+        return items
+
     async def delete_item(self, table: str, pk_value: str, sk_value: Optional[str] = None):
         table_obj = self.get_table(table)
         key = {"PK": pk_value}

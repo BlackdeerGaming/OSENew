@@ -101,15 +101,23 @@ def require_super_admin(user: dict = Depends(get_current_user)):
     return user
 
 def require_entity_admin(user: dict, entity_id: str):
+    """Validates that the authenticated user can administer the given entity.
+
+    Accepts the user if:
+    - they are superadmin (global access), OR
+    - they have admin/administrador role AND the entity is their active entity
+      OR is in their allowed_entities list (multi-entity admins).
+    """
     if user.get('role') == 'superadmin':
         return True
     if user.get('role') not in ('administrador', 'admin'):
         raise HTTPException(status_code=403, detail='Insufficient role for this operation')
-    
-    jwt_entity = str(user.get('entity_id', '')).strip()
-    target_entity = str(entity_id).strip()
-    
-    if jwt_entity != target_entity:
-        raise HTTPException(status_code=403, detail='Cannot access other entity data')
-    return True
+
+    target = str(entity_id).strip()
+    active = str(user.get('entity_id', '')).strip()
+    allowed = [str(e).strip() for e in (user.get('allowed_entities') or []) if e]
+
+    if target == active or target in allowed:
+        return True
+    raise HTTPException(status_code=403, detail='Cannot access other entity data')
 

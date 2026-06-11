@@ -80,8 +80,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from supabase import create_client, Client
-import postgrest
 import json
 
 import uuid
@@ -93,8 +91,6 @@ from datetime import datetime, timedelta, timezone
 
 OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL    = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
-SUPABASE_URL        = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 IMAGE_MIN_SIZE         = 8000   # bytes
 RESEND_API_KEY         = os.getenv("RESEND_API_KEY")
 RESEND_FROM_EMAIL      = os.getenv("RESEND_FROM_EMAIL", "OSE IA <onboarding@resend.dev>")
@@ -107,7 +103,7 @@ OCR_MAX_VISION_IMAGES  = 5      # Max page images sent to LLM
 
 #  Inicializar Servicios compartidos (AWS DynamoDB, LLM, Embeddings)
 from boto3.dynamodb.conditions import Attr
-from .db import db, llm, embeddings, supabase_client
+from .db import db, llm, embeddings
 
 # --- CONFIGURACIÓN DE DISEÑO DE EMAILS ---
 BRAND_COLOR = "#09C8A2"
@@ -917,7 +913,7 @@ def add_activity_log(message: str, entidad_id: str = None, user_name: str = "Sis
 
 async def index_document_rag(doc_id: str | None, content: bytes, filename: str, entidad: str, file_url: str):
     """
-    Background Task: Extrae texto (Digital o Visual), realiza chunking y envía vectores a Supabase PgVector.
+    Background Task: Extrae texto (Digital o Visual), realiza chunking y guarda en DynamoDB (entity-partitioned).
     """
     print(f"--- RAG BACKGROUND: Iniciando indexacion semantica para {filename} ---")
 
@@ -969,20 +965,28 @@ async def index_document_rag(doc_id: str | None, content: bytes, filename: str, 
                 "created_at": datetime.now().isoformat()
             }
             
-        # Generar embeddings e insertar directamente a través del cliente de Supabase
-        texts = [doc.page_content for doc in docs]
-        embeds = await asyncio.to_thread(embeddings.embed_documents, texts)
-        
-        records = []
-        for doc, emb in zip(docs, embeds):
-            records.append({
-                "content": doc.page_content,
-                "metadata": doc.metadata,
-                "embedding": emb
-            })
-            
-        await asyncio.to_thread(supabase_client.table("rag_documents").insert(records).execute)
-        print(f"RAG BACKGROUND: ✨ Éxito indexando {filename} ({len(docs)} chunks).")
+        # Guardar documento completo en DynamoDB (entity-partitioned)
+        full_text = "\n\n".join(doc.page_content for doc in docs)
+        rag_doc_id = doc_id or str(uuid.uuid4())
+        entity_pk = f"ENTITY#{entidad}" if entidad and not entidad.startswith("ENTITY#") else (entidad or "GLOBAL")
+        await db.put_item("RagDocuments", {
+            "PK": entity_pk,
+            "SK": f"UPLOAD#{rag_doc_id}",
+            "id": rag_doc_id,
+            "filename": filename,
+            "content": full_text,
+            "created_at": datetime.now().isoformat(),
+            "metadata": {
+                "source": filename,
+                "entidad_id": entidad or "",
+                "file_url": file_url or "",
+                "status": "success",
+                "type": "rag_document",
+                "chunk_count": len(docs),
+                "created_at": datetime.now().isoformat(),
+            }
+        })
+        print(f"RAG BACKGROUND: ✨ Documento indexado en DynamoDB: {filename} ({len(docs)} chunks).")
     except Exception as e:
         print(f"RAG BACKGROUND ERROR: ⚠️ Falló indexación -> {e}")
 
@@ -1625,16 +1629,20 @@ async def delete_user_endpoint(user_id: str, user: dict = Depends(require_super_
 
 @router.get("/invitations")
 async def get_invitations(user: dict = Depends(get_current_user)):
-    """Lista las invitaciones (solo para Superadmin o filtrado por entidad)."""
+    """Lista las invitaciones — usa GSI entity-status-index para no hacer full-scan."""
     try:
         if user.get("role") == SUPERADMIN_ROLE:
             items = await db.scan_table("invitations")
         else:
             entity_id = user.get("entity_id")
             user_id = user.get("user_id")
-            all_invites = await db.scan_table("invitations")
-            # Filtro doble: Entidad + Creado por mí
-            items = [i for i in all_invites if i.get("entity_id") == entity_id and i.get("created_by") == user_id]
+            if not entity_id:
+                return []
+            # Query GSI instead of full-scan — returns only this entity's invitations
+            all_invites = await db.query_by_gsi(
+                "invitations", "entity-status-index", "entity_id", entity_id
+            )
+            items = [i for i in all_invites if i.get("created_by") == user_id]
         return items
     except Exception as e:
         print(f"Error listing invitations: {e}")
@@ -1642,27 +1650,28 @@ async def get_invitations(user: dict = Depends(get_current_user)):
 
 @router.get("/invitations/my")
 async def get_my_invitations(archived: bool = False, user: dict = Depends(get_current_user)):
-    """Lista las invitaciones para el usuario actual."""
+    """Lista las invitaciones para el usuario actual — usa GSI email-created_at-index."""
     email = user.get("email")
     user_id = user.get("user_id")
     if not email: return []
     try:
-        all_invites = await db.scan_table("invitations")
+        # Query GSI instead of full-scan — returns only invitations for this email
+        all_invites = await db.query_by_gsi(
+            "invitations", "email-created_at-index", "email", email
+        )
         all_entities = await db.scan_table("entities")
         entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
-        
+
         my_invites = []
         for i in all_invites:
-            # Filtro por destinatario (email o ID) Y por estado de archivado
             is_recipient = (i.get("email", "").lower() == email.lower() or i.get("recipient_user_id") == user_id)
             is_archived_match = (i.get("archived", False) == archived)
-            
+
             if is_recipient and is_archived_match:
                 if not i.get("entity_name"):
                     i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
                 my_invites.append(i)
-        
-        # Ordenar por fecha (más recientes primero)
+
         my_invites.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return my_invites
     except Exception as e:
@@ -1737,33 +1746,42 @@ async def create_invitation(req: InvitationCreate, user: dict = Depends(get_curr
 
 @router.get("/invitations/sent")
 async def get_sent_invitations(archived: bool = False, entity_id: str = None, user: dict = Depends(get_current_user)):
-    """Lista las invitaciones enviadas."""
-    print(f"DEBUG: get_sent_invitations - UserID: {user.get('user_id')}, Role: {user.get('role')}, EntityContext: {user.get('entity_id')}")
+    """Lista las invitaciones enviadas — usa GSI entity-status-index para admins."""
     try:
-        all_invites = await db.scan_table("invitations")
+        if user.get("role") == SUPERADMIN_ROLE:
+            if entity_id and entity_id != "all":
+                all_invites = await db.query_by_gsi(
+                    "invitations", "entity-status-index", "entity_id", entity_id
+                )
+            else:
+                all_invites = await db.scan_table("invitations")
+        else:
+            # Admins: query each of their allowed entities via GSI and merge
+            allowed_ids = list(user.get("allowed_entities") or [])
+            active = user.get("entity_id")
+            if active and active not in allowed_ids:
+                allowed_ids.insert(0, active)
+            filter_ids = [entity_id] if (entity_id and entity_id != "all") else allowed_ids
+            if not filter_ids:
+                return []
+            all_invites = []
+            for eid in filter_ids:
+                batch = await db.query_by_gsi(
+                    "invitations", "entity-status-index", "entity_id", eid
+                )
+                all_invites.extend(batch)
+            # Keep only invitations created by this user
+            user_id = user.get("user_id")
+            all_invites = [i for i in all_invites if i.get("created_by") == user_id]
+
+        all_invites = [i for i in all_invites if i.get("archived", False) == archived]
+
         all_entities = await db.scan_table("entities")
         entity_map = {e.get("id"): (e.get("razonSocial") or e.get("nombre") or "Entidad OSE") for e in all_entities}
-        
-        # Administradores solo ven sus PROPIAS invitaciones (de cualquiera de sus entidades permitidas)
-        if user.get("role") != SUPERADMIN_ROLE:
-            allowed_ids = user.get("allowed_entities", [])
-            if not allowed_ids:
-                main_id = user.get("entity_id")
-                allowed_ids = [main_id] if main_id else []
-            
-            all_invites = [i for i in all_invites if i.get("created_by") == user.get("user_id") and i.get("entity_id") in allowed_ids]
-            
-        if entity_id and entity_id != 'all':
-            all_invites = [i for i in all_invites if i.get("entity_id") == entity_id]
-            
-        # Filtrar por el campo booleano 'archived'
-        all_invites = [i for i in all_invites if i.get("archived", False) == archived]
-        
-        # Asegurar entity_name
         for i in all_invites:
             if not i.get("entity_name"):
                 i["entity_name"] = entity_map.get(i.get("entity_id"), "Entidad OSE")
-            
+
         return all_invites
     except Exception as e:
         print(f"Error fetching sent invitations: {e}")
@@ -2009,35 +2027,55 @@ async def respond_invitation(invite_id: str, req: RespondRequest, user: dict = D
                         user_data = matched[0]
                         user_pk = user_data.get("PK", user_pk)
 
-            if user_data:
-                # Ensure entity is in the user's allowed list
-                current_entities = list(user_data.get("entidadIds", []))
-                if entity_id and entity_id not in current_entities:
-                    current_entities.append(entity_id)
+            # Last resort: create a minimal profile so the entity assignment doesn't
+            # get silently dropped for users who authenticated via Cognito but whose
+            # DynamoDB record was never created (e.g. external identity provider paths).
+            if not user_data:
+                print(f"[INVITE_ACCEPT] No DynamoDB profile for {user.get('user_id')} — creating one on-the-fly")
+                user_data = {
+                    "PK": user_pk,
+                    "SK": user_sk,
+                    "id": user.get("user_id"),
+                    "email": user.get("email", ""),
+                    "nombre": user.get("name", user.get("given_name", "")),
+                    "apellido": user.get("family_name", ""),
+                    "role": "usuario",
+                    "perfil": "usuario",
+                    "isActivated": True,
+                    "iaDisponible": False,
+                    "created_at": datetime.now().isoformat(),
+                }
+                await db.put_item("users", user_data)
 
-                invited_role = invite.get("role", "usuario")
-                ia_enabled = invite.get("ia_disponible", False)
+            # Ensure entity is in the user's allowed list
+            current_entities = list(user_data.get("entidadIds", []))
+            if entity_id and entity_id not in current_entities:
+                current_entities.append(entity_id)
 
-                # Role priority: superadmin > administrador > usuario.
-                # Apply invited role when it is equal or higher than current role;
-                # never downgrade an already-elevated role.
-                role_rank = {"usuario": 0, "administrador": 1, "admin": 1, "superadmin": 2}
-                current_role = user_data.get("role", "usuario")
-                if role_rank.get(invited_role, 0) >= role_rank.get(current_role, 0):
-                    final_role = "administrador" if invited_role in ("admin", "administrador") else "usuario"
-                else:
-                    final_role = current_role
+            invited_role = invite.get("role", "usuario")
+            ia_enabled = invite.get("ia_disponible", False)
 
-                # Set primary entidadId when the user doesn't have one yet
-                primary_entity = user_data.get("entidadId") or entity_id
+            # Role priority: superadmin > administrador > usuario.
+            # Apply invited role when it is equal or higher than current role;
+            # never downgrade an already-elevated role.
+            role_rank = {"usuario": 0, "administrador": 1, "admin": 1, "superadmin": 2}
+            current_role = user_data.get("role", "usuario")
+            if role_rank.get(invited_role, 0) >= role_rank.get(current_role, 0):
+                final_role = "administrador" if invited_role in ("admin", "administrador") else "usuario"
+            else:
+                final_role = current_role
 
-                await db.update_item("users", user_pk, user_sk, {
-                    "entidadIds": current_entities,
-                    "entidadId": primary_entity,
-                    "role": final_role,
-                    "perfil": final_role,
-                    "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled
-                })
+            # Set primary entidadId when the user doesn't have one yet
+            primary_entity = user_data.get("entidadId") or entity_id
+
+            await db.update_item("users", user_pk, user_sk, {
+                "entidadIds": current_entities,
+                "entidadId": primary_entity,
+                "role": final_role,
+                "perfil": final_role,
+                "iaDisponible": user_data.get("iaDisponible", False) or ia_enabled
+            })
+            print(f"[INVITE_ACCEPT] User {user_pk} assigned to entity {entity_id} with role {final_role}")
                     
         return {"status": "ok", "message": f"Invitación {new_status} exitosamente"}
     except HTTPException as e:
@@ -2252,6 +2290,17 @@ async def analyze_trd(
             status_code=400,
             detail="No hay entidad activa seleccionada. Selecciona una entidad antes de importar una TRD."
         )
+
+    # Validate the caller is allowed to import into this entity
+    if user.get("role") != SUPERADMIN_ROLE:
+        allowed_ents = user.get("allowed_entities") or []
+        active_ent = user.get("entity_id")
+        if entidad_actual not in ([active_ent] + list(allowed_ents)):
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permiso para importar datos en esta entidad."
+            )
+
     user_id = user.get("user_id")
     user_name = user.get("nombre", "Sistema")
     pk_val = f"ENTITY#{entidad_actual}"
@@ -2399,9 +2448,20 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
 
 
 
-    # Determinar entidad para el documento
+    # Determine and validate entity for the document
+    user_role = user.get("role")
+    user_entity = user.get("entity_id")
+    allowed_entities = user.get("allowed_entities") or []
 
-    entidad_final = user.get("entity_id") if user.get("role") == ADMIN_ROLE else entidad_id
+    if user_role == SUPERADMIN_ROLE:
+        entidad_final = entidad_id or user_entity
+    else:
+        # Non-superadmin: must upload to an entity they are assigned to
+        entidad_final = entidad_id or user_entity
+        if entidad_final and entidad_final not in ([user_entity] + list(allowed_entities)):
+            raise HTTPException(status_code=403, detail="No tienes permiso para subir documentos a esta entidad")
+        if not entidad_final:
+            raise HTTPException(status_code=400, detail="No hay entidad activa seleccionada")
 
 
 
@@ -3097,1246 +3157,6 @@ async def perform_reset(request: PerformResetRequest):
 
     return {"status": "success", "message": "Tu contraseña ha sido actualizada correctamente."}
 
-@router.get("/activation-info/{token}")
-async def get_activation_info(token: str):
-    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
-    res = supabase_client.table("profiles").select("email, nombre, apellido").eq("activation_token", token).execute()
-    if not res.data:
-        raise HTTPException(404, "El cdigo de activacin no es vlido o ya ha sido utilizado.")
-    return res.data[0]
-
-@router.post("/activate")
-async def activate_user(req: UserActivate):
-    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
-    
-    # Buscar usuario por token
-    res = supabase_client.table("profiles").select("*").eq("activation_token", req.token).execute()
-    
-    if not res.data:
-        raise HTTPException(400, "El cdigo de activacin no es vlido.")
-        
-    user_data = res.data[0]
-    
-    # Verificar expiracin (si el tokenExpiry es anterior al tiempo actual)
-    if user_data.get("token_expiry") and user_data["token_expiry"] < int(time.time() * 1000):
-         raise HTTPException(400, "El cdigo de activacin ha expirado. Solicita una nueva invitacin.")
-
-    # Actualizar usuario
-    try:
-        update_res = supabase_client.table("profiles").update({
-            "password": req.password,
-            "is_activated": True,
-            "estado": "Activo",
-            "activation_token": None,
-            "token_expiry": None
-        }).eq("id", user_data["id"]).execute()
-        
-        return {"status": "success", "message": "Cuenta activada correctamente."}
-    except Exception as e:
-        print(f" Error activando usuario: {e}")
-        raise HTTPException(500, f"Error interno: {str(e)}")
-
-@router.get("/users/profile")
-async def get_user_profile(user: dict = Depends(get_current_user)):
-    """Retorna el perfil completo del usuario actual, incluyendo entidades permitidas."""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    user_id = user.get("user_id")
-    res = supabase_client.table("profiles").select("*").eq("id", user_id).execute()
-    if not res.data:
-        raise HTTPException(404, "Perfil no encontrado")
-    
-    user_data = res.data[0]
-    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_id).execute()
-    entidad_ids = [e["entity_id"] for e in entities_res.data]
-    
-    return {
-        "id": user_data["id"],
-        "nombre": user_data["nombre"],
-        "email": user_data["email"],
-        "role": user_data["perfil"],
-        "entidadId": user_data.get("entidad_id"),
-        "entidadIds": entidad_ids,
-        "iaDisponible": user_data.get("ia_disponible", True)
-    }
-
-@router.post("/login")
-async def login(req: LoginRequest):
-    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
-    res = supabase_client.table("profiles").select("*").or_(f"email.eq.{req.identifier},username.eq.{req.identifier}").execute()
-    if not res.data: raise HTTPException(401, "El usuario no existe")
-    user_data = res.data[0]
-    if not user_data.get("is_activated"): raise HTTPException(401, "Esta cuenta an no ha sido activada")
-    if user_data.get("password") != req.password: raise HTTPException(401, "Contrasea incorrecta")
-    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
-    entidad_ids = [e["entity_id"] for e in entities_res.data]
-    active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
-    
-    # Obtener el rol especÃ­fico para esta entidad de la tabla de uniÃ³n
-    role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
-    entity_role = (role_res.data[0]["role"] if role_res.data else user_data["perfil"]) or "usuario"
-    
-    # --- LOGICA DE HERENCIA Y PRIORIDAD ---
-    # Si el perfil global es administrador o superadmin, debe prevalecer sobre el rol de la entidad si este es menor.
-    perfil_global = str(user_data.get("perfil", "usuario")).lower()
-    active_role = entity_role
-    
-    if perfil_global in ("superadmin", "administrador") and str(entity_role).lower() == "usuario":
-        active_role = perfil_global
-
-    payload = {
-        "user_id": str(user_data["id"]),
-        "role": active_role,
-        "entity_id": active_entity_id
-    }
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return {
-        "id": user_data["id"],
-        "nombre": user_data["nombre"],
-        "email": user_data["email"],
-        "role": active_role,
-        "entidadId": user_data.get("entidad_id"),
-        "entidadIds": entidad_ids,
-        "iaDisponible": user_data.get("ia_disponible", False),
-        "token": token
-    }
-
-@router.post("/auth/google")
-async def google_auth(req: GoogleAuthRequest):
-    if not supabase_client: raise HTTPException(500, "Error de conexin a la base de datos")
-    
-    # 1. Buscar si el usuario ya existe por email
-    res = supabase_client.table("profiles").select("*").eq("email", req.email).execute()
-    
-    user_data = None
-    is_new = False
-    
-    if res.data:
-        # 1.1 El usuario ya existe, conservamos sus datos y su ROL ORIGINAL
-        user_data = res.data[0]
-        print(f" Usuario Google encontrado: {req.email} (Rol actual: {user_data['perfil']})")
-        
-        # Opcional: Si el email estÃƒÂ¡ en la whitelist y por alguna razÃƒÂ³n NO era superadmin, lo promovemos
-        if req.email.lower() in SUPERADMIN_EMAILS and user_data["perfil"] != SUPERADMIN_ROLE:
-            print(f" Promoviendo usuario existente a SuperAdmin via Whitelist: {req.email}")
-            update_res = supabase_client.table("profiles").update({"perfil": SUPERADMIN_ROLE}).eq("id", user_data["id"]).execute()
-            if update_res.data:
-                user_data = update_res.data[0]
-    else:
-        # 2. El usuario no existe, lo creamos
-        print(f" Creando nuevo usuario via Google: {req.email}")
-        is_new = True
-        
-        # 2.1 Determinar rol inicial (Whitelist vs Default)
-        initial_role = DEFAULT_ROLE
-        if req.email.lower() in SUPERADMIN_EMAILS:
-            print(f" Asignando rol SuperAdmin via Whitelist a nuevo usuario: {req.email}")
-            initial_role = SUPERADMIN_ROLE
-            
-        # Generar un username unico basado en el email
-        username = req.email.split('@')[0]
-        unique_check = supabase_client.table("profiles").select("id").eq("username", username).execute()
-        if unique_check.data:
-            username = f"{username}_{int(time.time())}"
-            
-        new_user_payload = {
-            "nombre": req.nombre,
-            "apellido": req.apellido or "",
-            "email": req.email,
-            "username": username,
-            "perfil": initial_role,
-            "estado": "Activo",
-            "is_activated": True,
-            "entidad_id": "e0",
-            "created_at": datetime.now().isoformat()
-        }
-        
-        create_res = supabase_client.table("profiles").insert(new_user_payload).execute()
-        if not create_res.data:
-            raise HTTPException(500, "Error al crear el perfil de usuario")
-        user_data = create_res.data[0]
-        
-        # Crear relacion con entidad por defecto tambiÃƒÂ©n en profile_entities
-        supabase_client.table("profile_entities").insert({
-            "profile_id": user_data["id"],
-            "entity_id": "e0"
-        }).execute()
-
-    # 3. Obtener entidades asociadas
-    entities_res = supabase_client.table("profile_entities").select("entity_id").eq("profile_id", user_data["id"]).execute()
-    entidad_ids = [e["entity_id"] for e in entities_res.data]
-    active_entity_id = str(user_data.get("entidad_id") or (entidad_ids[0] if entidad_ids else "e0"))
-    
-    role_res = supabase_client.table("profile_entities").select("role").eq("profile_id", user_data["id"]).eq("entity_id", active_entity_id).execute()
-    entity_role = (role_res.data[0]["role"] if role_res.data else user_data["perfil"]) or "usuario"
-    
-    perfil_global = str(user_data.get("perfil", "usuario")).lower()
-    active_role = entity_role
-    if perfil_global in ("superadmin", "administrador") and str(entity_role).lower() == "usuario":
-        active_role = perfil_global
-    
-    payload = {
-        "user_id": str(user_data["id"]),
-        "role": active_role,
-        "entity_id": active_entity_id
-    }
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    
-    return {
-        "id": user_data["id"],
-        "nombre": user_data["nombre"],
-        "email": user_data["email"],
-        "role": active_role,
-        "entidadId": active_entity_id,
-        "entidadIds": entidad_ids,
-        "token": token,
-        "isNew": is_new
-    }
-
-@router.get("/users")
-async def get_users(entidad_id: str | None = None, user: dict = Depends(get_current_user)):
-    if not supabase_client: return []
-    query = supabase_client.table("profiles").select("*")
-    role = user.get("role")
-    
-    # Contexto activo procesado por get_current_user (header x-entity-context)
-    active_entity_id = user.get("entity_id") or entidad_id
-    
-    if role == ADMIN_ROLE:
-        # Administradores: filtrado estricto por la entidad del contexto actual
-        if active_entity_id:
-             query = query.eq("entidad_id", active_entity_id)
-        else:
-             return []
-    elif role == SUPERADMIN_ROLE:
-        # Superadmin: si está en contexto global (e0) ve todos, si no, filtra
-        if active_entity_id and active_entity_id != "e0":
-             query = query.eq("entidad_id", active_entity_id)
-             
-    res = query.execute()
-    rel_res = supabase_client.table("profile_entities").select("*").execute()
-    rels = {}
-    roles = {}
-    entity_roles = {}
-    for r in rel_res.data:
-        p_id = r["profile_id"]
-        if p_id not in rels: 
-            rels[p_id] = []
-            entity_roles[p_id] = {}
-        rels[p_id].append(r["entity_id"])
-        entity_roles[p_id][r["entity_id"]] = r["role"]
-        if r["entity_id"] == active_entity_id:
-            roles[p_id] = r["role"]
-            
-    mapped = []
-    for u in res.data:
-        context_role = roles.get(u["id"], u["perfil"])
-        display_perfil = context_role if u["perfil"] != SUPERADMIN_ROLE else SUPERADMIN_ROLE
-        mapped.append({
-            "id": u["id"], "nombre": u["nombre"], "apellido": u["apellido"], "email": u["email"],
-            "username": u["username"], "perfil": display_perfil, "estado": u["estado"],
-            "isActivated": u["is_activated"], "entidadId": u["entidad_id"],
-            "entidadIds": rels.get(u["id"], []),
-            "entityRoles": entity_roles.get(u["id"], {}),
-            "iaDisponible": u.get("ia_disponible", False)
-        })
-    return mapped
-
-@router.post("/users")
-async def create_user(user: UserCreate, current_user: dict = Depends(get_current_user)):
-    # Validar permisos: Solo admin de la entidad o superadmin
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", user.entidadId).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
-    if not supabase_client: raise HTTPException(400, "No Supabase")
-    
-    # Asegurar que nuevos usuarios no se creen con roles altos globales
-    final_perfil = DEFAULT_ROLE
-    if user.perfil == SUPERADMIN_ROLE and current_user.get("role") == SUPERADMIN_ROLE:
-        final_perfil = SUPERADMIN_ROLE
-
-    data = {
-        "nombre": user.nombre, "apellido": user.apellido, "email": user.email, "username": user.username,
-        "perfil": final_perfil, "entidad_id": user.entidadId, "activation_token": user.activationToken,
-        "token_expiry": user.tokenExpiry, "ia_disponible": user.iaDisponible or False
-    }
-    res = supabase_client.table("profiles").insert(data).execute()
-    new_user = res.data[0]
-    
-    entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario") else DEFAULT_ROLE
-    
-    if user.entidadIds:
-        rels = [{"profile_id": new_user["id"], "entity_id": e_id, "role": entity_role} for e_id in user.entidadIds]
-        supabase_client.table("profile_entities").insert(rels).execute()
-    elif user.entidadId:
-        supabase_client.table("profile_entities").insert({"profile_id": new_user["id"], "entity_id": user.entidadId, "role": entity_role}).execute()
-        
-    return new_user
-
-@router.put("/users/{user_id}")
-async def update_user(user_id: str, user: UserUpdate, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(400, "No Supabase")
-    
-    # Obtener info actual del usuario destino para validar entidad
-    target_res = supabase_client.table("profiles").select("entidad_id").eq("id", user_id).execute()
-    if not target_res.data:
-        raise HTTPException(404, "Usuario no encontrado")
-    target_entity_id = target_res.data[0].get("entidad_id")
-    
-    # Validar permisos
-    if current_user.get("role") != SUPERADMIN_ROLE and user_id != current_user.get("user_id"):
-        # Admin solo puede editar usuarios de entidades donde sea administrador
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No autorizado para editar usuarios de esta entidad o perfil insuficiente")
-
-    data = {}
-    if user.nombre is not None: data["nombre"] = user.nombre
-    if user.apellido is not None: data["apellido"] = user.apellido
-    if user.estado is not None: data["estado"] = user.estado
-    
-    # SEGURIDAD: Solo modificar el rol global del perfil cuando se promueve a superadmin.
-    # Los cambios de rol admin/usuario se aplican ÚNICAMENTE en profile_entities (contexto de entidad)
-    # para no degradar roles de otras entidades del mismo usuario.
-    if user.perfil is not None:
-        if current_user.get("role") == SUPERADMIN_ROLE and user.perfil == SUPERADMIN_ROLE:
-            # Única razón para tocar el campo 'perfil' global: promoción a superadmin
-            data["perfil"] = SUPERADMIN_ROLE
-        elif user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario", "administrador"):
-            # Cambio de rol contextual: solo actualizar la relación entidad-usuario
-            new_entity_role = user.perfil if user.perfil in (ADMIN_ROLE, DEFAULT_ROLE, "admin", "usuario", "administrador") else DEFAULT_ROLE
-            if target_entity_id:
-                supabase_client.table("profile_entities").update({"role": new_entity_role}).eq("profile_id", user_id).eq("entity_id", target_entity_id).execute()
-        # IMPORTANTE: No tocar data["perfil"] si no es una promoción a superadmin
-        # Esto evita que el rol global se sobreescriba al actualizar permisos de IA
-
-    if user.entidadId is not None: data["entidad_id"] = user.entidadId
-    if user.isActivated is not None: data["is_activated"] = user.isActivated
-    if user.iaDisponible is not None: data["ia_disponible"] = user.iaDisponible
-    if user.password is not None: data["password"] = user.password
-    if user.username is not None: data["username"] = user.username
-    # user.celular removed as it's not present in the profiles table schema
-    # if user.celular is not None: data["celular"] = user.celular
-    
-    # Si 'data' solo iba a actualizar el perfil contextual, podrÃ­a estar vacÃ­o para perfiles, asÃ­ que chequeamos
-    res_data = target_res.data[0]
-    if data:
-        res = supabase_client.table("profiles").update(data).eq("id", user_id).execute()
-        res_data = res.data[0]
-    
-    if user.entidadIds is not None and current_user.get("role") == SUPERADMIN_ROLE:
-        if user.entidadIds:
-            # Obtener los roles actuales para preservarlos al reasignar entidades
-            existing_roles_res = supabase_client.table("profile_entities").select("entity_id", "role").eq("profile_id", user_id).execute()
-            existing_roles = {r["entity_id"]: r["role"] for r in (existing_roles_res.data or [])}
-            
-            supabase_client.table("profile_entities").delete().eq("profile_id", user_id).execute()
-            # Preservar el rol anterior si ya existía en esa entidad; usar DEFAULT_ROLE si es nueva
-            rels = [{"profile_id": user_id, "entity_id": e_id, "role": existing_roles.get(e_id, DEFAULT_ROLE)} for e_id in user.entidadIds]
-            supabase_client.table("profile_entities").insert(rels).execute()
-        else:
-            # Si entidadIds vacío, no borrar todo automáticamente (protección accidental)
-            pass
-            
-    return res_data
-
-@router.post("/admin/promote")
-async def promote_user(target_user_id: str, new_role: str, current_user: dict = Depends(get_current_user)):
-    """Endpoint dedicado y protegido para el cambio de roles por un Super Admin"""
-    require_super_admin(current_user)
-    if not supabase_client: raise HTTPException(400, "No Supabase")
-    
-    if new_role not in [SUPERADMIN_ROLE, ADMIN_ROLE, DEFAULT_ROLE]:
-        raise HTTPException(400, "Rol no reconocido")
-        
-    res = supabase_client.table("profiles").update({"perfil": new_role}).eq("id", target_user_id).execute()
-    if not res.data:
-        raise HTTPException(404, "Usuario no encontrado")
-        
-    return {"status": "success", "message": f"Rol actualizado a {new_role}", "user": res.data[0]}
-
-@router.delete("/users/{user_id}")
-async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(400, "No Supabase")
-    
-    role = current_user.get("role")
-    admin_entity_id = current_user.get("entity_id")
-    
-    # 1. Verificar existencia y pertenencia antes de borrar si es Admin
-    user_res = supabase_client.table("profiles").select("entidad_id").eq("id", user_id).execute()
-    if not user_res.data:
-        raise HTTPException(404, "El usuario que intentas eliminar no existe")
-    
-    target_user_entity = user_res.data[0].get("entidad_id")
-    
-    if role != SUPERADMIN_ROLE:
-        # Si no es superadmin, debe ser admin de la entidad del usuario destino
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_user_entity).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos de administrador en la entidad del usuario destino")
-
-    # 2. Limpiar dependencias (Claves ForÃƒÂ¡neas) de forma segura
-    cleanup_tables = [
-        ("profile_entities", "profile_id"),
-        ("activity_logs", "user_id"),
-        ("chat_history", "user_id")
-    ]
-    
-    for table_name, column_name in cleanup_tables:
-        try:
-            supabase_client.table(table_name).delete().eq(column_name, user_id).execute()
-        except Exception as e:
-            # Ignorar si la tabla no existe o hay error de cachÃƒÂ© de esquema
-            print(f"  Aviso: No se pudo limpiar {table_name}: {e}")
-
-    try:
-        # 3. Borrar el perfil principal
-        res = supabase_client.table("profiles").delete().eq("id", user_id).execute()
-        
-        if not res.data:
-             # Si llegamos aquÃƒÂ­ y no hay data, algo fallÃƒÂ³ en la query de borrado silenciosamente
-             raise HTTPException(500, "No se pudo confirmar la eliminaciÃ³n del usuario")
-             
-    except Exception as e:
-        print(f" Error eliminando perfil {user_id}: {str(e)}")
-        raise HTTPException(500, f"Error de base de datos al eliminar perfil: {str(e)}")
-        
-    return {"status": "success", "message": "Usuario y sus relaciones eliminados correctamente"}
-
-@router.get("/entities")
-async def get_entities(user: dict = Depends(get_current_user)):
-    """Lista las entidades permitidas para el usuario actual."""
-    if not supabase_client: return []
-    
-    role = user.get('role')
-    if role == 'superadmin':
-        res = supabase_client.table("entities").select("*").execute()
-        return res.data or []
-    
-    # Para administradores multi-entidad
-    allowed_ids = user.get("allowed_entities", [])
-    if not allowed_ids:
-        # Fallback
-        eid = user.get("entity_id")
-        allowed_ids = [eid] if eid else []
-        
-    if not allowed_ids: return []
-    
-    res = supabase_client.table("entities").select("*").in_("id", allowed_ids).execute()
-    return res.data or []
-
-@router.post("/entities")
-async def create_entity(entity: EntityCreate):
-    if not supabase_client: raise HTTPException(500, "DB disconnected")
-    data = {
-        "razon_social": entity.razonSocial,
-        "nit": entity.numeroDocumento,
-        "dv": entity.dv,
-        "ciiu": entity.ciiu,
-        "email": entity.correo,
-        "nombre_contacto": entity.nombreContacto,
-        "sector": entity.sector,
-        "tipo_ejecutor": entity.tipoEjecutor,
-        "tamano_empresa": entity.tamanoEmpresa,
-        "entidad_organizacional": entity.entidadOrganizacional,
-        "proyectos": entity.proyectos,
-        "num_dependencias": entity.numDependencias,
-        "num_proyectos": entity.numProyectos,
-        "logo_url": entity.logoUrl,
-        "tipo_entidad": entity.tipoEntidad,
-        "clasificacion": entity.clasificacion,
-        "tipo_documento": entity.tipoDocumento,
-        "pais": entity.pais,
-        "departamento": entity.departamento,
-        "ciudad": entity.ciudad,
-        "direccion": entity.direccion,
-        "telefono": entity.telefono,
-        "celular": entity.celular,
-        "pagina_web": entity.paginaWeb,
-        "estado": entity.estado,
-        "max_usuarios": entity.maxUsuarios,
-        "max_dependencias": entity.maxDependencias,
-        "max_proyectos": entity.maxProyectos
-    }
-    res = supabase_client.table("entities").insert(data).execute()
-    if not res.data: raise HTTPException(500, "Error al crear entidad")
-    return {"id": res.data[0]["id"]}
-
-@router.put("/entities/{entity_id}")
-async def update_entity(entity_id: str, entity: EntityCreate):
-    if not supabase_client: raise HTTPException(500, "DB disconnected")
-    data = {
-        "razon_social": entity.razonSocial,
-        "nit": entity.numeroDocumento,
-        "dv": entity.dv,
-        "ciiu": entity.ciiu,
-        "email": entity.correo,
-        "nombre_contacto": entity.nombreContacto,
-        "sector": entity.sector,
-        "tipo_ejecutor": entity.tipoEjecutor,
-        "tamano_empresa": entity.tamanoEmpresa,
-        "entidad_organizacional": entity.entidadOrganizacional,
-        "proyectos": entity.proyectos,
-        "num_dependencias": entity.numDependencias,
-        "num_proyectos": entity.numProyectos,
-        "logo_url": entity.logoUrl,
-        "tipo_entidad": entity.tipoEntidad,
-        "clasificacion": entity.clasificacion,
-        "tipo_documento": entity.tipoDocumento,
-        "pais": entity.pais,
-        "departamento": entity.departamento,
-        "ciudad": entity.ciudad,
-        "direccion": entity.direccion,
-        "telefono": entity.telefono,
-        "celular": entity.celular,
-        "pagina_web": entity.paginaWeb,
-        "estado": entity.estado,
-        "max_usuarios": entity.maxUsuarios,
-        "max_dependencias": entity.maxDependencias,
-        "max_proyectos": entity.maxProyectos
-    }
-    # Remove none values
-    data = {k: v for k, v in data.items() if v is not None}
-    
-    try:
-        res = supabase_client.table("entities").update(data).eq("id", entity_id).execute()
-        if not res.data: raise HTTPException(404, "Entidad no encontrada")
-        return {"id": res.data[0]["id"]}
-    except postgrest.exceptions.APIError as e:
-        if e.code == "23505":  # Unique violation
-            raise HTTPException(409, f"El NIT {entity.numeroDocumento} ya está registrado para otra entidad.")
-        raise HTTPException(500, f"Error de base de datos: {str(e)}")
-
-@router.delete("/entities/{entity_id}")
-async def delete_entity(entity_id: str):
-    if not supabase_client: raise HTTPException(500, "DB disconnected")
-    supabase_client.table("entities").delete().eq("id", entity_id).execute()
-    return {"status": "success"}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LEGACY ENDPOINT (Supabase-based, disabled)
-# This was overriding the DynamoDB-based /analyze-trd above. Route renamed so
-# the primary synchronous endpoint is used instead. Background tasks are killed
-# by Vercel serverless on return, so this approach never completed OCR.
-# ──────────────────────────────────────────────────────────────────────────────
-@router.post("/analyze-trd-legacy-supabase")
-async def analyze_trd_legacy(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    entidad_id: str = Form(""),
-    user: dict = Depends(get_current_user)
-):
-    if not supabase_client: raise HTTPException(503)
-
-    content = await file.read()
-    file_size_bytes = len(content)
-    file_hash = hashlib.sha256(content).hexdigest()
-
-    # --- Validación de tamaño ---
-    max_bytes = MAX_OCR_FILE_SIZE_MB * 1024 * 1024
-    if file_size_bytes > max_bytes:
-        size_mb = file_size_bytes / (1024 * 1024)
-        raise HTTPException(
-            status_code=413,
-            detail=(
-                f"Este archivo es demasiado pesado para procesarse ({size_mb:.1f} MB). "
-                f"El límite permitido es {MAX_OCR_FILE_SIZE_MB} MB. "
-                "Intenta reducir su tamaño o dividirlo en varios archivos."
-            )
-        )
-
-    # Asegurar que el filename sea seguro para Storage
-    safe_name = file.filename.replace(' ', '_').replace('/', '_')
-    filename_clean = f"{int(datetime.now().timestamp())}_{safe_name}"
-
-    file_url = None
-    try:
-        supabase_client.storage.from_("trd-uploads").upload(filename_clean, content, {"content-type": "application/pdf"})
-        file_url = supabase_client.storage.from_("trd-uploads").get_public_url(filename_clean)
-    except Exception as storage_err:
-        print(f"[analyze-trd] Error subiendo a Storage: {storage_err}")
-
-    # Lógica de entidad: estricta para administrador, flexible para superadmin
-    allowed_entities = user.get("allowed_entities", [])
-    if user.get("role") == "superadmin":
-        entidad_final = entidad_id if entidad_id and entidad_id != "null" and entidad_id != "" else user.get("entity_id")
-    else:
-        # Si es admin, puede elegir una de sus entidades permitidas si la envía en el form
-        if entidad_id and entidad_id in allowed_entities:
-            entidad_final = entidad_id
-        else:
-            # Fallback a la entidad del contexto/JWT
-            entidad_final = user.get("entity_id")
-
-    if not entidad_final or entidad_final == "null" or entidad_final == "e0":
-        # Bloquear importación si no hay entidad activa (o si es la global e0 que no debe tener TRDs directas)
-        raise HTTPException(
-            status_code=400, 
-            detail="No hay entidad activa seleccionada. Selecciona una entidad antes de importar una TRD."
-        )
-
-    # --- Deduplication check por hash y entidad ---
-    active_session = None
-    try:
-        dup_check = (
-            supabase_client
-            .table("rag_documents")
-            .select("id, metadata")
-            .eq("metadata->>file_hash", file_hash)
-            .eq("metadata->>entidad_id", entidad_final)
-            .in_("metadata->>status", ["uploaded", "processing_ocr", "extraction_completed", "pending_verification"])
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if dup_check.data:
-            active_session = dup_check.data[0]
-            print(f" [INFO] Reusando sesión activa encontrada: {active_session['id']} para hash {file_hash}")
-    except Exception as dup_err:
-        print(f" Error en chequeo de duplicados TRD: {dup_err}")
-
-    if active_session:
-        doc_id = active_session["id"]
-        # Opcional: Actualizar el filename si cambió
-        # supabase_client.table("rag_documents").update({"metadata": {**active_session["metadata"], "source": file.filename}}).eq("id", doc_id).execute()
-    else:
-        res = supabase_client.table("rag_documents").insert({
-            "content": f"Import Session Snapshot: {file.filename}",
-            "metadata": {
-                "source": file.filename,
-                "status": "uploaded",
-                "ocr_stage": "Archivo recibido",
-                "ocr_progress": 0,
-                "ocr_current_page": 0,
-                "ocr_total_pages": 0,
-                "ocr_pages_ok": 0,
-                "ocr_pages_error": 0,
-                "ocr_error_pages": [],
-                "file_url": file_url,
-                "file_size_bytes": file_size_bytes,
-                "file_hash": file_hash,
-                "entidad_id": entidad_final,
-                "type": "temp_trd_session",
-                "created_at": datetime.now().isoformat()
-            }
-        }).execute()
-
-        if not res.data:
-            raise HTTPException(500, detail="No se pudo crear la sesión de importación")
-        
-        doc_id = res.data[0]["id"]
-
-    user_name = user.get("nombre", "Superadministrador" if user.get("role") == "superadmin" else "Administrador")
-    user_id = user.get("user_id")
-
-    print(f"[analyze-trd] Sesión creada: {doc_id} | Archivo: {file.filename} | Entidad: {entidad_final} | Usuario: {user_name}")
-
-    # Log de inicio (Aislar de administradores locales si es superadmin)
-    log_eid = 'e0' if user.get("role") == "superadmin" else entidad_final
-    add_activity_log(
-        f"Iniciando Importación TRD: {file.filename} (Entidad: {entidad_final})",
-        entidad_id=log_eid,
-        user_name=user_name,
-        user_id=user_id
-    )
-
-    # 1. OCR por lotes en segundo plano (prioridad máxima)
-    background_tasks.add_task(process_ocr_task, doc_id, content, file.filename, user_name, user_id, log_eid)
-
-    # 2. RAG Indexing en background (proceso secundario)
-    background_tasks.add_task(index_document_rag, doc_id, content, file.filename, entidad_final, file_url)
-
-    return {"id": doc_id, "status": "processing", "import_id": doc_id}
-
-
-@router.post("/invitations")
-async def create_invitation(req: InvitationCreate, current_user: dict = Depends(get_current_user)):
-    """Crea una invitaciÃƒÂ³n para un usuario (existente o no) a una entidad"""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    # 1. Validar permisos: Solo admin de la entidad o superadmin
-    user_role = current_user.get("role")
-    target_entity_id = str(req.entity_id or "")
-
-    if user_role != SUPERADMIN_ROLE:
-        # VerificaciÃƒÂ³n dinÃƒÂ¡mica: Ã‚Â¿Es admin de esta entidad especÃƒÂ­fica?
-        admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", target_entity_id).execute()
-        if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-             raise HTTPException(403, "No tienes permisos de administrador en esta entidad")
-
-    target_email = req.email.strip().lower()
-
-    # 2. Verificar si el usuario ya pertenece a esa entidad
-    check_member = supabase_client.table("profile_entities").select("profile_id").eq("entity_id", req.entity_id).execute()
-    # Necesitamos saber el ID del perfil para el mail
-    check_profile = supabase_client.table("profiles").select("id").eq("email", target_email).execute()
-    
-    if check_profile.data:
-        p_id = check_profile.data[0]["id"]
-        # Si ya estÃƒÂ¡ en profile_entities para esta entidad, error
-        is_member = any(r["profile_id"] == p_id for r in check_member.data)
-        if is_member:
-            raise HTTPException(400, "El usuario ya es miembro de esta entidad")
-
-    # 3. Verificar si hay una invitaciÃƒÂ³n pendiente activa
-    check_existing = supabase_client.table("invitations").select("*").eq("email", target_email).eq("entity_id", req.entity_id).eq("status", "pendiente").execute()
-    if check_existing.data:
-        # Verificar expiraciÃƒÂ³n
-        inv = check_existing.data[0]
-        expires_at_dt = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
-        if expires_at_dt > datetime.now(timezone.utc):
-             raise HTTPException(400, "Ya existe una invitaciÃƒÂ³n pendiente y activa para este correo")
-
-    # 4. Crear la invitaciÃƒÂ³n (expira en 1 dÃƒÂ­a)
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    inviter_id = current_user.get("user_id")
-    
-    new_inv = {
-        "email": target_email,
-        "entity_id": req.entity_id,
-        "inviter_id": inviter_id,
-        "role_invited": req.role,
-        "status": "pendiente",
-        "expires_at": expires_at,
-        "ia_disponible": req.ia_disponible
-    }
-    
-    res = supabase_client.table("invitations").insert(new_inv).execute()
-    if not res.data:
-        raise HTTPException(500, "No se pudo crear la invitaciÃƒÂ³n")
-    
-    invitation = res.data[0]
-    
-    # Asignar IA disponible si el usuario ya existe y se concedio en la invitacion
-    if check_profile.data and req.ia_disponible:
-        p_id = check_profile.data[0]["id"]
-        supabase_client.table("profiles").update({"ia_disponible": True}).eq("id", p_id).execute()
-    
-    # 5. Intentar enviar correo real vÃƒÂ­a Resend
-    entity_res = supabase_client.table("entities").select("razon_social").eq("id", req.entity_id).execute()
-    entity_name = entity_res.data[0]["razon_social"] if entity_res.data else "una entidad de OSE IA"
-    inviter_name = current_user.get("nombre", "Un administrador")
-    invitation_id = invitation["id"]
-    
-    # URL de la aplicaciÃƒÂ³n con contexto de invitaciÃƒÂ³n
-    frontend_url = "https://ose-new.vercel.app" # Cambiar por variable de entorno si aplica
-    invite_link = f"{frontend_url}/?invitation_id={invitation_id}&email={target_email}"
-
-    if RESEND_API_KEY:
-        try:
-            html_content = (
-                '<!DOCTYPE html>'
-                '<html lang="es"><head>'
-                '<meta charset="UTF-8">'
-                '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-                '<title>Invitacion OSE IA</title>'
-                '</head>'
-                '<body style="margin:0;padding:0;background-color:#f0f4f8;font-family:Arial,Helvetica,sans-serif;">'
-                '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f4f8;padding:40px 0;">'
-                '<tr><td align="center">'
-                '<table width="600" cellpadding="0" cellspacing="0" border="0" '
-                'style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">'
-                '<tr><td height="6" style="background:linear-gradient(90deg,#00bfa5,#0078d4);font-size:0;line-height:0;">&nbsp;</td></tr>'
-                '<tr><td align="center" style="padding:32px 40px 12px;">'
-                '<p style="margin:0;font-size:11px;font-weight:900;letter-spacing:4px;text-transform:uppercase;color:#94a3b8;">OSE IA</p>'
-                '<p style="margin:4px 0 0;font-size:11px;color:#cbd5e1;">Gestion Documental Inteligente</p>'
-                '</td></tr>'
-                '<tr><td align="center" style="padding:16px 40px 8px;">'
-                '<h1 style="margin:0;font-size:24px;font-weight:800;color:#0f172a;">Tienes una nueva invitacion</h1>'
-                '</td></tr>'
-                '<tr><td align="center" style="padding:8px 40px 24px;">'
-                '<p style="margin:0;font-size:15px;color:#64748b;line-height:1.6;">'
-            ) + (
-                '<strong style="color:#0f172a;">' + inviter_name + '</strong>'
-                ' te ha invitado a unirte a su equipo de trabajo en la plataforma OSE IA.'
-                '</p></td></tr>'
-                '<tr><td style="padding:0 40px 24px;">'
-                '<table width="100%" cellpadding="0" cellspacing="0" border="0" '
-                'style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">'
-                '<tr><td style="padding:20px 24px;">'
-                '<table width="100%" cellpadding="0" cellspacing="0" border="0">'
-                '<tr>'
-                '<td width="50%" style="padding-bottom:14px;vertical-align:top;">'
-                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Entidad</p>'
-            ) + (
-                '<p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#0f172a;">' + entity_name + '</p>'
-                '</td>'
-                '<td width="50%" style="padding-bottom:14px;vertical-align:top;">'
-                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Tu Rol</p>'
-            ) + (
-                '<p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#00bfa5;">' + req.role.capitalize() + '</p>'
-                '</td></tr>'
-                '<tr><td colspan="2">'
-                '<p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Invitado por</p>'
-            ) + (
-                '<p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#475569;">' + inviter_name + '</p>'
-                '</td></tr></table></td></tr></table></td></tr>'
-                '<tr><td align="center" style="padding:8px 40px 28px;">'
-            ) + (
-                '<a href="' + invite_link + '" '
-                'style="display:inline-block;background-color:#00bfa5;color:#ffffff;'
-                'font-size:13px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;'
-                'text-decoration:none;padding:16px 40px;border-radius:10px;">'
-                'Aceptar Invitacion'
-                '</a>'
-                '</td></tr>'
-                '<tr><td align="center" style="padding:0 40px 16px;">'
-                '<p style="margin:0;font-size:11px;color:#94a3b8;">Si el boton no funciona, copia este enlace:</p>'
-            ) + (
-                '<p style="margin:6px 0 0;font-size:11px;word-break:break-all;">'
-                '<a href="' + invite_link + '" style="color:#00bfa5;">' + invite_link + '</a>'
-                '</p></td></tr>'
-                '<tr><td style="padding:0 40px;"><hr style="border:0;border-top:1px solid #e2e8f0;margin:0;"></td></tr>'
-                '<tr><td align="center" style="padding:16px 40px;">'
-                '<p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.6;">'
-                '<strong>Usuarios nuevos:</strong> Si aun no tienes una cuenta, el enlace te guiara al registro. '
-                'La invitacion se vinculara automaticamente al completar el registro.'
-                '</p></td></tr>'
-                '<tr><td align="center" style="padding:16px 40px 28px;background:#f8fafc;">'
-                '<p style="margin:0;font-size:10px;color:#cbd5e1;">Esta invitacion vence en 24 horas &bull; No respondas este correo</p>'
-                '<p style="margin:4px 0 0;font-size:10px;color:#cbd5e1;">&copy; 2024 OSE IA &bull; Gestion Documental Inteligente</p>'
-                '</td></tr>'
-                '</table></td></tr></table>'
-                '</body></html>'
-            )
-            async with httpx.AsyncClient() as client:
-                res_email = await client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "from": RESEND_FROM_EMAIL,
-                        "to": [target_email],
-                        "subject": f"Invitacion a {entity_name} - OSE IA",
-                        "html": html_content
-                    }
-                )
-                print(f"DEBUG Email Invitation status: {res_email.status_code} - {res_email.text[:200]}")
-        except Exception as e:
-            print(f"Error enviando mail de invitacion: {e}")
-    return {"status": "success", "message": "Invitación enviada", "invitation": invitation}
-
-@router.get("/invitations/my")
-async def get_my_invitations(archived: bool = False, current_user: dict = Depends(get_current_user)):
-    """Lista las invitaciones recibidas por el usuario logueado"""
-    if not supabase_client: return []
-    email = current_user.get("email", "").lower()
-    if not email: return []
-    
-    # Filtrar por email y estado de archivado
-    query = supabase_client.table("invitations")\
-        .select("*, entities(razon_social, sigla), profiles(nombre, apellido)")\
-        .eq("email", email)\
-        .eq("archived", archived)
-        
-    res = query.execute()
-    now = datetime.now(timezone.utc)
-    valid_invitations = []
-    for inv in res.data:
-        exp = datetime.fromisoformat(inv["expires_at"].replace('Z', '+00:00'))
-        if exp > now:
-            valid_invitations.append({
-                "id": inv["id"],
-                "entity_id": inv["entity_id"],
-                "entity_name": inv.get("entities", {}).get("razon_social", "Entidad desconocida"),
-                "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}",
-                "created_at": inv["created_at"],
-                "expires_at": inv["expires_at"]
-            })
-        else:
-            if inv.get("status") != "vencida":
-                supabase_client.table("invitations").update({"status": "vencida"}).eq("id", inv["id"]).execute()
-    return valid_invitations
-
-@router.get("/invitations/sent")
-async def get_sent_invitations(entity_id: str | None = None, archived: bool = False, current_user: dict = Depends(get_current_user)):
-    """Lista las invitaciones enviadas (Vista Administrador)"""
-    if not supabase_client: return []
-    if current_user.get("role") not in (SUPERADMIN_ROLE, ADMIN_ROLE, "admin"):
-        raise HTTPException(403, "Permisos insuficientes")
-    query = supabase_client.table("invitations").select("*, entities(razon_social, sigla), profiles(nombre, apellido)")
-    
-    # Aplicar filtro de archivado
-    query = query.eq("archived", archived)
-
-    if current_user.get("role") == SUPERADMIN_ROLE:
-        if entity_id:
-            query = query.eq("entity_id", entity_id)
-    else:
-        # Para administradores multi-entidad, permitir ver lo que enviaron en CUALQUIERA de sus entidades
-        allowed_ids = current_user.get("allowed_entities", [])
-        if not allowed_ids:
-            allowed_ids = [current_user.get("entity_id")]
-            
-        query = query.in_("entity_id", allowed_ids).eq("inviter_id", current_user.get("user_id"))
-    res = query.order("created_at", desc=True).execute()
-    return [{
-        "id": inv["id"],
-        "email": inv["email"],
-        "entity_id": inv["entity_id"],
-        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad"),
-        "role": inv.get("role_invited", "usuario"),
-        "status": inv["status"],
-        "archived": inv.get("archived", False),
-        "created_at": inv["created_at"],
-        "expires_at": inv["expires_at"],
-        "inviter": f"{inv.get('profiles', {}).get('nombre', 'Admin')} {inv.get('profiles', {}).get('apellido', '')}"
-    } for inv in res.data]
-
-@router.delete("/invitations/{inv_id}")
-async def cancel_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(503)
-    inv_res = supabase_client.table("invitations").select("entity_id", "inviter_id").eq("id", inv_id).execute()
-    if not inv_res.data: raise HTTPException(404, "No encontrada")
-    inv = inv_res.data[0]
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        if inv.get("inviter_id") != current_user.get("user_id"):
-            raise HTTPException(403, "No tienes permisos para cancelar esta invitaciÃ³n (no eres el creador)")
-    supabase_client.table("invitations").update({"status": "cancelada"}).eq("id", inv_id).execute()
-    return {"status": "success", "message": "Invitacion cancelada"}
-
-@router.post("/invitations/{inv_id}/resend")
-async def resend_invitation(inv_id: str, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(503)
-    inv_res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not inv_res.data: raise HTTPException(404, "Invitacion no encontrada")
-    inv = inv_res.data[0]
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        if inv.get("inviter_id") != current_user.get("user_id"):
-            raise HTTPException(403, "No tienes permisos para reenviar esta invitaciÃ³n (no eres el creador)")
-    new_expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    supabase_client.table("invitations").update({"expires_at": new_expiry, "status": "pendiente"}).eq("id", inv_id).execute()
-    return {"status": "success", "message": "Invitacion reenviada correctamente"}
-
-@router.get("/invitations/check/{token}")
-async def check_invitation_public(token: str):
-    """Verifica una invitación de forma pública (para el landing page) usando el id como token."""
-    if not supabase_client: raise HTTPException(500)
-    res = supabase_client.table("invitations").select("*, entities(razon_social)").eq("id", token).execute()
-    if not res.data:
-        raise HTTPException(404, "InvitaciÃ³n no encontrada")
-    
-    inv = res.data[0]
-    email = inv.get("email", "").lower().strip()
-    
-    # Verificar si el email ya tiene cuenta en profiles
-    check_user = supabase_client.table("profiles").select("id").eq("email", email).execute()
-    user_exists = len(check_user.data) > 0
-    
-    return {
-        "id": inv["id"],
-        "email": inv["email"],
-        "entity_id": inv["entity_id"],
-        "entity_name": inv.get("entities", {}).get("razon_social", "Entidad OSE"),
-        "role": inv.get("role_invited", "usuario"),
-        "status": inv["status"],
-        "user_exists": user_exists,
-        "sender_id": inv.get("inviter_id")
-    }
-
-@router.post("/invitations/{inv_id}/respond")
-async def respond_invitation(inv_id: str, resp: InvitationRespond, current_user: dict = Depends(get_current_user)):
-    if not supabase_client: raise HTTPException(500)
-    res = supabase_client.table("invitations").select("*").eq("id", inv_id).execute()
-    if not res.data: raise HTTPException(404, "Invitacion no encontrada")
-    invitation = res.data[0]
-    
-    # Obtener el email real del usuario actual
-    user_id = current_user.get("user_id")
-    prof_res = supabase_client.table("profiles").select("email").eq("id", user_id).execute()
-    user_email = prof_res.data[0]["email"] if prof_res.data else ""
-    
-    if invitation["email"].lower() != user_email.lower():
-        raise HTTPException(403, "Esta invitacion no es para ti")
-        
-    if invitation["status"] == "aceptada":
-        return {"status": "success", "message": "Invitacion aceptada exitosamente (ya estaba aceptada)"}
-    elif invitation["status"] != "pendiente":
-        raise HTTPException(400, f"Esta invitacion ya ha sido {invitation['status']}")
-        
-    if resp.action == "accept":
-        try:
-            # 1. Vincular en profile_entities
-            supabase_client.table("profile_entities").upsert({
-                "profile_id": user_id,
-                "entity_id": invitation["entity_id"],
-                "role": invitation.get("role_invited", "usuario")
-            }).execute()
-            
-            # 2. Actualizar perfil principal (rol y IA)
-            update_data = {}
-            if invitation.get("ia_disponible"):
-                update_data["ia_disponible"] = True
-            
-            # Si no tiene entidad principal asignada, la asignamos
-            current_profile = supabase_client.table("profiles").select("perfil", "entidad_id").eq("id", current_user.get("user_id")).execute()
-            if current_profile.data and not current_profile.data[0].get("entidad_id"):
-                update_data["entidad_id"] = invitation["entity_id"]
-            
-            if update_data:
-                supabase_client.table("profiles").update(update_data).eq("id", current_user.get("user_id")).execute()
-            
-            # 3. Marcar invitacion como aceptada
-            supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", inv_id).execute()
-            return {"status": "success", "message": "Invitación aceptada"}
-        except Exception as e:
-            raise HTTPException(500, f"Error al vincular entidad: {str(e)}")
-    else:
-        supabase_client.table("invitations").update({"status": "rechazada"}).eq("id", inv_id).execute()
-        
-        # Notificar al remitente
-        sender_id = invitation.get("inviter_id")
-        if sender_id:
-            sender_res = supabase_client.table("profiles").select("email").eq("id", sender_id).execute()
-            if sender_res.data and sender_res.data[0].get("email"):
-                sender_email = sender_res.data[0]["email"]
-                entity_name = invitation.get("entities", {}).get("razon_social", "Entidad OSE") if "entities" in invitation else "Entidad OSE"
-                try:
-                    await send_rejection_notification(
-                        sender_email=sender_email,
-                        recipient_email=current_user.get("email"),
-                        entity_name=entity_name,
-                        recipient_name=current_user.get("nombre", current_user.get("email"))
-                    )
-                except Exception as e:
-                    print(f"Error enviando notificación de rechazo: {e}")
-                    
-        return {"status": "success", "message": "Invitación rechazada."}
-
-async def send_rejection_notification(sender_email, recipient_email, entity_name, recipient_name):
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    if not resend_api_key: return
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"},
-                json={
-                    "from": os.getenv("RESEND_FROM_EMAIL", "OSE IA <notificaciones@ose-ia.com>"),
-                    "to": sender_email,
-                    "subject": f"Invitación rechazada - {entity_name}",
-                    "html": f"""
-                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                            <h2 style="color: #e53e3e;">Invitación Rechazada</h2>
-                            <p>El usuario <strong>{recipient_name}</strong> ({recipient_email}) ha rechazado la invitación para unirse a la entidad <strong>{entity_name}</strong>.</p>
-                            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                            <p style="font-size: 12px; color: #666;">Este es un mensaje automático de OSE IA.</p>
-                        </div>
-                    """
-                }
-            )
-    except Exception as e:
-        print(f"Error in send_rejection_notification: {e}")
-
-@router.post("/activity-logs")
-async def create_activity_log(req: ActivityLogCreate, current_user: dict = Depends(get_current_user)):
-    eid = req.entidad_id or current_user.get("entity_id")
-    add_activity_log(
-        message=req.message,
-        entidad_id=eid,
-        user_name=req.user_name,
-        user_id=current_user.get("user_id"),
-    )
-    return {"status": "ok"}
-
-@router.patch("/invitations/{inv_id}/archive")
-async def archive_invitation(inv_id: str, req: InvitationArchive, current_user: dict = Depends(get_current_user)):
-    """Archiva o desarchiva una invitación específica."""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    
-    # Verificar permiso sobre la invitación
-    inv_res = supabase_client.table("invitations").select("entity_id").eq("id", inv_id).execute()
-    if not inv_res.data:
-        raise HTTPException(404, "Invitación no encontrada")
-    
-    inv = inv_res.data[0]
-    recipient_email = inv.get("email", "").lower()
-    is_recipient = (current_user.get("email", "").lower() == recipient_email)
-
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        if inv.get("inviter_id") != current_user.get("user_id") and not is_recipient:
-            raise HTTPException(403, "No tienes permisos para archivar esta invitación")
-
-    res = supabase_client.table("invitations").update({"archived": req.archived}).eq("id", inv_id).execute()
-    return {"status": "ok", "archived": req.archived}
-
-@router.post("/invitations/bulk-archive")
-async def bulk_archive_invitations(req: InvitationBulkArchive, current_user: dict = Depends(get_current_user)):
-    """Archiva múltiples invitaciones a la vez."""
-    if not supabase_client: raise HTTPException(500, "Base de datos desconectada")
-    if not req.ids:
-        return {"status": "ok", "count": 0}
-
-    # Si no es superadmin, verificar permisos para cada invitación (seguridad estricta)
-    if current_user.get("role") != SUPERADMIN_ROLE:
-        invs = supabase_client.table("invitations").select("entity_id").in_("id", req.ids).execute()
-        if not invs.data:
-            return {"status": "ok", "count": 0}
-            
-        entities_involved = set(i["entity_id"] for i in invs.data)
-        for eid in entities_involved:
-            admin_check = supabase_client.table("profile_entities").select("role").eq("profile_id", current_user.get("user_id")).eq("entity_id", eid).execute()
-            if not admin_check.data or admin_check.data[0]["role"] not in (ADMIN_ROLE, "admin", "superadmin"):
-                raise HTTPException(403, f"No tienes permisos sobre la entidad {eid}")
-
-    res = supabase_client.table("invitations").update({"archived": req.archived}).in_("id", req.ids).execute()
-    return {"status": "ok", "count": len(res.data or [])}
-
-@router.get("/activity-logs")
-async def get_activity_logs(user: dict = Depends(get_current_user)):
-    """Lista los registros de actividad del mes actual desde DynamoDB."""
-    try:
-        now = datetime.now()
-        first_day = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-
-        if user.get("role") == SUPERADMIN_ROLE:
-            all_items = await db.scan_table("activity_logs")
-        else:
-            eid = user.get("entity_id")
-            if not eid:
-                return []
-            pk_val = f"ENTITY#{eid}"
-            all_items = await db.query_by_entity("activity_logs", pk_val, sk_prefix="LOG#")
-
-        logs = [i for i in all_items if i.get("created_at", "") >= first_day]
-        logs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        return logs
-
-    except Exception as e:
-        print(f"Error listando activity logs: {e}")
-        return []
-
-@router.get("/activity-logs/export")
-async def export_activity_logs(
-    start_date: str,
-    end_date: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Retorna logs de actividad en un rango de fechas para exportación."""
-    try:
-        query_start = f"{start_date}T00:00:00"
-        query_end = f"{end_date}T23:59:59"
-
-        if current_user.get("role") == SUPERADMIN_ROLE:
-            all_items = await db.scan_table("activity_logs")
-        else:
-            eid = current_user.get("entity_id")
-            if not eid:
-                raise HTTPException(404, "No se encontraron registros en el rango seleccionado")
-            pk_val = f"ENTITY#{eid}"
-            all_items = await db.query_by_entity("activity_logs", pk_val, sk_prefix="LOG#")
-
-        filtered = [
-            i for i in all_items
-            if query_start <= i.get("created_at", "") <= query_end
-        ]
-        filtered.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-
-        if not filtered:
-            raise HTTPException(404, "No se encontraron registros en el rango seleccionado")
-        return filtered
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error exportando activity logs: {e}")
-        raise HTTPException(500, str(e))
-
-@router.post("/auth/signup")
-async def signup(req: UserSignUp):
-    # Crea un nuevo usuario en AWS Cognito y DynamoDB
-    email = req.email.strip().lower()
-    
-    # 1. Registrar en Cognito
-    cognito_id = None
-    try:
-        resp = await cognito.sign_up(
-            username=req.username,
-            password=req.password,
-            email=email,
-            name=req.nombre,
-            family_name=req.apellido,
-            phone=req.phone
-        )
-        cognito_id = resp.get("UserSub")
-    except Exception as e:
-        # SI EL USUARIO YA EXISTE EN COGNITO:
-        # Es posible que sea un usuario "huérfano" (borrado de DB pero no de Cognito)
-        err_str = str(e)
-        if "UsernameExistsException" in err_str or "already exists" in err_str.lower():
-            print(f" [AUTH] Usuario {req.username} ya existe en Cognito. Intentando auto-limpieza...")
-            await cognito.force_cleanup_user(req.username)
-            # Re-intentar el registro
-            try:
-                resp = await cognito.sign_up(
-                    username=req.username,
-                    password=req.password,
-                    email=email,
-                    name=req.nombre,
-                    family_name=req.apellido,
-                    phone=req.phone
-                )
-                cognito_id = resp.get("UserSub")
-            except Exception as retry_e:
-                raise HTTPException(status_code=400, detail=f"El usuario ya existe y no se pudo limpiar: {str(retry_e)}")
-        else:
-            if hasattr(e, "status_code"): raise e
-            raise HTTPException(status_code=400, detail=str(e))
-
-    # 2. Guardar perfil en DynamoDB (Sincronizado con el ID de Cognito)
-    new_user = {
-        "PK": f"USER#{cognito_id}",
-        "SK": "PROFILE",
-        "id": cognito_id,
-        "nombre": req.nombre,
-        "apellido": req.apellido,
-        "username": req.username,
-        "email": email,
-        "username": username,
-        "password": req.password,
-        "perfil": DEFAULT_ROLE,
-        "estado": "Activo" if invitation else "Inactivo",
-        "is_activated": True if invitation else False,
-        "entidad_id": invitation["entity_id"] if invitation else None,
-        "ia_disponible": invitation.get("ia_disponible", False) if invitation else False
-    }
-    prof_insert = supabase_client.table("profiles").insert(new_profile).execute()
-    if not prof_insert.data:
-        raise HTTPException(500, "Error al crear el perfil.")
-    user_id = prof_insert.data[0]["id"]
-    user_entidades = []
-    active_role = DEFAULT_ROLE
-    if invitation:
-        active_role = invitation.get("role_invited", DEFAULT_ROLE)
-        supabase_client.table("profile_entities").insert({
-            "profile_id": user_id,
-            "entity_id": invitation["entity_id"],
-            "role": active_role
-        }).execute()
-        supabase_client.table("invitations").update({"status": "aceptada"}).eq("id", invitation["id"]).execute()
-        user_entidades.append(invitation["entity_id"])
-    return {
-        "id": user_id,
-        "nombre": req.nombre,
-        "apellido": req.apellido,
-        "email": email,
-        "username": username,
-        "perfil": DEFAULT_ROLE,
-        "role": active_role,
-        "estado": new_profile["estado"],
-        "isActivated": new_profile["is_activated"],
-        "entidadId": invitation["entity_id"] if invitation else None,
-        "entidadIds": user_entidades,
-        "token": jwt.encode({
-            "user_id": str(user_id),
-            "role": active_role,
-            "entity_id": invitation["entity_id"] if invitation else None
-        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    }
-    await db.put_item("users", new_user)
-    return {"status": "ok", "message": "Usuario registrado exitosamente en AWS"}
-
-
 @router.get("/health-check")
 async def health_check():
     return {"status": "ok", "message": "OSE Backend AWS Serverless ready"}
@@ -4357,4 +3177,57 @@ async def debug_auth(user: dict = Depends(get_current_user)):
         "is_in_whitelist": user.get("email", "").lower().strip() in current_whitelist,
         "final_role_assigned": user.get("role"),
         "dynamo_prefix": db.prefix
+    }
+
+
+@router.get("/admin/entity-coverage-report")
+async def entity_coverage_report(user: dict = Depends(require_super_admin)):
+    """
+    Scans all entity-specific DynamoDB tables and reports entity_id coverage.
+    Use this before deciding on data migration. Superadmin only.
+    """
+    tables_to_check = [
+        ("dependencias",  "DEP#"),
+        ("series",        "SER#"),
+        ("subseries",     "SUB#"),
+        ("trd_records",   "TRD#"),
+        ("funciones",     "FUN#"),
+        ("entrevistas",   "INT#"),
+        ("RagDocuments",  None),
+        ("activity_logs", "LOG#"),
+        ("invitations",   None),
+    ]
+
+    report = {}
+    for logical_name, sk_prefix in tables_to_check:
+        try:
+            items = await db.scan_table(logical_name)
+            valid, invalid, global_pk = [], [], []
+            for item in items:
+                pk = str(item.get("PK", ""))
+                if pk.startswith("ENTITY#") and pk not in ("ENTITY#GLOBAL", "ENTITY#"):
+                    valid.append(pk)
+                elif pk == "ENTITY#GLOBAL" or pk == "GLOBAL":
+                    global_pk.append(pk)
+                else:
+                    invalid.append({"PK": pk, "SK": item.get("SK", "")})
+            report[logical_name] = {
+                "total": len(items),
+                "entity_scoped": len(valid),
+                "global_fallback": len(global_pk),
+                "missing_entity": len(invalid),
+                "missing_details": invalid[:10],
+            }
+        except Exception as e:
+            report[logical_name] = {"error": str(e)}
+
+    total_records = sum(v.get("total", 0) for v in report.values() if isinstance(v, dict))
+    total_missing = sum(v.get("missing_entity", 0) for v in report.values() if isinstance(v, dict))
+    return {
+        "summary": {
+            "total_records_scanned": total_records,
+            "records_missing_entity": total_missing,
+            "migration_needed": total_missing > 0,
+        },
+        "tables": report,
     }

@@ -16,20 +16,6 @@ from .aws.dynamo_db import db
 
 print(" [DB] DynamoDB configurado para arquitectura serverless.")
 
-# Initialize Supabase Client (if credentials are present for hybrid operation)
-supabase_client = None
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
-
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        from supabase import create_client
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print(" [DB] Supabase conectado correctamente.")
-    except Exception as e:
-        print(f" [DB] Error inicializando Supabase: {e}")
-
-
 # Initialize LLM (OpenRouter)
 llm = None
 if OPENROUTER_API_KEY:
