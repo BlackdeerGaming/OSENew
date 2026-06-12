@@ -293,6 +293,7 @@ def get_reset_code_email_html(nombre: str, code: str) -> str:
 
 
 from .aws.ai_processor import ai
+from .trd_import_agent import trd_import_agent
 
 from .aws.cognito_auth import cognito
 
@@ -1295,7 +1296,7 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
             )
 
             print(f"[OCR-AI] Iniciando extracción TRD — {len(full_text)} chars, {len(images_base64)} imágenes — {filename}")
-            parsed_actions, ai_message = await _analyze_trd_ai_smart(full_text, images_base64, llm)
+            parsed_actions, ai_message = await trd_import_agent.analyze(full_text, images_base64, filename)
             print(f"[OCR-AI] Resultado final: {len(parsed_actions)} registros — {filename}")
 
             # --- FASE FINAL: Guardar todo ---

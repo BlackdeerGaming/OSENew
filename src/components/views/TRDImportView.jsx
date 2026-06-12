@@ -351,12 +351,18 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
 
   const openReview = (imp) => {
     setPreviewImportId(imp.id);
-    // Filtro flexible: algunas versiones del prompt podrían usar TRD, trd o trd_records
-    const relevantActions = (imp.actions || []).filter(a => 
-      ['trd_records', 'TRD', 'trd', 'VALORACION', 'valoracion'].includes(a.entity)
-    );
-    setLocalActions([...relevantActions]);
-    setSelectedIndices(new Set(relevantActions.map((_, i) => i)));
+    const all = imp.actions || [];
+    // Sort by dependencia then serie for easier review
+    const sorted = [...all].sort((a, b) => {
+      const da = (a.payload?.dependenciaNombre || '').toLowerCase();
+      const db_ = (b.payload?.dependenciaNombre || '').toLowerCase();
+      if (da !== db_) return da < db_ ? -1 : 1;
+      const sa = (a.payload?.serieNombre || '').toLowerCase();
+      const sb = (b.payload?.serieNombre || '').toLowerCase();
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+    setLocalActions(sorted);
+    setSelectedIndices(new Set(sorted.map((_, i) => i)));
     setEditingIndex(null);
   };
 
@@ -853,7 +859,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                   <div className="flex-1 overflow-y-auto bg-slate-50 relative">
                      <div className={cn("p-8 transition-all h-full", editingIndex !== null ? "blur-sm grayscale bg-white/50" : "")}>
                         <div className="w-full flex flex-col h-full">
-                           <div className="flex items-center justify-between mb-10">
+                           <div className="flex items-center justify-between mb-6">
                                <div className="space-y-1">
                                   <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.4em] flex items-center gap-3">
                                      <div className="h-2 w-2 rounded-full bg-primary animate-ping" />
@@ -861,13 +867,35 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                                   </h3>
                                   <div className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Validación de Registros Estructurados</div>
                                </div>
-                               
+
                                <div className="flex items-center gap-4">
                                   <div className="px-8 py-4 bg-white rounded-[1.5rem] border border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest shadow-2xl shadow-primary/[0.02]">
                                      Indexados: <span className="text-primary font-black ml-2">{localActions.length}</span>
                                   </div>
                                </div>
                            </div>
+
+                           {/* Hierarchy summary chips */}
+                           {localActions.length > 0 && (() => {
+                             const deps = [...new Set(localActions.map(a => a.payload?.dependenciaNombre).filter(Boolean))];
+                             const seriesSet = [...new Set(localActions.map(a => a.payload?.serieNombre).filter(Boolean))];
+                             const subsSet = localActions.filter(a => a.payload?.subserieNombre).map(a => a.payload.subserieNombre);
+                             return (
+                               <div className="flex flex-wrap gap-3 mb-8">
+                                 {[
+                                   { label: 'Dependencias', count: deps.length, color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+                                   { label: 'Series', count: seriesSet.length, color: 'bg-primary/5 text-primary border-primary/10' },
+                                   { label: 'Subseries', count: [...new Set(subsSet)].length, color: 'bg-violet-50 text-violet-700 border-violet-100' },
+                                   { label: 'Registros TRD', count: localActions.length, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                                 ].map(({ label, count, color }) => (
+                                   <div key={label} className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wider ${color}`}>
+                                     <span className="text-lg font-black leading-none">{count}</span>
+                                     <span className="opacity-70">{label}</span>
+                                   </div>
+                                 ))}
+                               </div>
+                             );
+                           })()}
 
                            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-2xl shadow-slate-200/50 overflow-hidden flex-1 flex flex-col">
                               <div className="overflow-x-auto flex-1">
