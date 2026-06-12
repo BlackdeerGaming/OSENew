@@ -69,7 +69,6 @@ class TRDImportAgent:
             openai_api_key=self.api_key,
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.0,
-            max_tokens=4000,
         )
 
     async def extract_from_chunk(self, chunk_text: str, chunk_images: list = None) -> list:

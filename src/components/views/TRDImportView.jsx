@@ -704,7 +704,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
               <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
                      <ClipboardCheck className="h-3.5 w-3.5" />
-                     Historial de Integración ({imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).length})
+                     Historial de Integración ({imports.filter(i => ['success', 'error', 'cancelled', 'failed'].includes(i.status)).length})
                   </div>
                   {imports.filter(i => i.status === 'success').length > 0 && (
                     <button 
@@ -718,7 +718,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
 
               <div className="grid grid-cols-1 gap-2 min-h-[200px]">
                   <AnimatePresence mode="popLayout">
-                    {imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).length === 0 ? (
+                    {imports.filter(i => ['success', 'error', 'cancelled', 'failed'].includes(i.status)).length === 0 ? (
                         !isLoading && (
                           <div className="h-24 border border-border border-dashed rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-2 bg-emerald-50/10">
                               <CheckCircle2 className="h-6 w-6 opacity-20 text-emerald-600" />
@@ -726,7 +726,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                           </div>
                         )
                     ) : (
-                        imports.filter(i => ['success', 'error', 'cancelled'].includes(i.status)).map(imp => {
+                        imports.filter(i => ['success', 'error', 'cancelled', 'failed'].includes(i.status)).map(imp => {
                             const config = STATUS_CONFIG[imp.status] || STATUS_CONFIG.success;
                             return (
                                 <motion.div 
@@ -735,14 +735,14 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                                   className={cn(
                                     "flex items-center justify-between py-2 px-3 border rounded-lg group hover:shadow-sm transition-all",
                                     imp.status === 'success' ? "bg-emerald-50/30 border-emerald-100/50" :
-                                    imp.status === 'error' ? "bg-rose-50/30 border-rose-100/50" :
+                                    ['error', 'failed'].includes(imp.status) ? "bg-rose-50/30 border-rose-100/50" :
                                     "bg-slate-50/40 border-slate-100/50"
                                   )}
                                 >
                                     <div className="flex items-center gap-3 min-w-0">
-                                        <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm", 
+                                        <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm",
                                             imp.status === 'success' ? "bg-emerald-100 text-emerald-600" :
-                                            imp.status === 'error' ? "bg-rose-100 text-rose-600" :
+                                            ['error', 'failed'].includes(imp.status) ? "bg-rose-100 text-rose-600" :
                                             "bg-slate-100 text-slate-600"
                                         )}>
                                             <config.icon className="h-3.5 w-3.5" />
@@ -751,9 +751,9 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                                             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tight truncate max-w-[180px] sm:max-w-[250px]">
                                               {imp.filename}
                                             </span>
-                                            <span className={cn("text-[8px] font-bold uppercase tracking-[0.1em]", 
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-[0.1em]",
                                                 imp.status === 'success' ? "text-emerald-600" :
-                                                imp.status === 'error' ? "text-rose-600" :
+                                                ['error', 'failed'].includes(imp.status) ? "text-rose-600" :
                                                 "text-slate-500"
                                             )}>
                                                 {config.label}
@@ -761,7 +761,7 @@ const TRDImportView = ({ onImportComplete, onRefreshData, currentUser, currentEn
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        {imp.status === 'error' && imp.error_summary && (
+                                        {['error', 'failed'].includes(imp.status) && imp.error_summary && (
                                           <div className="hidden sm:flex items-center gap-1 text-rose-500 max-w-[150px]">
                                              <AlertCircle className="h-3 w-3 shrink-0" />
                                              <span className="text-[8px] font-bold truncate uppercase">{imp.error_summary}</span>

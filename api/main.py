@@ -1296,7 +1296,11 @@ async def process_ocr_task(doc_id: str, content: bytes, filename: str, user_name
             )
 
             print(f"[OCR-AI] Iniciando extracción TRD — {len(full_text)} chars, {len(images_base64)} imágenes — {filename}")
-            parsed_actions, ai_message = await trd_import_agent.analyze(full_text, images_base64, filename)
+            try:
+                parsed_actions, ai_message = await trd_import_agent.analyze(full_text, images_base64, filename)
+            except Exception as agent_err:
+                print(f"[OCR-AI] TRDImportAgent falló ({agent_err}), usando fallback Gemini")
+                parsed_actions, ai_message = await _analyze_trd_ai_smart(full_text, images_base64, llm)
             print(f"[OCR-AI] Resultado final: {len(parsed_actions)} registros — {filename}")
 
             # --- FASE FINAL: Guardar todo ---
