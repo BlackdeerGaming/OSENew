@@ -9,11 +9,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 # ──────────────────────────────────────────────────────────────────────────────
-# System prompt — used for every chunk extraction call
+# System prompt
 # ──────────────────────────────────────────────────────────────────────────────
-TRD_SYSTEM_PROMPT = """Eres un archivista experto en Tablas de Retención Documental (TRD) colombianas según la Ley 594 de 2000 y el Acuerdo 04 de 2013 del Archivo General de la Nación.
+TRD_SYSTEM_PROMPT = """Eres un archivista experto en Tablas de Retención Documental (TRD) colombianas según la Ley 594 de 2000 y el Acuerdo 04 de 2013 del AGN.
 
-Tu tarea es extraer TODOS los registros de valoración documental del fragmento de TRD que te envíen y estructurarlos en JSON.
+Tu tarea es extraer TODOS los registros de valoración documental del fragmento de TRD que te envíen.
 
 FORMATO DE SALIDA OBLIGATORIO (solo JSON, sin markdown ni texto adicional):
 {
@@ -22,81 +22,128 @@ FORMATO DE SALIDA OBLIGATORIO (solo JSON, sin markdown ni texto adicional):
       "type": "CREATE",
       "entity": "trd_records",
       "payload": {
-        "dependenciaNombre": "Nombre completo de la oficina o dependencia",
-        "dependenciaCodigo": "100",
+        "dependenciaNombre": "Nombre de la oficina productora",
+        "dependenciaCodigo": "1",
         "serieNombre": "Nombre de la serie documental",
         "subserieNombre": "",
-        "codigo": "100.01",
-        "retencionGestion": 2,
-        "retencionCentral": 8,
+        "codigo": "1.29",
+        "retencionGestion": 1,
+        "retencionCentral": 4,
         "disposicion": "CT",
         "procedimiento": "Descripción del procedimiento archivístico",
-        "tipoDocumental": "Tipo de soporte o clase documental"
+        "tipoDocumental": "Tipo de soporte"
       }
     }
   ]
 }
 
-REGLAS CRÍTICAS — incumplirlas invalida la respuesta:
-1. "disposicion" SOLO acepta: "CT" (Conservación Total), "E" (Eliminación), "S" (Selección), "MT" (Medio Técnico). Si hay una X o tilde en la columna CT → "CT"; en E → "E"; en S → "S"; en MT → "MT".
-2. "retencionGestion" y "retencionCentral" son números enteros (años). Si dice "2 años" → 2. Si dice "Permanente" o "P" → 0.
-3. "subserieNombre" = "" (cadena vacía) cuando la fila es una serie sin subserie.
-4. "codigo" es el código tal como aparece (ej: "100.01", "GG-001", "01.01.02").
-5. Si el fragmento no contiene filas TRD, retorna exactamente: {"actions": []}
-6. NO inventes datos. Extrae solo lo explícito en el texto.
-7. Campos ausentes: string → "" | número → 0.
+REGLAS CRÍTICAS:
+1. "disposicion" SOLO acepta: "CT", "E", "S", "MT". Detecta la X o tilde en la columna correspondiente.
+2. "retencionGestion" (AG) y "retencionCentral" (AC) son enteros en años. "Permanente"/"P" → 0.
+3. "subserieNombre" = "" si la fila es una serie sin subserie.
+4. Si no hay registros TRD en el fragmento → {"actions": []}
+5. NO inventes datos. Solo extrae lo explícito.
 
-REGLA CLAVE SOBRE DEPENDENCIAS:
-El fragmento puede indicar la dependencia activa con una línea como:
-  "=== DEPENDENCIA ACTIVA: Nombre de la Dependencia ==="
-  o con texto en MAYÚSCULAS al inicio de una sección (ej: "100 DESPACHO DEL ALCALDE").
+DISTINCIÓN CLAVE (muy importante):
+- "Entidad Productora" = nombre de la ORGANIZACIÓN (ej: "DANE", "Alcaldía de Palermo") → NO usar como dependenciaNombre.
+- "Oficina productora" = la DEPENDENCIA que produce los documentos → usar su valor como dependenciaNombre.
+- Si el fragmento indica "=== DEPENDENCIA ACTIVA: X ===" usa X como dependenciaNombre en todos los registros.
 
-DEBES copiar ese nombre en el campo "dependenciaNombre" de CADA registro del fragmento, incluso si la dependencia solo aparece una vez al inicio del bloque.
-Si el fragmento incluye "DEPENDENCIA ACTIVA: X", todos los registros tienen dependenciaNombre = X.
+REGLA SOBRE DEPENDENCIAS:
+Copia el nombre de la dependencia activa en el campo "dependenciaNombre" de CADA registro del fragmento, aunque el nombre solo aparezca una vez al inicio del bloque.
 
-EJEMPLO CORRECTO — un fragmento con una dependencia y varias series:
-Fragmento:
-  === DEPENDENCIA ACTIVA: Despacho del Alcalde ===
-  100.01  Actas              2   8   X (CT)
-  100.02  Contratos          5   10      X (E)
+EJEMPLO — fragmento con dependencia y varias series:
+  === DEPENDENCIA ACTIVA: Despacho del Director ===
+  1.29  DISCURSOS                    1   4   CT
+  1.43  INFORMES                     2   2   E
+  1.72  REQUERIMIENTOS EXTERNOS      2   3   E
 
 Salida esperada:
 {"actions":[
-  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Alcalde","dependenciaCodigo":"100","serieNombre":"Actas","subserieNombre":"","codigo":"100.01","retencionGestion":2,"retencionCentral":8,"disposicion":"CT","procedimiento":"","tipoDocumental":""}},
-  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Alcalde","dependenciaCodigo":"100","serieNombre":"Contratos","subserieNombre":"","codigo":"100.02","retencionGestion":5,"retencionCentral":10,"disposicion":"E","procedimiento":"","tipoDocumental":""}}
+  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Director","dependenciaCodigo":"1","serieNombre":"DISCURSOS","subserieNombre":"","codigo":"1.29","retencionGestion":1,"retencionCentral":4,"disposicion":"CT","procedimiento":"","tipoDocumental":""}},
+  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Director","dependenciaCodigo":"1","serieNombre":"INFORMES","subserieNombre":"","codigo":"1.43","retencionGestion":2,"retencionCentral":2,"disposicion":"E","procedimiento":"","tipoDocumental":""}},
+  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Director","dependenciaCodigo":"1","serieNombre":"REQUERIMIENTOS EXTERNOS","subserieNombre":"","codigo":"1.72","retencionGestion":2,"retencionCentral":3,"disposicion":"E","procedimiento":"","tipoDocumental":""}}
 ]}"""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Markers used both for chunking and for dependency detection
+# Keywords used for dependency detection and chunking
 # ──────────────────────────────────────────────────────────────────────────────
-_TRD_SECTION_MARKERS = (
-    "DEPENDENCIA", "SECCIÓN", "SECCION", "OFICINA", "DESPACHO",
-    "DIVISIÓN", "DIVISION", "ÁREA", "AREA", "UNIDAD",
-    "SUBGERENCIA", "GERENCIA", "DIRECCIÓN", "DIRECCION", "SUBDIRECCIÓN",
-    "SECRETARÍA", "SECRETARIA", "DEPARTAMENTO", "COORDINACIÓN", "COORDINACION",
+_OFFICE_KEYWORDS = (
+    "DESPACHO", "SECRETARÍA", "SECRETARIA", "DIRECCIÓN", "DIRECCION",
+    "COORDINACIÓN", "COORDINACION", "GERENCIA", "SUBGERENCIA",
+    "SUBDIRECCIÓN", "SUBDIRECCION", "DIVISIÓN", "DIVISION",
+    "ÁREA", "AREA", "JEFATURA", "ASESORÍA", "ASESORIA",
+    "OFICINA", "UNIDAD", "DEPENDENCIA", "SECCIÓN", "SECCION",
 )
 
+_TABLE_MARKERS = {
+    "PROCEDIMIENTO", "CÓDIGO", "SERIE", "SUBSERIE",
+    "DISPOSICIÓN", "RETENCION", "RETENCIÓN", "SOPORTE", "FORMATO",
+}
 
-def _detect_dep_header(line: str) -> str | None:
-    """
-    Returns the dependency name if the line looks like a dependency section header,
-    otherwise returns None. Strips leading codes like '100 ' before the name.
-    """
+
+def _is_office_line(line: str) -> bool:
+    """True if the line looks like an office/dependency section header (not a form field label)."""
     stripped = line.strip()
     upper = stripped.upper()
     if len(stripped) < 4 or len(stripped) > 120:
-        return None
-    if not any(upper.startswith(m) for m in _TRD_SECTION_MARKERS):
-        # Also accept lines that start with a numeric code followed by a keyword
-        # e.g. "100 DESPACHO DEL ALCALDE" or "1.1 SECRETARÍA DE GOBIERNO"
-        match = re.match(r'^[\d\.]+\s+(.+)$', stripped)
-        if match:
-            rest_upper = match.group(1).upper()
-            if any(rest_upper.startswith(m) for m in _TRD_SECTION_MARKERS):
-                return stripped  # keep the code+name
-        return None
-    return stripped
+        return False
+    # Exclude form field labels — they end with ':' or contain ': value' (e.g. "Oficina productora:", "Código: GID-030")
+    if stripped.endswith(':') or re.search(r':\s', stripped):
+        return False
+    if any(upper.startswith(kw) for kw in _OFFICE_KEYWORDS):
+        return True
+    # "100 DESPACHO DEL ALCALDE" — numeric code then office keyword
+    m = re.match(r'^[\d\.]+\s+(.+)$', stripped)
+    if m and any(m.group(1).upper().startswith(kw) for kw in _OFFICE_KEYWORDS):
+        return True
+    return False
+
+
+def _extract_header_dep(text: str) -> str:
+    """
+    Extracts the office/dependency name from the TRD header.
+    Handles:
+    - "Oficina productora: DESPACHO DEL DIRECTOR" (same line)
+    - "Oficina productora:\\n[blank lines]\\nDESPACHO DEL DIRECTOR" (detached, DANE format)
+    - Standalone all-caps office line next to table markers (DANE column-layout quirk)
+    Returns empty string if nothing found.
+    """
+    lines = text.splitlines()
+
+    # Strategy 1: "Oficina productora: VALUE" on the same line
+    for line in lines:
+        m = re.match(r'(?i)oficina\s+productora\s*:\s*(.+)', line.strip())
+        if m:
+            val = m.group(1).strip()
+            if len(val) > 3:
+                return val
+
+    # Strategy 2: "Oficina productora:" then first meaningful non-empty next line
+    for i, line in enumerate(lines):
+        if re.search(r'(?i)oficina\s+productora', line):
+            for j in range(i + 1, min(i + 8, len(lines))):
+                val = lines[j].strip()
+                if val and len(val) > 3:
+                    # Skip lines that look like codes, page numbers, or other headers
+                    if re.search(r'(?i)c.digo|hoja|\d+\s+de\s+\d+|entidad|productora', val):
+                        continue
+                    return val
+
+    # Strategy 3: All-caps office line that appears near table structural markers
+    # (DANE PDFs put the office name inside the table header area, which OCR may
+    # place AFTER the data rows — detect it by proximity to table keywords)
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not _is_office_line(stripped):
+            continue
+        # Check surrounding ±5 lines for table markers
+        context = " ".join(lines[max(0, i - 5): i + 6]).upper()
+        if any(m in context for m in _TABLE_MARKERS):
+            return stripped
+
+    return ""
 
 
 class TRDImportAgent:
@@ -164,19 +211,21 @@ class TRDImportAgent:
         return unique
 
     def _inject_dep_context(self, chunk: str, dep_context: str) -> str:
-        """
-        Prepend an explicit dependency marker to a chunk if its first line
-        doesn't already start a new dependency section.
-        This ensures the AI always knows which dependency is active.
-        """
+        """Prepend dependency marker unless the chunk opens a new dependency section."""
         if not dep_context:
             return chunk
         first_line = chunk.strip().split("\n")[0] if chunk.strip() else ""
-        if _detect_dep_header(first_line):
-            return chunk  # chunk starts its own dependency — no injection needed
+        if _is_office_line(first_line):
+            return chunk  # chunk starts its own dependency
         return f"=== DEPENDENCIA ACTIVA: {dep_context} ===\n{chunk}"
 
     async def analyze(self, full_text: str, images: list, filename: str = "") -> tuple:
+        # Pre-extract the office name from the document header so we have context
+        # before even looking at the first chunk (handles DANE's detached layout).
+        header_dep = _extract_header_dep(full_text)
+        if header_dep:
+            print(f"[TRDAgent] Dependencia detectada del encabezado: '{header_dep}'")
+
         chunks = self._split_into_chunks(full_text)
         if not chunks:
             return [], "No se encontró texto para analizar."
@@ -184,20 +233,18 @@ class TRDImportAgent:
         print(f"[TRDAgent] '{filename}' — {len(chunks)} fragmento(s) con {self.model}")
 
         all_actions, errors = [], 0
-        dep_context = ""  # last known dependency — carried across chunks
+        dep_context = header_dep  # seed with the pre-extracted office name
 
         for i, chunk in enumerate(chunks):
             chunk_images = images[:2] if i == 0 else []
-
-            # Inject dependency context so the AI doesn't lose track across chunk boundaries
-            augmented_chunk = self._inject_dep_context(chunk, dep_context)
-            actions = await self.extract_from_chunk(augmented_chunk, chunk_images)
+            augmented = self._inject_dep_context(chunk, dep_context)
+            actions = await self.extract_from_chunk(augmented, chunk_images)
             all_actions.extend(actions)
             print(f"[TRDAgent] Fragmento {i + 1}/{len(chunks)}: {len(actions)} registros")
             if not actions and i > 0:
                 errors += 1
 
-            # Update carried dependency from this chunk's output
+            # Update the carried dependency from this chunk's results
             for action in reversed(actions):
                 dep = (action.get("payload") or {}).get("dependenciaNombre", "").strip()
                 if dep:
@@ -233,7 +280,7 @@ class TRDImportAgent:
         chunks, current, current_len = [], [], 0
 
         for line in lines:
-            is_section = bool(_detect_dep_header(line)) and current_len > 3000
+            is_section = _is_office_line(line) and current_len > 3000
             if is_section:
                 chunks.append("\n".join(current))
                 current, current_len = [line], len(line)
