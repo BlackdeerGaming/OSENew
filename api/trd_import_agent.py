@@ -3,10 +3,14 @@ TRD Import Agent — dedicated extraction using GPT-4o-mini via OpenRouter.
 Produces flat trd_records actions consumed by executeAgentActions in the frontend.
 """
 import os
+import re
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+# ──────────────────────────────────────────────────────────────────────────────
+# System prompt — used for every chunk extraction call
+# ──────────────────────────────────────────────────────────────────────────────
 TRD_SYSTEM_PROMPT = """Eres un archivista experto en Tablas de Retención Documental (TRD) colombianas según la Ley 594 de 2000 y el Acuerdo 04 de 2013 del Archivo General de la Nación.
 
 Tu tarea es extraer TODOS los registros de valoración documental del fragmento de TRD que te envíen y estructurarlos en JSON.
@@ -34,30 +38,65 @@ FORMATO DE SALIDA OBLIGATORIO (solo JSON, sin markdown ni texto adicional):
 }
 
 REGLAS CRÍTICAS — incumplirlas invalida la respuesta:
-1. "disposicion" SOLO acepta: "CT" (Conservación Total), "E" (Eliminación), "S" (Selección), "MT" (Medio Técnico/Microfilmación). Si el texto dice "CT" o "Conservación total" → "CT"; "E" o "Eliminación" → "E"; "S" o "Selección" → "S"; "MT" → "MT".
-2. "retencionGestion" y "retencionCentral" son números enteros (años). Si el texto dice "2 años" → 2. Si dice "Permanente" → 0.
-3. "subserieNombre" = "" (cadena vacía) cuando la fila corresponde a una serie sin subseries.
-4. "codigo" es el código completo tal como aparece en el documento (ej: "100.01", "GG-001", "01.01.02").
-5. Si el fragmento no contiene filas de valoración TRD, retorna exactamente: {"actions": []}
-6. NO inventar ni suponer datos. Extraer únicamente lo explícito en el texto.
-7. Campos no presentes: string → "" | número → 0.
+1. "disposicion" SOLO acepta: "CT" (Conservación Total), "E" (Eliminación), "S" (Selección), "MT" (Medio Técnico). Si hay una X o tilde en la columna CT → "CT"; en E → "E"; en S → "S"; en MT → "MT".
+2. "retencionGestion" y "retencionCentral" son números enteros (años). Si dice "2 años" → 2. Si dice "Permanente" o "P" → 0.
+3. "subserieNombre" = "" (cadena vacía) cuando la fila es una serie sin subserie.
+4. "codigo" es el código tal como aparece (ej: "100.01", "GG-001", "01.01.02").
+5. Si el fragmento no contiene filas TRD, retorna exactamente: {"actions": []}
+6. NO inventes datos. Extrae solo lo explícito en el texto.
+7. Campos ausentes: string → "" | número → 0.
 
-CÓMO IDENTIFICAR LA JERARQUÍA:
-- Las DEPENDENCIAS suelen aparecer como encabezados en MAYÚSCULAS o con código de 2-3 dígitos (ej: "100 GERENCIA GENERAL", "SUBGERENCIA ADMINISTRATIVA").
-- Las SERIES tienen un código compuesto (ej: "100.01") y representan agrupaciones temáticas de documentos.
-- Las SUBSERIES están anidadas bajo la serie, con código más específico (ej: "100.01.01") o sin código explícito pero indentadas.
-- Las columnas AG y AC son los tiempos de retención en años (Archivo de Gestión / Archivo Central).
-- Las casillas de DISPOSICIÓN FINAL (CT, E, S, MT) suelen aparecer como marcas X o tilde en columnas separadas.
+REGLA CLAVE SOBRE DEPENDENCIAS:
+El fragmento puede indicar la dependencia activa con una línea como:
+  "=== DEPENDENCIA ACTIVA: Nombre de la Dependencia ==="
+  o con texto en MAYÚSCULAS al inicio de una sección (ej: "100 DESPACHO DEL ALCALDE").
 
-REPITE DEPENDENCIASOMBRE en cada registro que pertenezca a esa dependencia, aunque el nombre solo aparezca una vez en el encabezado del bloque."""
+DEBES copiar ese nombre en el campo "dependenciaNombre" de CADA registro del fragmento, incluso si la dependencia solo aparece una vez al inicio del bloque.
+Si el fragmento incluye "DEPENDENCIA ACTIVA: X", todos los registros tienen dependenciaNombre = X.
+
+EJEMPLO CORRECTO — un fragmento con una dependencia y varias series:
+Fragmento:
+  === DEPENDENCIA ACTIVA: Despacho del Alcalde ===
+  100.01  Actas              2   8   X (CT)
+  100.02  Contratos          5   10      X (E)
+
+Salida esperada:
+{"actions":[
+  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Alcalde","dependenciaCodigo":"100","serieNombre":"Actas","subserieNombre":"","codigo":"100.01","retencionGestion":2,"retencionCentral":8,"disposicion":"CT","procedimiento":"","tipoDocumental":""}},
+  {"type":"CREATE","entity":"trd_records","payload":{"dependenciaNombre":"Despacho del Alcalde","dependenciaCodigo":"100","serieNombre":"Contratos","subserieNombre":"","codigo":"100.02","retencionGestion":5,"retencionCentral":10,"disposicion":"E","procedimiento":"","tipoDocumental":""}}
+]}"""
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Markers used both for chunking and for dependency detection
+# ──────────────────────────────────────────────────────────────────────────────
 _TRD_SECTION_MARKERS = (
     "DEPENDENCIA", "SECCIÓN", "SECCION", "OFICINA", "DESPACHO",
     "DIVISIÓN", "DIVISION", "ÁREA", "AREA", "UNIDAD",
     "SUBGERENCIA", "GERENCIA", "DIRECCIÓN", "DIRECCION", "SUBDIRECCIÓN",
-    "SUBDIRECCIÓN", "SECRETARÍA", "SECRETARIA", "DEPARTAMENTO"
+    "SECRETARÍA", "SECRETARIA", "DEPARTAMENTO", "COORDINACIÓN", "COORDINACION",
 )
+
+
+def _detect_dep_header(line: str) -> str | None:
+    """
+    Returns the dependency name if the line looks like a dependency section header,
+    otherwise returns None. Strips leading codes like '100 ' before the name.
+    """
+    stripped = line.strip()
+    upper = stripped.upper()
+    if len(stripped) < 4 or len(stripped) > 120:
+        return None
+    if not any(upper.startswith(m) for m in _TRD_SECTION_MARKERS):
+        # Also accept lines that start with a numeric code followed by a keyword
+        # e.g. "100 DESPACHO DEL ALCALDE" or "1.1 SECRETARÍA DE GOBIERNO"
+        match = re.match(r'^[\d\.]+\s+(.+)$', stripped)
+        if match:
+            rest_upper = match.group(1).upper()
+            if any(rest_upper.startswith(m) for m in _TRD_SECTION_MARKERS):
+                return stripped  # keep the code+name
+        return None
+    return stripped
 
 
 class TRDImportAgent:
@@ -124,6 +163,19 @@ class TRDImportAgent:
                 unique.append(action)
         return unique
 
+    def _inject_dep_context(self, chunk: str, dep_context: str) -> str:
+        """
+        Prepend an explicit dependency marker to a chunk if its first line
+        doesn't already start a new dependency section.
+        This ensures the AI always knows which dependency is active.
+        """
+        if not dep_context:
+            return chunk
+        first_line = chunk.strip().split("\n")[0] if chunk.strip() else ""
+        if _detect_dep_header(first_line):
+            return chunk  # chunk starts its own dependency — no injection needed
+        return f"=== DEPENDENCIA ACTIVA: {dep_context} ===\n{chunk}"
+
     async def analyze(self, full_text: str, images: list, filename: str = "") -> tuple:
         chunks = self._split_into_chunks(full_text)
         if not chunks:
@@ -132,14 +184,25 @@ class TRDImportAgent:
         print(f"[TRDAgent] '{filename}' — {len(chunks)} fragmento(s) con {self.model}")
 
         all_actions, errors = [], 0
+        dep_context = ""  # last known dependency — carried across chunks
 
         for i, chunk in enumerate(chunks):
             chunk_images = images[:2] if i == 0 else []
-            actions = await self.extract_from_chunk(chunk, chunk_images)
+
+            # Inject dependency context so the AI doesn't lose track across chunk boundaries
+            augmented_chunk = self._inject_dep_context(chunk, dep_context)
+            actions = await self.extract_from_chunk(augmented_chunk, chunk_images)
             all_actions.extend(actions)
             print(f"[TRDAgent] Fragmento {i + 1}/{len(chunks)}: {len(actions)} registros")
             if not actions and i > 0:
                 errors += 1
+
+            # Update carried dependency from this chunk's output
+            for action in reversed(actions):
+                dep = (action.get("payload") or {}).get("dependenciaNombre", "").strip()
+                if dep:
+                    dep_context = dep
+                    break
 
         unique = self._deduplicate(all_actions)
 
@@ -170,12 +233,8 @@ class TRDImportAgent:
         chunks, current, current_len = [], [], 0
 
         for line in lines:
-            upper = line.strip().upper()
-            is_section = (
-                any(upper.startswith(m) for m in _TRD_SECTION_MARKERS)
-                and len(line.strip()) < 120
-            )
-            if is_section and current_len > 3000:
+            is_section = bool(_detect_dep_header(line)) and current_len > 3000
+            if is_section:
                 chunks.append("\n".join(current))
                 current, current_len = [line], len(line)
             else:
